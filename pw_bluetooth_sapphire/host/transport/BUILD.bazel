@@ -14,7 +14,10 @@
 
 load("@pigweed//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 cc_library(
     name = "transport",
@@ -47,13 +50,12 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/transport/transport.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         "//pw_async:dispatcher",
         "//pw_async:task",
         "//pw_bluetooth",
-        "//pw_bluetooth:emboss_hci",
-        "//pw_bluetooth:emboss_hci_test",
-        "//pw_bluetooth_sapphire:public",
+        "//pw_bluetooth:emboss_hci_common",
         "//pw_bluetooth_sapphire/host/common",
         "//pw_bluetooth_sapphire/host/hci-spec",
         "//third_party/fuchsia:fit",
@@ -73,9 +75,9 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/transport/mock_acl_data_channel.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         ":transport",
-        "//pw_bluetooth_sapphire:public",
     ],
 )
 
@@ -94,7 +96,11 @@ pw_cc_test(
     ],
     test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [
+        ":testing",
         ":transport",
+        "//pw_bluetooth:emboss_hci_test",
         "//pw_bluetooth_sapphire/host/testing",
+        "//pw_bluetooth_sapphire/host/testing:mock_controller",
+        "//pw_bluetooth_sapphire/host/testing:test_helpers",
     ],
 )

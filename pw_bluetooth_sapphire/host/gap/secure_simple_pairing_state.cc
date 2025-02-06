@@ -15,6 +15,7 @@
 #include "pw_bluetooth_sapphire/internal/host/gap/secure_simple_pairing_state.h"
 
 #include <inttypes.h>
+#include <pw_assert/check.h>
 
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/bredr_connection_manager.h"
@@ -103,7 +104,9 @@ void SecureSimplePairingState::InitiatePairing(
     // immediately.
 
     current_pairing_ =
-        Pairing::MakeInitiator(security_requirements, outgoing_connection_);
+        Pairing::MakeInitiator(security_requirements,
+                               outgoing_connection_,
+                               peer_->MutBrEdr().RegisterPairing());
     PairingRequest request{.security_requirements = security_requirements,
                            .status_callback = std::move(status_cb)};
     request_queue_.push_back(std::move(request));
@@ -149,8 +152,10 @@ void SecureSimplePairingState::InitiateNextPairingRequest() {
 
   PairingRequest& request = request_queue_.front();
 
-  current_pairing_ = Pairing::MakeInitiator(request.security_requirements,
-                                            outgoing_connection_);
+  current_pairing_ =
+      Pairing::MakeInitiator(request.security_requirements,
+                             outgoing_connection_,
+                             peer_->MutBrEdr().RegisterPairing());
   bt_log(DEBUG,
          "gap-bredr",
          "Initiating queued pairing on %#.4x (id %s)",
@@ -211,7 +216,8 @@ void SecureSimplePairingState::OnIoCapabilityResponse(IoCapability peer_iocap) {
   }
   if (state() == State::kIdle) {
     PW_CHECK(!is_pairing());
-    current_pairing_ = Pairing::MakeResponder(peer_iocap, outgoing_connection_);
+    current_pairing_ = Pairing::MakeResponder(
+        peer_iocap, outgoing_connection_, peer_->MutBrEdr().RegisterPairing());
 
     // Defer gathering local IO Capability until OnIoCapabilityRequest, where
     // the pairing can be rejected if there's no pairing delegate.
@@ -288,7 +294,7 @@ void SecureSimplePairingState::OnUserConfirmationRequest(
   } else if (current_pairing_->action == PairingAction::kGetConsent) {
     pairing_delegate()->ConfirmPairing(peer_id(), std::move(confirm_cb));
   } else {
-    BT_PANIC("%#.4x (id: %s): unexpected action %d",
+    PW_CRASH("%#.4x (id: %s): unexpected action %d",
              handle(),
              bt_str(peer_id()),
              static_cast<int>(current_pairing_->action));
@@ -435,7 +441,8 @@ std::optional<hci_spec::LinkKey> SecureSimplePairingState::OnLinkKeyRequest() {
   if (state() == State::kIdle) {
     if (link_key.has_value()) {
       PW_CHECK(!is_pairing());
-      current_pairing_ = Pairing::MakeResponderForBonded();
+      current_pairing_ =
+          Pairing::MakeResponderForBonded(peer_->MutBrEdr().RegisterPairing());
       state_ = State::kWaitEncryption;
       return link_key->key();
     }
@@ -683,9 +690,12 @@ void SecureSimplePairingState::OnEncryptionChange(hci::Result<bool> result) {
 
 std::unique_ptr<SecureSimplePairingState::Pairing>
 SecureSimplePairingState::Pairing::MakeInitiator(
-    BrEdrSecurityRequirements security_requirements, bool outgoing_connection) {
+    BrEdrSecurityRequirements security_requirements,
+    bool outgoing_connection,
+    Peer::PairingToken&& token) {
   // Private ctor is inaccessible to std::make_unique.
-  std::unique_ptr<Pairing> pairing(new Pairing(outgoing_connection));
+  std::unique_ptr<Pairing> pairing(
+      new Pairing(outgoing_connection, std::move(token)));
   pairing->initiator = true;
   pairing->preferred_security = security_requirements;
   return pairing;
@@ -693,9 +703,12 @@ SecureSimplePairingState::Pairing::MakeInitiator(
 
 std::unique_ptr<SecureSimplePairingState::Pairing>
 SecureSimplePairingState::Pairing::MakeResponder(
-    pw::bluetooth::emboss::IoCapability peer_iocap, bool outgoing_connection) {
+    pw::bluetooth::emboss::IoCapability peer_iocap,
+    bool outgoing_connection,
+    Peer::PairingToken&& token) {
   // Private ctor is inaccessible to std::make_unique.
-  std::unique_ptr<Pairing> pairing(new Pairing(outgoing_connection));
+  std::unique_ptr<Pairing> pairing(
+      new Pairing(outgoing_connection, std::move(token)));
   pairing->initiator = false;
   pairing->peer_iocap = peer_iocap;
   // Don't try to upgrade security as responder.
@@ -705,8 +718,10 @@ SecureSimplePairingState::Pairing::MakeResponder(
 }
 
 std::unique_ptr<SecureSimplePairingState::Pairing>
-SecureSimplePairingState::Pairing::MakeResponderForBonded() {
-  std::unique_ptr<Pairing> pairing(new Pairing(/* link initiated */ false));
+SecureSimplePairingState::Pairing::MakeResponderForBonded(
+    Peer::PairingToken&& token) {
+  std::unique_ptr<Pairing> pairing(
+      new Pairing(/* link initiated */ false, std::move(token)));
   pairing->initiator = false;
   // Don't try to upgrade security as responder.
   pairing->preferred_security = {.authentication = false,

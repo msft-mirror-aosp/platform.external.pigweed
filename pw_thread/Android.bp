@@ -33,6 +33,13 @@ cc_defaults {
     ],
     static_libs: [
         "pw_function",
+        "pw_numeric",
+        "pw_preprocessor",
+        "pw_status",
+    ],
+    export_static_lib_headers: [
+        "pw_function",
+        "pw_numeric",
         "pw_preprocessor",
         "pw_status",
     ],

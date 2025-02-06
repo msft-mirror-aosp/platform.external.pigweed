@@ -14,6 +14,7 @@
 
 #include "pw_bluetooth_sapphire/internal/host/l2cap/recombiner.h"
 
+#include <pw_assert/check.h>
 #include <pw_bytes/endian.h>
 
 #include <cstdint>
@@ -126,8 +127,7 @@ void ValidatePdu(PDU pdu,
     ValidatePdu(__VA_ARGS__); \
   } while (false)
 
-// The following test exercises a BT_DEBUG_ASSERT and thus only works in DEBUG
-// builds.
+// The following test exercises a PW_DCHECK and thus only works in DEBUG builds.
 #ifdef DEBUG
 TEST(RecombinerTest, WrongHandle) {
   Recombiner recombiner(kTestHandle);

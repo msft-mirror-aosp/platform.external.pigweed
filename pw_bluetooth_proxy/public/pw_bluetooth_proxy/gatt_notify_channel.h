@@ -22,21 +22,14 @@ namespace pw::bluetooth::proxy {
 /// remote peer.
 class GattNotifyChannel : public L2capChannel {
  public:
-  /// Send a GATT Notify to the remote peer.
-  ///
-  /// @param[in] attribute_value The data to be sent. Data will be copied
-  ///                            before function completes.
-  ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///  OK: If notify was successfully queued for send.
-  ///  UNAVAILABLE: If channel could not acquire the resources to queue the send
-  ///               at this time (transient error).
-  ///  INVALID_ARGUMENT: If `attribute_value` is too large.
-  ///  FAILED_PRECONDITION: If channel is not `State::kRunning`.
-  /// @endrst
-  pw::Status Write(pw::span<const uint8_t> attribute_value);
+  // @deprecated
+  // TODO: https://pwbug.dev/379337272 - Delete this once all downstreams
+  // have transitioned to Write(MultiBuf) for this channel type.
+  Status Write(pw::span<const uint8_t> attribute_value) override;
+
+  // Also make visible Write(MultiBuf)
+  // TODO: https://pwbug.dev/379337272 - Can delete when Write(span) is deleted.
+  using L2capChannel::Write;
 
  protected:
   static pw::Result<GattNotifyChannel> Create(
@@ -44,7 +37,7 @@ class GattNotifyChannel : public L2capChannel {
       uint16_t connection_handle,
       uint16_t attribute_handle);
 
-  bool HandlePduFromController(pw::span<uint8_t>) override {
+  bool DoHandlePduFromController(pw::span<uint8_t>) override {
     // Forward all packets to host.
     return false;
   }
@@ -55,6 +48,11 @@ class GattNotifyChannel : public L2capChannel {
   }
 
  private:
+  // TODO: https://pwbug.dev/379337272 - Move to true once this channel uses
+  // payload queue. Delete once all downstreams have transitioned to
+  // Write(MultiBuf) for this channel type.
+  bool UsesPayloadQueue() override { return false; }
+
   // TODO: https://pwbug.dev/349602172 - Define ATT CID in pw_bluetooth.
   static constexpr uint16_t kAttributeProtocolCID = 0x0004;
 

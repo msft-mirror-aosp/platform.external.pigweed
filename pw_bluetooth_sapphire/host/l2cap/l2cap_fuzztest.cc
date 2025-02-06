@@ -13,6 +13,7 @@
 // the License.
 
 #include <fuzzer/FuzzedDataProvider.h>
+#include <pw_assert/check.h>
 #include <pw_bytes/endian.h>
 #include <pw_random/fuzzer.h>
 
@@ -164,7 +165,9 @@ class DataFuzzTest : public TestingBase {
         kHandle,
         pw::bluetooth::emboss::ConnectionRole::CENTRAL,
         /*link_error_callback=*/[] {},
-        /*security_callback=*/[](auto, auto, auto) {});
+        /*security_callback=*/[](auto, auto, auto) {},
+        /*fixed_channels_callback=*/
+        [](l2cap::ChannelManager::BrEdrFixedChannels) {});
     connection_ = true;
   }
 

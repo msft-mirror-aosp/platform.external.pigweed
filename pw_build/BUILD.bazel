@@ -79,6 +79,7 @@ pw_cc_test(
         "PW_BUILD_EXPECTED_HEADER_PATH=\\\"pw_build/pw_build_private/file_prefix_map_test.h\\\"",
         "PW_BUILD_EXPECTED_SOURCE_PATH=\\\"pw_build/file_prefix_map_test.cc\\\"",
     ],
+    tags = ["noclangtidy"],
 )
 
 label_flag(
@@ -163,7 +164,7 @@ pw_cc_test(
     name = "linker_symbol_test",
     srcs = ["linker_symbol_test.cc"],
     linkopts = [
-        "-T$(location linker_symbol_test.ld)",
+        "-T$(execpath linker_symbol_test.ld)",
     ],
     target_compatible_with = [
         "@platforms//os:linux",
@@ -292,6 +293,7 @@ sphinx_docs_library(
         "python.gni",
         "python.rst",
         "python_gn_args.gni",
+        "//pw_build/py:docs",
     ],
     prefix = "pw_build/",
     target_compatible_with = incompatible_with_mcu(),

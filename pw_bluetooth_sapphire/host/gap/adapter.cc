@@ -14,6 +14,7 @@
 
 #include "pw_bluetooth_sapphire/internal/host/gap/adapter.h"
 
+#include <pw_assert/check.h>
 #include <pw_async/dispatcher.h>
 #include <pw_bluetooth/hci_commands.emb.h>
 #include <pw_bluetooth/hci_events.emb.h>
@@ -21,7 +22,6 @@
 
 #include <cinttypes>
 
-#include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
 #include "pw_bluetooth_sapphire/internal/host/common/metrics.h"
 #include "pw_bluetooth_sapphire/internal/host/common/random.h"
@@ -112,6 +112,7 @@ class AdapterImpl final : public Adapter {
                           l2cap::ChannelParameters params,
                           sm::SecurityLevel security_level,
                           l2cap::ChannelCallback cb) override {
+      adapter_->metrics_.le.open_l2cap_channel_requests.Add();
       adapter_->le_connection_manager_->OpenL2capChannel(
           peer_id, psm, params, security_level, std::move(cb));
     }
@@ -509,6 +510,7 @@ class AdapterImpl final : public Adapter {
   inspect::Node metrics_le_node_;
   struct AdapterMetrics {
     struct LeMetrics {
+      UintMetricCounter open_l2cap_channel_requests;
       UintMetricCounter outgoing_connection_requests;
       UintMetricCounter pair_requests;
       UintMetricCounter start_advertising_events;
@@ -530,7 +532,8 @@ class AdapterImpl final : public Adapter {
 
   hci::Transport::WeakPtr hci_;
 
-  // Callback invoked to notify clients when the underlying transport is closed.
+  // Callback invoked to notify clients when the underlying transport is
+  // closed.
   fit::closure transport_error_cb_;
 
   // Parameters relevant to the initialization sequence.
@@ -558,12 +561,12 @@ class AdapterImpl final : public Adapter {
   // devices.
   PeerCache peer_cache_;
 
-  // L2CAP layer used by GAP. This must be destroyed after the following members
-  // because they raw pointers to this member.
+  // L2CAP layer used by GAP. This must be destroyed after the following
+  // members because they raw pointers to this member.
   std::unique_ptr<l2cap::ChannelManager> l2cap_;
 
-  // The GATT profile. We use this reference to add and remove data bearers and
-  // for service discovery.
+  // The GATT profile. We use this reference to add and remove data bearers
+  // and for service discovery.
   gatt::GATT::WeakPtr gatt_;
 
   // Contains feature flags based on the product's configuration
@@ -746,8 +749,8 @@ bool AdapterImpl::IsDiscovering() const {
 
 void AdapterImpl::SetLocalName(std::string name,
                                hci::ResultFunction<> callback) {
-  // TODO(fxbug.dev/42116852): set the public LE advertisement name from |name|
-  // If BrEdr is not supported, skip the name update.
+  // TODO(fxbug.dev/42116852): set the public LE advertisement name from
+  // |name| If BrEdr is not supported, skip the name update.
   if (!bredr_discovery_manager_) {
     callback(ToResult(bt::HostError::kNotSupported));
     return;
@@ -851,6 +854,8 @@ void AdapterImpl::AttachInspect(inspect::Node& parent, std::string name) {
   metrics_node_ = adapter_node_.CreateChild(kMetricsInspectNodeName);
 
   metrics_le_node_ = metrics_node_.CreateChild("le");
+  metrics_.le.open_l2cap_channel_requests.AttachInspect(
+      metrics_le_node_, "open_l2cap_channel_requests");
   metrics_.le.outgoing_connection_requests.AttachInspect(
       metrics_le_node_, "outgoing_connection_requests");
   metrics_.le.pair_requests.AttachInspect(metrics_le_node_, "pair_requests");
@@ -882,12 +887,12 @@ void AdapterImpl::ParseLEGetVendorCapabilitiesCommandComplete(
   // undertaking (pwrev.dev/203950, fxrev.dev/1029396), we attempted to use
   // Emboss' conditional fields feature to define fields based on the version
   // they are included in. However, in practice, we've found vendors sometimes
-  // send the wrong number of bytes required for the version they claim to send.
-  // To tolerate these types of errors, we simply define all the fields in
-  // Emboss. If we receive a response smaller than what we expect, we use what
-  // the vendor sends, and fill the rest with zero to disable the feature. If we
-  // receive a response larger than what we expect, we read up to what we
-  // support and drop the rest of the data.
+  // send the wrong number of bytes required for the version they claim to
+  // send. To tolerate these types of errors, we simply define all the fields
+  // in Emboss. If we receive a response smaller than what we expect, we use
+  // what the vendor sends, and fill the rest with zero to disable the
+  // feature. If we receive a response larger than what we expect, we read up
+  // to what we support and drop the rest of the data.
   StaticPacket<android_emb::LEGetVendorCapabilitiesCommandCompleteEventView>
       packet;
   packet.SetToZeros();
@@ -940,12 +945,12 @@ void AdapterImpl::InitializeStep1() {
   state_.controller_features = hci_->GetFeatures();
 
   // Start by resetting the controller to a clean state and then send
-  // informational parameter commands that are not specific to LE or BR/EDR. The
-  // commands sent here are mandatory for all LE controllers.
+  // informational parameter commands that are not specific to LE or BR/EDR.
+  // The commands sent here are mandatory for all LE controllers.
   //
   // NOTE: It's safe to pass capture |this| directly in the callbacks as
-  // |init_seq_runner_| will internally invalidate the callbacks if it ever gets
-  // deleted.
+  // |init_seq_runner_| will internally invalidate the callbacks if it ever
+  // gets deleted.
 
   // HCI_Reset
   auto reset_command =
@@ -1054,8 +1059,8 @@ void AdapterImpl::InitializeStep2() {
     return;
   }
 
-  // Check the HCI version. We officially only support 4.2+ only but for now we
-  // just log a warning message if the version is legacy.
+  // Check the HCI version. We officially only support 4.2+ only but for now
+  // we just log a warning message if the version is legacy.
   if (state_.hci_version <
       pw::bluetooth::emboss::CoreSpecificationVersion::V4_2) {
     bt_log(WARN,
@@ -1418,10 +1423,10 @@ void AdapterImpl::InitializeStep3() {
              "support");
     }
   } else {
-    bt_log(
-        INFO,
-        "gap",
-        "No ISO data buffer information available, not starting data channel");
+    bt_log(INFO,
+           "gap",
+           "No ISO data buffer information available, not starting data "
+           "channel");
   }
 
   hci_->AttachInspect(adapter_node_);
@@ -1532,7 +1537,7 @@ void AdapterImpl::InitializeStep4() {
       l2cap_.get(),
       gatt_,
       le_discovery_manager_->GetWeakPtr(),
-      sm::SecurityManager::Create,
+      sm::SecurityManager::CreateLE,
       state(),
       dispatcher_);
   le_connection_manager_->AttachInspect(

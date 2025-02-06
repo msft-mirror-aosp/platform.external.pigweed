@@ -15,12 +15,12 @@
 #include "pw_bluetooth_sapphire/internal/host/l2cap/logical_link.h"
 
 #include <cpp-string/string_printf.h>
+#include <pw_assert/check.h>
 
 #include <cinttypes>
 #include <functional>
 #include <memory>
 
-#include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
 #include "pw_bluetooth_sapphire/internal/host/common/trace.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/bredr_dynamic_channel.h"
@@ -66,6 +66,20 @@ constexpr bool IsValidBREDRFixedChannel(ChannelId id) {
       break;
   }
   return false;
+}
+
+FixedChannelsSupported FixedChannelsSupportedBitForChannelId(
+    ChannelId channel_id) {
+  switch (channel_id) {
+    case kSignalingChannelId:
+      return kFixedChannelsSupportedBitSignaling;
+    case kConnectionlessChannelId:
+      return kFixedChannelsSupportedBitConnectionless;
+    case kSMPChannelId:
+      return kFixedChannelsSupportedBitSM;
+    default:
+      return 0;
+  }
 }
 
 }  // namespace
@@ -192,6 +206,45 @@ Channel::WeakPtr LogicalLink::OpenFixedChannel(ChannelId id) {
   current_channel_ = channels_.begin();
 
   return channels_[id]->GetWeakPtr();
+}
+
+void LogicalLink::OpenFixedChannelAsync(ChannelId channel_id,
+                                        ChannelCallback callback) {
+  if (type_ == LinkType::kACL) {
+    if (fixed_channels_supported_callbacks_.count(channel_id) > 0) {
+      bt_log(ERROR,
+             "l2cap",
+             "fixed channel is already pending! (id: %#.4x, handle: %#.4x)",
+             channel_id,
+             handle_);
+      callback(Channel::WeakPtr());
+      return;
+    }
+
+    if (!fixed_channels_supported_.has_value()) {
+      fixed_channels_supported_callbacks_.emplace(
+          channel_id, [this, channel_id, cb = std::move(callback)]() mutable {
+            OpenFixedChannelAsync(channel_id, std::move(cb));
+          });
+      return;
+    }
+
+    bool channel_supported = *fixed_channels_supported_ &
+                             FixedChannelsSupportedBitForChannelId(channel_id);
+
+    if (!channel_supported) {
+      bt_log(DEBUG,
+             "l2cap",
+             "tried to open fixed channel not supported by peer (id: %#.4x, "
+             "handle: %#.4x)",
+             channel_id,
+             handle_);
+      callback(Channel::WeakPtr());
+      return;
+    }
+  }
+
+  callback(OpenFixedChannel(channel_id));
 }
 
 void LogicalLink::OpenChannel(Psm psm,
@@ -675,6 +728,13 @@ void LogicalLink::OnRxFixedChannelsSupportedInfoRsp(
          "Received Fixed Channels Supported Information Response (mask: "
          "%#016" PRIx64 ")",
          rsp.fixed_channels());
+
+  fixed_channels_supported_ = rsp.fixed_channels();
+  auto callbacks = std::move(fixed_channels_supported_callbacks_);
+  fixed_channels_supported_callbacks_.clear();
+  for (auto& [_, cb] : callbacks) {
+    cb();
+  }
 }
 
 void LogicalLink::SendConnectionParameterUpdateRequest(

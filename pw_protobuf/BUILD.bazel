@@ -12,16 +12,22 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@com_google_protobuf//bazel:java_lite_proto_library.bzl", "java_lite_proto_library")
+load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
+load("//pw_build:copy_to_bin.bzl", "copy_to_bin")
 load("//pw_fuzzer:fuzzer.bzl", "pw_cc_fuzz_test")
 load("//pw_perf_test:pw_cc_perf_test.bzl", "pw_cc_perf_test")
 load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_filegroup", "pwpb_proto_library")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -292,6 +298,7 @@ pw_proto_filegroup(
     name = "codegen_test_proto_and_options",
     srcs = [
         "pw_protobuf_test_protos/edition.proto",
+        "pw_protobuf_test_protos/edition_file_options.proto",
         "pw_protobuf_test_protos/full_test.proto",
         "pw_protobuf_test_protos/imported.proto",
         "pw_protobuf_test_protos/importer.proto",
@@ -303,6 +310,7 @@ pw_proto_filegroup(
     ],
     options_files = [
         "pw_protobuf_test_protos/edition.pwpb_options",
+        "pw_protobuf_test_protos/edition_file_options.pwpb_options",
         "pw_protobuf_test_protos/full_test.pwpb_options",
         "pw_protobuf_test_protos/optional.pwpb_options",
         "pw_protobuf_test_protos/imported.pwpb_options",
@@ -390,14 +398,6 @@ filegroup(
     ],
 )
 
-# TODO(frolv): Figure out what to do about size reports in Bazel.
-filegroup(
-    name = "size_reports",
-    srcs = glob([
-        "size_report/*.cc",
-    ]),
-)
-
 filegroup(
     name = "doxygen",
     srcs = [
@@ -415,4 +415,13 @@ sphinx_docs_library(
     ],
     prefix = "pw_protobuf/",
     target_compatible_with = incompatible_with_mcu(),
+)
+
+copy_to_bin(
+    name = "js_protos",
+    srcs = [
+        "pw_protobuf_protos/common.proto",
+        "pw_protobuf_protos/field_options.proto",
+        "pw_protobuf_protos/status.proto",
+    ],
 )

@@ -14,12 +14,11 @@
 
 #include "pw_bluetooth_sapphire/internal/host/common/byte_buffer.h"
 
-#include <gmock/gmock.h>
-
 #include <cstddef>
 #include <type_traits>
 
 #include "pw_bluetooth_sapphire/internal/host/common/macros.h"
+#include "pw_bluetooth_sapphire/internal/host/testing/gtest_helpers.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/test_helpers.h"
 #include "pw_unit_test/framework.h"
 
@@ -80,7 +79,7 @@ TEST(ByteBufferTest, StaticByteBufferPackConstructor) {
   EXPECT_TRUE(ContainersEqual(buffer1, buffer2));
   EXPECT_TRUE(ContainersEqual(buffer1, buffer3));
 
-  // The corresponding check is a BT_DEBUG_ASSERT runtime check
+  // The corresponding check is a DEBUG-only runtime check
   EXPECT_DEBUG_DEATH(StaticByteBuffer(-257), "ASSERT");
 }
 
@@ -679,7 +678,7 @@ TEST(ByteBufferTest, MutableByteBufferAsMutableStruct) {
 
 TEST(ByteBufferTest, MutableByteBufferAsMutableArray) {
   StaticByteBuffer buf(10, 12);
-  uint8_t(&array)[2] = *buf.AsMutable<uint8_t[2]>();
+  uint8_t (&array)[2] = *buf.AsMutable<uint8_t[2]>();
   ++array[0];
   ++array[1];
 

@@ -14,6 +14,7 @@
 
 #include "pw_bluetooth_proxy/gatt_notify_channel.h"
 
+#include "pw_assert/check.h"  // IWYU pragma: keep
 #include "pw_bluetooth/att.emb.h"
 #include "pw_bluetooth/emboss_util.h"
 #include "pw_bluetooth/l2cap_frames.emb.h"
@@ -22,8 +23,17 @@
 
 namespace pw::bluetooth::proxy {
 pw::Status GattNotifyChannel::Write(pw::span<const uint8_t> attribute_value) {
+  std::optional<uint16_t> max_l2cap_payload_size = MaxL2capPayloadSize();
+  if (!max_l2cap_payload_size) {
+    PW_LOG_ERROR("Tried to write before LE_Read_Buffer_Size processed.");
+    return Status::FailedPrecondition();
+  }
+  if (*max_l2cap_payload_size <= emboss::AttHandleValueNtf::MinSizeInBytes()) {
+    PW_LOG_ERROR("LE ACL data packet size limit does not support writing.");
+    return Status::FailedPrecondition();
+  }
   const uint16_t max_attribute_size =
-      MaxL2capPayloadSize() - emboss::AttHandleValueNtf::MinSizeInBytes();
+      *max_l2cap_payload_size - emboss::AttHandleValueNtf::MinSizeInBytes();
   if (attribute_value.size() > max_attribute_size) {
     PW_LOG_ERROR("Attribute too large (%zu > %d). So will not process.",
                  attribute_value.size(),
@@ -33,11 +43,12 @@ pw::Status GattNotifyChannel::Write(pw::span<const uint8_t> attribute_value) {
 
   size_t att_size =
       emboss::AttHandleValueNtf::MinSizeInBytes() + attribute_value.size();
-  pw::Result<H4PacketWithH4> h4_result = PopulateTxL2capPacket(att_size);
+  pw::Result<H4PacketWithH4> h4_result =
+      PopulateTxL2capPacketDuringWrite(att_size);
   if (!h4_result.ok()) {
     // This can fail as a result of the L2CAP PDU not fitting in an H4 buffer
     // or if all buffers are occupied.
-    // TODO: https://pwbug.dev/365179076 - Once we support ACL fragmentation,
+    // TODO: https://pwbug.dev/379337260 - Once we support ACL fragmentation,
     // this function will not fail due to the L2CAP PDU size not fitting.
     return h4_result.status();
   }
@@ -58,9 +69,9 @@ pw::Status GattNotifyChannel::Write(pw::span<const uint8_t> attribute_value) {
                     att_size));
   att_notify.attribute_opcode().Write(emboss::AttOpcode::ATT_HANDLE_VALUE_NTF);
   att_notify.attribute_handle().Write(attribute_handle_);
-  std::memcpy(att_notify.attribute_value().BackingStorage().data(),
-              attribute_value.data(),
-              attribute_value.size());
+
+  PW_CHECK(
+      TryToCopyToEmbossStruct(att_notify.attribute_value(), attribute_value));
 
   return QueuePacket(std::move(h4_packet));
 }
@@ -87,11 +98,13 @@ GattNotifyChannel::GattNotifyChannel(L2capChannelManager& l2cap_channel_manager,
                                      uint16_t connection_handle,
                                      uint16_t attribute_handle)
     : L2capChannel(/*l2cap_channel_manager=*/l2cap_channel_manager,
+                   /*rx_multibuf_allocator*/ nullptr,
                    /*connection_handle=*/connection_handle,
                    /*transport=*/AclTransportType::kLe,
                    /*local_cid=*/kAttributeProtocolCID,
                    /*remote_cid=*/kAttributeProtocolCID,
                    /*payload_from_controller_fn=*/nullptr,
+                   /*payload_from_host_fn=*/nullptr,
                    /*event_fn=*/nullptr),
       attribute_handle_(attribute_handle) {}
 

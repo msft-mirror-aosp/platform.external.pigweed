@@ -23,33 +23,45 @@
 namespace pw::bluetooth::proxy {
 
 L2capChannelManager::L2capChannelManager(AclDataChannel& acl_data_channel)
-    : acl_data_channel_(acl_data_channel), lrd_channel_(channels_.end()) {}
+    : acl_data_channel_(acl_data_channel),
+      lrd_channel_(channels_.end()),
+      round_robin_terminus_(channels_.end()) {}
 
 void L2capChannelManager::Reset() { h4_storage_.Reset(); }
 
 void L2capChannelManager::RegisterChannel(L2capChannel& channel) {
   std::lock_guard lock(channels_mutex_);
-  channels_.push_front(channel);
+  // Insert new channels before `lrd_channel_`.
+  IntrusiveForwardList<L2capChannel>::iterator before_it =
+      channels_.before_begin();
+  for (auto it = channels_.begin(); it != lrd_channel_; ++it) {
+    ++before_it;
+  }
+  channels_.insert_after(before_it, channel);
   if (lrd_channel_ == channels_.end()) {
     lrd_channel_ = channels_.begin();
   }
 }
 
-bool L2capChannelManager::ReleaseChannel(L2capChannel& channel) {
+void L2capChannelManager::ReleaseChannel(L2capChannel& channel) {
   std::lock_guard lock(channels_mutex_);
   if (&channel == &(*lrd_channel_)) {
     Advance(lrd_channel_);
   }
-
-  bool was_removed = channels_.remove(channel);
-
-  // If `channel` was the only element in `channels_`, advancing `lrd_channel_`
-  // just wrapped it back on itself, so we reset it here.
-  if (channels_.empty()) {
-    lrd_channel_ = channels_.end();
+  if (&channel == &(*round_robin_terminus_)) {
+    Advance(round_robin_terminus_);
   }
 
-  return was_removed;
+  // Channel will only be removed once, but ReleaseChannel may be called
+  // multiple times on the same channel so it's ok for this to return false.
+  channels_.remove(channel);
+
+  // If `channel` was the only element in `channels_`, advancing channels just
+  // wrapped them back on itself, so we reset it here.
+  if (channels_.empty()) {
+    lrd_channel_ = channels_.end();
+    round_robin_terminus_ = channels_.end();
+  }
 }
 
 pw::Result<H4PacketWithH4> L2capChannelManager::GetAclH4Packet(uint16_t size) {
@@ -65,11 +77,11 @@ pw::Result<H4PacketWithH4> L2capChannelManager::GetAclH4Packet(uint16_t size) {
     return pw::Status::Unavailable();
   }
 
-  H4PacketWithH4 h4_packet(
-      span(h4_buff->data(), size),
-      /*release_fn=*/[h4_storage = &h4_storage_](const uint8_t* buffer) {
-        h4_storage->ReleaseH4Buff(buffer);
-      });
+  H4PacketWithH4 h4_packet(span(h4_buff->data(), size),
+                           /*release_fn=*/[this](const uint8_t* buffer) {
+                             this->h4_storage_.ReleaseH4Buff(buffer);
+                             DrainChannelQueues();
+                           });
   h4_packet.SetH4Type(emboss::H4PacketType::ACL_DATA);
 
   return h4_packet;
@@ -80,42 +92,45 @@ uint16_t L2capChannelManager::GetH4BuffSize() const {
 }
 
 void L2capChannelManager::DrainChannelQueues() {
-  std::lock_guard lock(channels_mutex_);
-
-  if (channels_.empty()) {
-    return;
-  }
-
-  DrainChannelQueues(AclTransportType::kBrEdr);
-  DrainChannelQueues(AclTransportType::kLe);
-}
-
-void L2capChannelManager::DrainChannelQueues(AclTransportType transport) {
-  IntrusiveForwardList<L2capChannel>::iterator round_robin_start = lrd_channel_;
-  // Iterate around `channels_` in round robin fashion. For each channel, send
-  // as many queued packets as are available. Proceed until we run out of ACL
-  // send credits or finish visiting every channel.
-  // TODO: https://pwbug.dev/379337260 - Only drain one L2CAP PDU per channel
-  // before moving on. (This may require sending multiple ACL fragments.)
-  while (acl_data_channel_.GetNumFreeAclPackets(transport) > 0) {
-    if (lrd_channel_->transport() != transport) {
-      Advance(lrd_channel_);
-      if (lrd_channel_ == round_robin_start) {
+  for (;;) {
+    std::optional<AclDataChannel::SendCredit> credit;
+    std::optional<H4PacketWithH4> packet;
+    {
+      std::lock_guard lock(channels_mutex_);
+      if (lrd_channel_ == channels_.end()) {
+        // This means the container is empty.
         return;
       }
+      if (round_robin_terminus_ == channels_.end()) {
+        round_robin_terminus_ = lrd_channel_;
+      }
+      credit = acl_data_channel_.ReserveSendCredit(lrd_channel_->transport());
+      if (credit) {
+        packet = lrd_channel_->DequeuePacket();
+      }
+      Advance(lrd_channel_);
+      if (packet) {
+        // Round robin should continue until we have done a full loop with no
+        // packets dequeued.
+        round_robin_terminus_ = lrd_channel_;
+      }
+    }
+
+    if (packet) {
+      // Send while unlocked. This can trigger a recursive round robin once
+      // `packet` is released, but this is fine because `lrd_channel_` has
+      // been adjusted so the recursive call will start where this one left off,
+      // and `round_robin_terminus_` will be updated to point to channels with
+      // dequeued packets.
+      PW_CHECK_OK(
+          acl_data_channel_.SendAcl(std::move(*packet), std::move(*credit)));
       continue;
     }
 
-    std::optional<H4PacketWithH4> packet = lrd_channel_->DequeuePacket();
-    if (!packet) {
-      Advance(lrd_channel_);
-      if (lrd_channel_ == round_robin_start) {
-        return;
-      }
-      continue;
+    std::lock_guard lock(channels_mutex_);
+    if (lrd_channel_ == round_robin_terminus_) {
+      break;
     }
-
-    PW_CHECK_OK(acl_data_channel_.SendAcl(std::move(*packet)));
   }
 }
 
@@ -165,6 +180,10 @@ void L2capChannelManager::HandleConnectionComplete(
 
 void L2capChannelManager::HandleDisconnectionComplete(
     uint16_t connection_handle) {
+  PW_LOG_INFO(
+      "btproxy: L2capChannelManager::HandleDisconnectionComplete - "
+      "connection_handle: %u",
+      connection_handle);
   for (;;) {
     IntrusiveForwardList<L2capChannel>::iterator channel_it;
     {
@@ -193,7 +212,7 @@ void L2capChannelManager::HandleDisconnectionComplete(
 void L2capChannelManager::HandleDisconnectionComplete(
     const L2capStatusTracker::DisconnectParams& params) {
   L2capChannel* channel =
-      FindChannelByLocalCid(params.connection_handle, params.source_cid);
+      FindChannelByLocalCid(params.connection_handle, params.local_cid);
   if (channel) {
     channel->Close();
   }

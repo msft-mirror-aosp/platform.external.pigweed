@@ -312,7 +312,20 @@ pw_source_set("synchronized_allocator") {
   public = [ "public/pw_allocator/synchronized_allocator.h" ]
   public_deps = [
     ":allocator",
-    "$dir_pw_sync:borrow",
+    "$dir_pw_sync:lock_annotations",
+  ]
+}
+
+pw_source_set("tlsf_allocator") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_allocator/tlsf_allocator.h" ]
+  public_deps = [
+    ":block_allocator",
+    ":config",
+    "$dir_pw_third_party/fuchsia:stdcompat",
+    "block:detailed_block",
+    "bucket:fast_sorted",
+    "bucket:sorted",
   ]
 }
 
@@ -370,7 +383,7 @@ pw_source_set("testing") {
     ":buffer",
     ":first_fit",
     ":tracking_allocator",
-    "$dir_pw_sync:interrupt_spin_lock",
+    "$dir_pw_sync:mutex",
     dir_pw_bytes,
     dir_pw_result,
     dir_pw_status,
@@ -383,6 +396,7 @@ pw_source_set("block_allocator_testing") {
   public = [ "public/pw_allocator/block_allocator_testing.h" ]
   public_deps = [
     ":block_allocator",
+    ":fuzzing",
     "block:testing",
     dir_pw_unit_test,
   ]
@@ -458,6 +472,7 @@ pw_test("bucket_allocator_test") {
 pw_test("buddy_allocator_test") {
   deps = [
     ":buddy_allocator",
+    ":fuzzing",
     ":testing",
   ]
   sources = [ "buddy_allocator_test.cc" ]
@@ -586,6 +601,14 @@ pw_test("synchronized_allocator_test") {
   sources = [ "synchronized_allocator_test.cc" ]
 }
 
+pw_test("tlsf_allocator_test") {
+  deps = [
+    ":block_allocator_testing",
+    ":tlsf_allocator",
+  ]
+  sources = [ "tlsf_allocator_test.cc" ]
+}
+
 pw_test("tracking_allocator_test") {
   deps = [
     ":testing",
@@ -638,6 +661,7 @@ pw_test_group("tests") {
     ":null_allocator_test",
     ":pmr_allocator_test",
     ":synchronized_allocator_test",
+    ":tlsf_allocator_test",
     ":tracking_allocator_test",
     ":typed_pool_test",
     ":unique_ptr_test",
@@ -703,6 +727,11 @@ pw_size_diff("concrete_allocators_size_report") {
       label = "LibCAllocator"
     },
     {
+      target = "size_report:tlsf_allocator"
+      base = "size_report:null_allocator"
+      label = "TlsfAllocator"
+    },
+    {
       target = "size_report:worst_fit"
       base = "size_report:null_allocator"
       label = "WorstFitAllocator"
@@ -763,13 +792,13 @@ pw_doc_group("docs") {
     "examples/basic.cc",
     "examples/block_allocator.cc",
     "examples/custom_allocator_perf_test.cc",
-    "examples/custom_allocator_test_harness.h",
     "examples/custom_allocator_test.cc",
     "examples/custom_allocator.cc",
-    "examples/custom_allocator.h",
     "examples/linker_sections.cc",
     "examples/metrics.cc",
     "examples/pmr.cc",
+    "examples/public/examples/custom_allocator.h",
+    "examples/public/examples/custom_allocator_test_harness.h",
     "examples/size_report.cc",
     "examples/spin_lock.cc",
   ]

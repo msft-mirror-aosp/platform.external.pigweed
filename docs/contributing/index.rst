@@ -13,9 +13,9 @@ to respect these guidelines.
 Good first issue
 ----------------
 We maintain a list of `good first issues for first-time contributors
-<https://pwbug.dev/issues/256050233/dependencies>`__. If you would like to
-contribute to Pigweed but are not sure where to start, take a look at one of
-these!
+<https://issues.pigweed.dev/issues?q=id:256050233%20OR%20parentid:256050233%2B>`__.
+If you would like to contribute to Pigweed but are not sure where to start, take
+a look at one of these!
 
 Get started
 -----------
@@ -189,12 +189,8 @@ Submission checklist
 All Pigweed changes must either:
 
 #. Include updates to documentation, or
-#. Include ``No-Docs-Update-Reason: <reason>`` in a Gerrit comment on the CL.
-   For example:
-
-   * ``No-Docs-Update-Reason: formatting tweaks``
-   * ``No-Docs-Update-Reason: internal cleanups``
-   * ``No-Docs-Update-Reason: bugfix``
+#. Assert no documentation is needed by voting +1 on the ``Docs-Not-Needed``
+   #label in Gerrit.
 
 It's acceptable to only document new changes in an otherwise underdocumented
 module, but it's not acceptable to not document new changes because the module
@@ -336,7 +332,7 @@ This will be effectively the same as running the following command before every
    $ pw presubmit
 
 
-.. image:: ../../pw_presubmit/docs/pw_presubmit_demo.gif
+.. image:: https://storage.googleapis.com/pigweed-media/pw_presubmit/pw_presubmit_demo.gif
   :width: 800
   :alt: pw presubmit demo
 

@@ -12,7 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load(
@@ -23,7 +23,10 @@ load(
 )
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -264,6 +267,7 @@ cc_library(
     name = "stream_rpc_dispatcher",
     hdrs = ["public/pw_rpc_transport/stream_rpc_dispatcher.h"],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         ":egress_ingress",
         "//pw_metric:metric",

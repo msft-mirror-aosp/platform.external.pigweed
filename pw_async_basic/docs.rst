@@ -1,8 +1,10 @@
 .. _module-pw_async_basic:
 
-================
+==============
 pw_async_basic
-================
+==============
+.. pigweed-module::
+   :name: pw_async_basic
 
 This module includes basic implementations of pw_async's Dispatcher and
 FakeDispatcher.
@@ -12,6 +14,7 @@ API
 ---
 .. doxygenclass:: pw::async::BasicDispatcher
    :members:
+   :protected-members:
 
 -----
 Usage
@@ -57,4 +60,6 @@ Next, construct and use a ``BasicDispatcher``.
 -----------
 Size Report
 -----------
-.. include:: docs_size_report
+.. TODO: b/388905812 - Re-enable the size report.
+.. .. include:: docs_size_report
+.. include:: ../size_report_notice

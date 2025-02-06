@@ -24,6 +24,7 @@
 #include <fuchsia/bluetooth/sys/cpp/fidl.h>
 #include <lib/fidl/cpp/type_converter.h>
 #include <lib/fpromise/result.h>
+#include <pw_assert/check.h>
 
 #include <optional>
 
@@ -87,7 +88,7 @@ fuchsia::bluetooth::Status ResultToFidlDeprecated(
             error->error_code = fuchsia::bluetooth::ErrorCode::PROTOCOL_ERROR;
             error->protocol_error_code = static_cast<uint32_t>(c);
           } else {
-            BT_PANIC("Protocol branch visited by bt::Error<NoProtocolError>");
+            PW_CRASH("Protocol branch visited by bt::Error<NoProtocolError>");
           }
         });
   }

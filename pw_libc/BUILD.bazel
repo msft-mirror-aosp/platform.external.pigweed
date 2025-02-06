@@ -16,7 +16,10 @@ load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -27,6 +30,16 @@ pw_cc_test(
     ],
     deps = [
         "//pw_containers",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "logf_test",
+    srcs = [
+        "logf_test.cc",
+    ],
+    deps = [
         "//pw_unit_test",
     ],
 )

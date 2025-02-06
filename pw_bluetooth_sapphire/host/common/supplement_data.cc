@@ -14,9 +14,9 @@
 
 #include "pw_bluetooth_sapphire/internal/host/common/supplement_data.h"
 
+#include <pw_assert/check.h>
 #include <pw_preprocessor/compiler.h>
 
-#include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/byte_buffer.h"
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
 
@@ -64,7 +64,7 @@ UUIDElemSize SizeForType(DataType type) {
   };
   PW_MODIFY_DIAGNOSTICS_POP();
 
-  BT_PANIC("called SizeForType with non-UUID DataType %du",
+  PW_CRASH("called SizeForType with non-UUID DataType %du",
            static_cast<uint8_t>(type));
   return UUIDElemSize::k16Bit;
 }

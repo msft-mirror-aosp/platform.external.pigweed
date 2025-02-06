@@ -3,6 +3,9 @@
 ====================
 pw_protobuf_compiler
 ====================
+.. pigweed-module::
+   :name: pw_protobuf_compiler
+
 The Protobuf compiler module provides build system integration and wrapper
 scripts for generating source code for Protobuf definitions.
 
@@ -396,7 +399,7 @@ compile them. e.g.
    load("@pigweed//pw_protobuf_compiler:nanopb_rpc_proto_library.bzl", "nanopb_rpc_proto_library")
    load("@pigweed//pw_protobuf_compiler:pwpb_proto_library.bzl", "pwpb_proto_library")
    load("@pigweed//pw_protobuf_compiler:raw_rpc_proto_library.bzl", "raw_rpc_proto_library")
-   load("@rules_proto//proto:defs.bzl", "proto_library")
+   load("@com_google_protobuf//bazel/common:proto_info.bzl", "proto_library")
 
    # Manages proto sources and dependencies.
    proto_library(

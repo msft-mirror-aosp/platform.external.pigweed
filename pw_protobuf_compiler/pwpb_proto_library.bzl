@@ -14,7 +14,7 @@
 """Rule for generating C++ proto libraries using pw_protobuf."""
 
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "use_cpp_toolchain")
-load("@rules_proto//proto:defs.bzl", "ProtoInfo")
+load("@com_google_protobuf//bazel/common:proto_info.bzl", "ProtoInfo")
 load("//pw_protobuf_compiler/private:proto.bzl", "compile_proto", "proto_compiler_aspect")
 
 # For Copybara use only
@@ -64,7 +64,7 @@ def pwpb_proto_library(*, name, deps, oneof_callbacks = True, **kwargs):
 _pwpb_proto_compiler_aspect = proto_compiler_aspect(
     ["pwpb.h"],
     "//pw_protobuf/py:plugin",
-    ["--no-legacy-namespace", "--options-file={}"],
+    ["--exclude-legacy-snake-case-field-name-enums", "--no-legacy-namespace", "--options-file={}"],
 )
 
 _pwpb_proto_library = rule(
@@ -87,7 +87,7 @@ _pwpb_proto_library = rule(
 _pwpb_legacy_oneof_compiler_aspect = proto_compiler_aspect(
     ["pwpb.h"],
     "//pw_protobuf/py:plugin",
-    ["--no-oneof-callbacks", "--no-legacy-namespace", "--options-file={}"],
+    ["--exclude-legacy-snake-case-field-name-enums", "--no-oneof-callbacks", "--no-legacy-namespace", "--options-file={}"],
 )
 
 _pwpb_legacy_oneof_proto_library = rule(

@@ -69,6 +69,7 @@ cc_library(
         "private_overrides",
         "public_overrides",
     ],
+    tags = ["noclangtidy"],
     deps = ["//pw_unit_test"],
 )
 
@@ -93,6 +94,7 @@ sphinx_docs_library(
         "concepts.rst",
         "docs.rst",
         "guides/fuzztest.rst",
+        "guides/index.rst",
         "guides/libfuzzer.rst",
         "guides/reproducing_oss_fuzz_bugs.rst",
         "//pw_fuzzer/examples/fuzztest:docs",

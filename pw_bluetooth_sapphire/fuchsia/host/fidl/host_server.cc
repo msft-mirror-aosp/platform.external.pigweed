@@ -16,6 +16,7 @@
 
 #include <cpp-string/string_printf.h>
 #include <lib/fpromise/result.h>
+#include <pw_assert/check.h>
 #include <zircon/errors.h>
 
 #include <utility>
@@ -28,7 +29,6 @@
 #include "pw_bluetooth_sapphire/fuchsia/host/fidl/low_energy_central_server.h"
 #include "pw_bluetooth_sapphire/fuchsia/host/fidl/low_energy_peripheral_server.h"
 #include "pw_bluetooth_sapphire/fuchsia/host/fidl/profile_server.h"
-#include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/identifier.h"
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/adapter.h"
@@ -735,19 +735,33 @@ void HostServer::Pair(fbt::PeerId id,
     callback(fpromise::error(fsys::Error::PEER_NOT_FOUND));
     return;
   }
+
   // If options specifies a transport preference for LE or BR/EDR, we use that.
-  // Otherwise, we use whatever transport exists, defaulting to LE for dual-mode
-  // connections.
-  bool pair_bredr = !peer->le();
-  if (options.has_transport() &&
-      options.transport() != fsys::TechnologyType::DUAL_MODE) {
-    pair_bredr = (options.transport() == fsys::TechnologyType::CLASSIC);
+  // Otherwise, we use whichever transport connection exists, preferring BR/EDR
+  // if both connections exist.
+  if (options.has_transport()) {
+    switch (options.transport()) {
+      case fsys::TechnologyType::CLASSIC:
+        PairBrEdr(peer_id, std::move(callback));
+        return;
+      case fsys::TechnologyType::LOW_ENERGY:
+        PairLowEnergy(peer_id, std::move(options), std::move(callback));
+        return;
+      case fsys::TechnologyType::DUAL_MODE:
+        break;
+    }
   }
-  if (pair_bredr) {
+  if (peer->bredr() && peer->bredr()->connection_state() !=
+                           bt::gap::Peer::ConnectionState::kNotConnected) {
     PairBrEdr(peer_id, std::move(callback));
     return;
   }
-  PairLowEnergy(peer_id, std::move(options), std::move(callback));
+  if (peer->le() && peer->le()->connection_state() !=
+                        bt::gap::Peer::ConnectionState::kNotConnected) {
+    PairLowEnergy(peer_id, std::move(options), std::move(callback));
+    return;
+  }
+  callback(fpromise::error(fsys::Error::PEER_NOT_FOUND));
 }
 
 void HostServer::PairLowEnergy(PeerId peer_id,

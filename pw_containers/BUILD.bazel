@@ -160,6 +160,7 @@ cc_library(
     name = "iterator",
     hdrs = ["public/pw_containers/iterator.h"],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
 )
 
 cc_library(
@@ -169,6 +170,7 @@ cc_library(
     ],
     strip_include_prefix = "public",
     deps = [
+        ":constexpr_tag",
         ":raw_storage",
         "//pw_assert",
         "//pw_preprocessor",
@@ -192,9 +194,12 @@ cc_library(
     srcs = ["inline_var_len_entry_queue.c"],
     hdrs = ["public/pw_containers/inline_var_len_entry_queue.h"],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
+        ":constexpr_tag",
         ":raw_storage",
         "//pw_assert",
+        "//pw_preprocessor",
         "//pw_varint",
     ],
 )
@@ -232,6 +237,15 @@ cc_library(
     name = "raw_storage",
     hdrs = [
         "public/pw_containers/internal/raw_storage.h",
+    ],
+    strip_include_prefix = "public",
+    visibility = [":__subpackages__"],
+)
+
+cc_library(
+    name = "constexpr_tag",
+    hdrs = [
+        "public/pw_containers/internal/constexpr_tag.h",
     ],
     strip_include_prefix = "public",
     visibility = [":__subpackages__"],
@@ -278,6 +292,7 @@ pw_cc_test(
         ":filtered_view",
         ":flat_map",
         ":intrusive_list",
+        "//pw_span",
     ],
 )
 
@@ -287,7 +302,7 @@ pw_cc_test(
         "flat_map_test.cc",
     ],
     deps = [
-        ":pw_containers",
+        ":flat_map",
         "//pw_polyfill",
         "//pw_unit_test",
     ],
@@ -303,6 +318,7 @@ pw_cc_test(
         ":inline_var_len_entry_queue",
         "//pw_assert",
         "//pw_bytes",
+        "//pw_varint",
     ],
 )
 
@@ -312,8 +328,8 @@ pw_cc_test(
         "vector_test.cc",
     ],
     deps = [
-        ":pw_containers",
         ":test_helpers",
+        ":vector",
         "//pw_compilation_testing:negative_compilation_testing",
         "//pw_unit_test",
     ],
@@ -378,6 +394,7 @@ pw_cc_test(
         ":intrusive_forward_list",
         ":vector",
         "//pw_compilation_testing:negative_compilation_testing",
+        "//pw_preprocessor",
         "//pw_unit_test",
     ],
 )
@@ -389,6 +406,7 @@ pw_cc_test(
         ":intrusive_list",
         ":vector",
         "//pw_compilation_testing:negative_compilation_testing",
+        "//pw_preprocessor",
         "//pw_unit_test",
     ],
 )

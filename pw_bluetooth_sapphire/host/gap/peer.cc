@@ -15,18 +15,17 @@
 #include "pw_bluetooth_sapphire/internal/host/gap/peer.h"
 
 #include <cpp-string/string_printf.h>
+#include <pw_assert/check.h>
 #include <pw_bytes/endian.h>
 #include <pw_string/utf_codecs.h>
 
 #include <cinttypes>
 
 #include "pw_bluetooth_sapphire/internal/host/common/advertising_data.h"
-#include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/manufacturer_names.h"
 #include "pw_bluetooth_sapphire/internal/host/common/uuid.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/gap.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/util.h"
-#include "pw_bluetooth_sapphire/internal/host/hci/low_energy_scanner.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/types.h"
 
 namespace bt::gap {
@@ -46,7 +45,7 @@ std::string Peer::ConnectionStateToString(Peer::ConnectionState state) {
       return "connected";
   }
 
-  BT_PANIC("invalid connection state %u", static_cast<unsigned int>(state));
+  PW_CRASH("invalid connection state %u", static_cast<unsigned int>(state));
   return "(unknown)";
 }
 
@@ -68,7 +67,7 @@ std::string Peer::NameSourceToString(Peer::NameSource name_source) {
       return "Unknown source";
   }
 
-  BT_PANIC("invalid peer name source %u",
+  PW_CRASH("invalid peer name source %u",
            static_cast<unsigned int>(name_source));
   return "(unknown)";
 }
@@ -82,8 +81,7 @@ Peer::LowEnergyData::LowEnergyData(Peer* owner)
       auto_conn_behavior_(AutoConnectBehavior::kAlways),
       features_(std::nullopt,
                 [](const std::optional<hci_spec::LESupportedFeatures> f) {
-                  return f ? bt_lib_cpp_string::StringPrintf("%#.16" PRIx64,
-                                                             f->le_features)
+                  return f ? bt_lib_cpp_string::StringPrintf("%#.16" PRIx64, *f)
                            : "";
                 }),
       service_changed_gatt_data_({.notify = false, .indicate = false}) {
@@ -203,6 +201,39 @@ Peer::ConnectionToken Peer::LowEnergyData::RegisterConnection() {
   return ConnectionToken(std::move(unregister_cb));
 }
 
+Peer::PairingToken Peer::LowEnergyData::RegisterPairing() {
+  pairing_tokens_count_++;
+  auto unregister_cb = [self = peer_->GetWeakPtr(), this] {
+    if (!self.is_alive()) {
+      return;
+    }
+    pairing_tokens_count_--;
+    OnPairingMaybeComplete();
+  };
+  return PairingToken(std::move(unregister_cb));
+}
+
+bool Peer::LowEnergyData::is_pairing() const {
+  return pairing_tokens_count_ > 0;
+}
+
+void Peer::LowEnergyData::add_pairing_completion_callback(
+    fit::callback<void()>&& callback) {
+  pairing_complete_callbacks_.emplace_back(std::move(callback));
+  OnPairingMaybeComplete();
+}
+
+void Peer::LowEnergyData::OnPairingMaybeComplete() {
+  if (pairing_tokens_count_ > 0 || pairing_complete_callbacks_.empty()) {
+    return;
+  }
+  std::vector<fit::callback<void()>> callbacks;
+  std::swap(callbacks, pairing_complete_callbacks_);
+  for (auto& cb : callbacks) {
+    cb();
+  }
+}
+
 void Peer::LowEnergyData::SetConnectionParameters(
     const hci_spec::LEConnectionParameters& params) {
   PW_DCHECK(peer_->connectable());
@@ -222,6 +253,9 @@ bool Peer::LowEnergyData::StoreBond(const sm::PairingData& bond_data) {
 void Peer::LowEnergyData::SetBondData(const sm::PairingData& bond_data) {
   PW_DCHECK(peer_->connectable());
   PW_DCHECK(peer_->address().type() != DeviceAddress::Type::kLEAnonymous);
+
+  // TODO(fxbug.dev/42072204): Do not overwrite an existing key that has
+  // greater strength or authentication.
 
   // Make sure the peer is non-temporary.
   peer_->TryMakeNonTemporary();
@@ -381,6 +415,37 @@ Peer::ConnectionToken Peer::BrEdrData::RegisterConnection() {
   });
 }
 
+Peer::PairingToken Peer::BrEdrData::RegisterPairing() {
+  pairing_tokens_count_++;
+  auto unregister_cb = [self = peer_->GetWeakPtr(), this] {
+    if (!self.is_alive()) {
+      return;
+    }
+    pairing_tokens_count_--;
+    OnPairingMaybeComplete();
+  };
+  return PairingToken(std::move(unregister_cb));
+}
+
+bool Peer::BrEdrData::is_pairing() const { return pairing_tokens_count_ > 0; }
+
+void Peer::BrEdrData::add_pairing_completion_callback(
+    fit::callback<void()>&& callback) {
+  pairing_complete_callbacks_.emplace_back(std::move(callback));
+  OnPairingMaybeComplete();
+}
+
+void Peer::BrEdrData::OnPairingMaybeComplete() {
+  if (pairing_tokens_count_ > 0 || pairing_complete_callbacks_.empty()) {
+    return;
+  }
+  std::vector<fit::callback<void()>> callbacks;
+  std::swap(callbacks, pairing_complete_callbacks_);
+  for (auto& cb : callbacks) {
+    cb();
+  }
+}
+
 void Peer::BrEdrData::OnConnectionStateMaybeChanged(ConnectionState previous) {
   if (previous == connection_state()) {
     return;
@@ -488,8 +553,15 @@ bool Peer::BrEdrData::SetEirData(const ByteBuffer& eir) {
   return changed;
 }
 
-void Peer::BrEdrData::SetBondData(const sm::LTK& link_key) {
+bool Peer::BrEdrData::SetBondData(const sm::LTK& link_key) {
   PW_DCHECK(peer_->connectable());
+
+  // Do not overwrite an existing key that has greater strength or
+  // authentication.
+  if (link_key_.has_value() &&
+      !link_key.security().IsAsSecureAs(link_key_->security())) {
+    return false;
+  }
 
   // Make sure the peer is non-temporary.
   peer_->TryMakeNonTemporary();
@@ -500,6 +572,7 @@ void Peer::BrEdrData::SetBondData(const sm::LTK& link_key) {
 
   // PeerCache notifies listeners of new bonds, so no need to request that here.
   peer_->UpdatePeerAndNotifyListeners(NotifyListenersChange::kBondNotUpdated);
+  return true;
 }
 
 void Peer::BrEdrData::ClearBondData() {
@@ -643,21 +716,6 @@ bool Peer::RegisterName(const std::string& name, Peer::NameSource source) {
   return false;
 }
 
-void Peer::StoreBrEdrCrossTransportKey(sm::LTK ct_key) {
-  if (!bredr_data_.has_value()) {
-    // If the peer is LE-only, store the CT key separately until the peer is
-    // otherwise marked as dual-mode.
-    bredr_cross_transport_key_ = ct_key;
-  } else if (!bredr_data_->link_key().has_value() ||
-             ct_key.security().IsAsSecureAs(
-                 bredr_data_->link_key()->security())) {
-    // "The devices shall not overwrite that existing key with a key that is
-    // inclusive-language: ignore
-    // weaker in either strength or MITM protection." (v5.2 Vol. 3 Part C 14.1).
-    bredr_data_->SetBondData(ct_key);
-  }
-}
-
 // Private methods below:
 
 bool Peer::SetRssiInternal(int8_t rssi) {
@@ -731,15 +789,6 @@ void Peer::NotifyListeners(NotifyListenersChange change) {
 
 void Peer::MakeDualMode() {
   technology_.Set(TechnologyType::kDualMode);
-  if (bredr_cross_transport_key_) {
-    PW_CHECK(
-        bredr_data_);  // Should only be hit after BR/EDR is already created.
-    bredr_data_->SetBondData(*bredr_cross_transport_key_);
-    bt_log(DEBUG,
-           "gap-bredr",
-           "restored cross-transport-generated br/edr link key");
-    bredr_cross_transport_key_ = std::nullopt;
-  }
   PW_DCHECK(dual_mode_callback_);
   dual_mode_callback_(*this);
 }

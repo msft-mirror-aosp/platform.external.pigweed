@@ -38,7 +38,6 @@ if (current_toolchain != default_toolchain) {
       "$PICO_ROOT/src/rp2_common/pico_malloc",
       "$dir_pigweed/targets/rp2040:memmap_default_ld",
       "$dir_pw_cpu_exception:entry",
-      "$dir_pw_string",
       "$dir_pw_system",
       "$dir_pw_system:crash_handler",
       "$dir_pw_third_party/freertos",
@@ -163,6 +162,7 @@ pw_system_target("rp2040") {
     pw_build_LINK_DEPS += [
       "$dir_pigweed/targets/rp2040:pre_init",
       "$dir_pw_assert:impl",
+      "$dir_pw_atomic:atomic_cortex_m",
       "$dir_pw_cpu_exception:entry_impl",
       "$dir_pw_log:impl",
       get_path_info(":float_printf_adapter", "abspath"),
@@ -171,7 +171,7 @@ pw_system_target("rp2040") {
     # ONLY RELEVANT FOR UNIT TESTS.
     if (pw_targets_ENABLE_RP2040_TEST_RUNNER) {
       _test_runner_script =
-          "//targets/rp2040/py/rp2040_utils/unit_test_client.py"
+          "$dir_pigweed/targets/rp2040/py/rp2040_utils/unit_test_client.py"
       pw_unit_test_AUTOMATIC_RUNNER =
           get_path_info(_test_runner_script, "abspath")
     }

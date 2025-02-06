@@ -29,17 +29,24 @@
 
 #define _PW_TOKENIZER_ENTRY_MAGIC 0xBAA98DEE
 
-// Tokenizer entries are stored sequentially in an ELF section. Each entry
-// starts with a header comprised of a magic number, the token, and the domain
-// and string lengths. The domain and tokenized string follow immediately after
-// the header, with no padding or null terminators. Entries are NOT aligned
-// within the section.
+// DOCSTAG: [pw_tokenizer-elf-entry]
+// Tokenizer entries are stored sequentially in an ELF section. Each entry has a
+// header with a magic number, token, domain length, string length. The domain
+// and tokenized string follow next. The next entry's header follows, with no
+// padding for alignment.
+//
+// The domain and string lengths include a null terminator, which is not
+// considered part of the domain or string. Use (domain_length - 1) and
+// (string_length - 1) for the domain and string length when decoding.
+//
+// All header entries are stored little-endian.
 typedef struct {
-  uint32_t magic;          // must be _PW_TOKENIZER_ENTRY_MAGIC
-  uint32_t token;          // the token that represents this string.
-  uint32_t domain_length;  // domain string length
-  uint32_t string_length;  // tokenized string length
+  uint32_t magic;          // Must be _PW_TOKENIZER_ENTRY_MAGIC (0xBAA98DEE).
+  uint32_t token;          // The token that represents this string.
+  uint32_t domain_length;  // Domain string length, including a null terminator.
+  uint32_t string_length;  // String entry length, including a null terminator.
 } _pw_tokenizer_EntryHeader;
+// DOCSTAG: [pw_tokenizer-elf-entry]
 
 #ifdef __cplusplus
 
@@ -50,6 +57,23 @@ namespace pw::tokenizer::internal {
 
 static_assert(sizeof(_pw_tokenizer_EntryHeader) == 4 * sizeof(uint32_t));
 
+constexpr bool ValidDomainChar(char ch) {
+  return ('A' <= ch && ch <= 'Z') || ('a' <= ch && ch <= 'z') ||
+         ('0' <= ch && ch <= '9') || ch == '_' || ch == ':' || ch == ' ' ||
+         ch == '\t' || ch == '\n';
+}
+
+template <size_t kSize>
+constexpr bool ValidDomain(const char (&domain)[kSize]) {
+  static_assert(kSize > 0u);
+  for (size_t i = 0; i < kSize - 1; ++i) {
+    if (!ValidDomainChar(domain[i])) {
+      return false;
+    }
+  }
+  return domain[kSize - 1] == '\0' && !('0' <= domain[0] && domain[0] <= '9');
+}
+
 // The C++ tokenzied string entry supports both string literals and char arrays,
 // such as __func__.
 template <uint32_t kDomainSize, uint32_t kStringSize>
@@ -57,8 +81,8 @@ PW_PACKED(class)
 Entry {
  public:
   constexpr Entry(uint32_t token,
-                  const char(&domain)[kDomainSize],
-                  const char(&string)[kStringSize])
+                  const char (&domain)[kDomainSize],
+                  const char (&string)[kStringSize])
       : header_{.magic = _PW_TOKENIZER_ENTRY_MAGIC,
                 .token = token,
                 .domain_length = kDomainSize,

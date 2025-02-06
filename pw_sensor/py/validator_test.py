@@ -42,7 +42,7 @@ class ValidatorTest(unittest.TestCase):
                 + "supported-buses:\n- i2c"
             ),
             cause_substrings=[
-                "'org' is a required property",
+                "'part' is a required property",
             ],
         )
 
@@ -73,6 +73,46 @@ class ValidatorTest(unittest.TestCase):
             cause_substrings=[" is not of type 'object'"],
         )
 
+    def test_partial_compatible_string(self) -> None:
+        """
+        Check that missing 'org' generates correct keys and empty entries are
+        removed.
+        """
+        metadata: dict = {
+            "compatible": {"part": "pigweed"},
+            "supported-buses": ["i2c"],
+        }
+        result = Validator().validate(metadata=metadata)
+        self.assertIn("pigweed", result["sensors"])
+        self.assertDictEqual(
+            {"part": "pigweed"},
+            result["sensors"]["pigweed"]["compatible"],
+        )
+
+        metadata["compatible"]["org"] = " "
+        result = Validator().validate(metadata=metadata)
+        self.assertIn("pigweed", result["sensors"])
+        self.assertDictEqual(
+            {"part": "pigweed"},
+            result["sensors"]["pigweed"]["compatible"],
+        )
+
+    def test_compatible_string_to_lower(self) -> None:
+        """
+        Check that compatible components are converted to lowercase and
+        stripped.
+        """
+        metadata = {
+            "compatible": {"org": "Google", "part": "Pigweed"},
+            "supported-buses": ["i2c"],
+        }
+        result = Validator().validate(metadata=metadata)
+        self.assertIn("google,pigweed", result["sensors"])
+        self.assertDictEqual(
+            {"org": "google", "part": "pigweed"},
+            result["sensors"]["google,pigweed"]["compatible"],
+        )
+
     def test_invalid_supported_buses(self) -> None:
         """
         Check that invalid or missing supported-buses cause an error
@@ -98,15 +138,55 @@ class ValidatorTest(unittest.TestCase):
             cause_substrings=[],
         )
 
+    def test_unique_bus_names(self) -> None:
+        """
+        Check that resulting bus names are unique and are converted to lowercase
+        """
         self._check_with_exception(
             metadata={
-                "compatible": {"org": "Google", "part": "Pigweed"},
-                "supported-buses": ["not-a-bus"],
+                "compatible": {"org": "google", "part": "foo"},
+                "supported-buses": ["i2c", "I2C", "SPI"],
+                "deps": [],
             },
             exception_string=(
-                "ERROR: Malformed sensor metadata YAML:\ncompatible:\n"
-                + "  org: Google\n  part: Pigweed\nsupported-buses:\n"
-                + "- not-a-bus"
+                "ERROR: bus list contains duplicates when converted to "
+                "lowercase and concatenated with '_': "
+                "['I2C', 'SPI', 'i2c'] -> ['i2c', 'spi']"
+            ),
+            cause_substrings=[],
+        )
+        self._check_with_exception(
+            metadata={
+                "compatible": {"org": "google", "part": "foo"},
+                "supported-buses": ["i 2 c", "i  2_c", "i\t2-c"],
+                "deps": [],
+            },
+            exception_string=(
+                "ERROR: bus list contains duplicates when converted to "
+                "lowercase and concatenated with '_': "
+                "['i\\t2-c', 'i  2_c', 'i 2 c'] -> ['i_2_c']"
+            ),
+            cause_substrings=[],
+        )
+
+    def test_invalid_sensor_attribute(self) -> None:
+        attribute = {
+            "attribute": "sample_rate",
+            "channel": "laundry",
+            "trigger": "data_ready",
+            "units": "rate",
+        }
+        dep_filename = self._generate_dependency_file()
+        self._check_with_exception(
+            metadata={
+                "compatible": {"part": "foo"},
+                "supported-buses": ["i2c"],
+                "deps": [str(dep_filename.resolve())],
+                "attributes": [attribute],
+            },
+            exception_string=(
+                "Attribute instances cannot specify both channel AND trigger:\n"
+                + yaml.safe_dump(attribute, indent=2)
             ),
             cause_substrings=[],
         )
@@ -180,11 +260,8 @@ class ValidatorTest(unittest.TestCase):
             cause_substrings=[],
         )
 
-    def test_channel_info_from_deps(self) -> None:
-        """
-        End to end test resolving a dependency file and setting the right
-        default attribute values.
-        """
+    @staticmethod
+    def _generate_dependency_file() -> Path:
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", encoding="utf-8", delete=False
         ) as dep:
@@ -231,6 +308,14 @@ class ValidatorTest(unittest.TestCase):
                     },
                 )
             )
+        return dep_filename
+
+    def test_channel_info_from_deps(self) -> None:
+        """
+        End to end test resolving a dependency file and setting the right
+        default attribute values.
+        """
+        dep_filename = self._generate_dependency_file()
 
         metadata = Validator(include_paths=[dep_filename.parent]).validate(
             metadata={
@@ -238,9 +323,21 @@ class ValidatorTest(unittest.TestCase):
                 "supported-buses": ["i2c"],
                 "deps": [dep_filename.name],
                 "attributes": [
+                    # Attribute applied to a channel
                     {
                         "attribute": "sample_rate",
                         "channel": "laundry",
+                        "units": "rate",
+                    },
+                    # Attribute applied to the entire device
+                    {
+                        "attribute": "sample_rate",
+                        "units": "rate",
+                    },
+                    # Attribute applied to a trigger
+                    {
+                        "attribute": "sample_rate",
+                        "trigger": "data_ready",
                         "units": "rate",
                     },
                 ],
@@ -327,6 +424,15 @@ class ValidatorTest(unittest.TestCase):
                                 "channel": "laundry",
                                 "units": "rate",
                             },
+                            {
+                                "attribute": "sample_rate",
+                                "units": "rate",
+                            },
+                            {
+                                "attribute": "sample_rate",
+                                "trigger": "data_ready",
+                                "units": "rate",
+                            },
                         ],
                         "channels": {
                             "bar": [
@@ -375,7 +481,9 @@ class ValidatorTest(unittest.TestCase):
         with self.assertRaises(exception_type) as context:
             Validator().validate(metadata=metadata)
 
-        self.assertEqual(str(context.exception).rstrip(), exception_string)
+        self.assertEqual(
+            str(context.exception).rstrip(), str(exception_string).rstrip()
+        )
         for cause_substring in cause_substrings:
             self.assertTrue(
                 cause_substring in str(context.exception.__cause__),

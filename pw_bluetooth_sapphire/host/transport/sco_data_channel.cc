@@ -15,6 +15,7 @@
 #include "pw_bluetooth_sapphire/internal/host/transport/sco_data_channel.h"
 
 #include <lib/fit/defer.h>
+#include <pw_assert/check.h>
 #include <pw_bytes/endian.h>
 
 namespace bt::hci {
@@ -225,7 +226,7 @@ ScoDataChannelImpl::OnNumberOfCompletedPacketsEvent(const EventPacket& event) {
   }
   auto view = event.unchecked_view<
       pw::bluetooth::emboss::NumberOfCompletedPacketsEventView>();
-  PW_CHECK(view.header().event_code_enum().Read() ==
+  PW_CHECK(view.header().event_code().Read() ==
            pw::bluetooth::emboss::EventCode::NUMBER_OF_COMPLETED_PACKETS);
 
   const size_t handles_in_packet =

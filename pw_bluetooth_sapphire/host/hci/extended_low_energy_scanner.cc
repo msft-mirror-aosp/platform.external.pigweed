@@ -14,6 +14,7 @@
 
 #include "pw_bluetooth_sapphire/internal/host/hci/extended_low_energy_scanner.h"
 
+#include <pw_assert/check.h>
 #include <pw_bluetooth/hci_common.emb.h>
 
 namespace bt::hci {
@@ -87,7 +88,7 @@ CommandPacket ExtendedLowEnergyScanner::BuildSetScanParametersPacket(
 
   params.scanning_filter_policy().Write(options.filter_policy);
   params.own_address_type().Write(
-      DeviceAddress::DeviceAddrToLEOwnAddr(local_address.type()));
+      DeviceAddress::DeviceAddrToLeOwnAddr(local_address.type()));
 
   // For maximum compatibility, Sapphire scans on all available PHYs.
   params.scanning_phys().le_1m().Write(true);
@@ -137,13 +138,7 @@ ExtendedLowEnergyScanner::ParseAdvertisingReports(const EventPacket& event) {
   PW_DCHECK(event.event_code() == hci_spec::kLEMetaEventCode);
   PW_DCHECK(event.view<LEMetaEventView>().subevent_code().Read() ==
             hci_spec::kLEExtendedAdvertisingReportSubeventCode);
-  size_t reports_size =
-      event.size() -
-      pw::bluetooth::emboss::LEExtendedAdvertisingReportSubeventView::
-          MinSizeInBytes()
-              .Read();
-  auto params = event.view<LEExtendedAdvertisingReportSubeventView>(
-      static_cast<int32_t>(reports_size));
+  auto params = event.view<LEExtendedAdvertisingReportSubeventView>();
 
   uint8_t num_reports = params.num_reports().Read();
   std::vector<LEExtendedAdvertisingReportDataView> reports;

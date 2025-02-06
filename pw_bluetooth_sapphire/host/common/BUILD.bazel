@@ -12,9 +12,13 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@pigweed//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
+load("//pw_fuzzer:fuzzer.bzl", "pw_cc_fuzz_test")
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 cc_library(
     name = "common",
@@ -37,7 +41,6 @@ cc_library(
     ],
     hdrs = [
         "public/pw_bluetooth_sapphire/internal/host/common/advertising_data.h",
-        "public/pw_bluetooth_sapphire/internal/host/common/assert.h",
         "public/pw_bluetooth_sapphire/internal/host/common/bounded_inspect_list_node.h",
         "public/pw_bluetooth_sapphire/internal/host/common/byte_buffer.h",
         "public/pw_bluetooth_sapphire/internal/host/common/device_address.h",
@@ -69,7 +72,12 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/common/weak_self.h",
         "public/pw_bluetooth_sapphire/internal/host/common/windowed_inspect_numeric_property.h",
     ],
+    implementation_deps = [
+        "//pw_string",
+        "//pw_string:utf_codecs",
+    ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     # This library is not compatible with --config=rp2040.
     target_compatible_with = select({
         "@platforms//os:fuchsia": [],
@@ -78,21 +86,20 @@ cc_library(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
+        "//pw_assert",
+        "//pw_async:dispatcher",
+        "//pw_async:task",
+        "//pw_bluetooth:emboss_hci",
         "//pw_bluetooth_sapphire:config",
-        "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/lib/cpp-string",
         "//pw_bluetooth_sapphire/lib/cpp-type",
-        "@pigweed//pw_assert",
-        "@pigweed//pw_async:dispatcher",
-        "@pigweed//pw_async:task",
-        "@pigweed//pw_bluetooth:emboss_hci",
-        "@pigweed//pw_intrusive_ptr",
-        "@pigweed//pw_log",
-        "@pigweed//pw_random",
-        "@pigweed//pw_span",
-        "@pigweed//pw_string",
-        "@pigweed//pw_string:utf_codecs",
-        "@pigweed//third_party/fuchsia:fit",
+        "//pw_chrono:system_clock",
+        "//pw_intrusive_ptr",
+        "//pw_log",
+        "//pw_preprocessor",
+        "//pw_random",
+        "//pw_span",
+        "//third_party/fuchsia:fit",
     ] + select({
         "@platforms//os:fuchsia": [
             "@fuchsia_sdk//pkg/inspect_component_cpp",
@@ -105,7 +112,7 @@ cc_library(
 cc_library(
     name = "uuid_string_util",
     srcs = ["uuid_string_util.cc"],
-    deps = [":common"],
+    implementation_deps = [":common"],
 )
 
 pw_cc_test(
@@ -135,7 +142,15 @@ pw_cc_test(
     deps = [
         ":common",
         ":uuid_string_util",
+        "//pw_async:fake_dispatcher_fixture",
         "//pw_bluetooth_sapphire/host/testing",
-        "@pigweed//pw_async:fake_dispatcher_fixture",
+        "//pw_bluetooth_sapphire/host/testing:gtest_helpers",
+        "//pw_bluetooth_sapphire/host/testing:test_helpers",
     ],
+)
+
+pw_cc_fuzz_test(
+    name = "advertising_data_fuzzer",
+    srcs = ["advertising_data_fuzztest.cc"],
+    deps = [":common"],
 )

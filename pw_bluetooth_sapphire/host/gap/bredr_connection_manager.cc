@@ -14,10 +14,10 @@
 
 #include "pw_bluetooth_sapphire/internal/host/gap/bredr_connection_manager.h"
 
+#include <pw_assert/check.h>
 #include <pw_bytes/endian.h>
 #include <pw_string/string_builder.h>
 
-#include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/expiring_set.h"
 #include "pw_bluetooth_sapphire/internal/host/common/inspectable.h"
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
@@ -924,8 +924,11 @@ void BrEdrConnectionManager::CompleteConnectionSetup(
   };
 
   // Register with L2CAP to handle services on the ACL signaling channel.
-  l2cap_->AddACLConnection(
-      handle, connection->role(), error_handler, std::move(security_callback));
+  l2cap_->AddACLConnection(handle,
+                           connection->role(),
+                           error_handler,
+                           std::move(security_callback),
+                           [](l2cap::ChannelManager::BrEdrFixedChannels) {});
 
   // Remove from the denylist if we successfully connect.
   deny_incoming_.remove(peer->address());
@@ -1414,9 +1417,8 @@ BrEdrConnectionManager::OnLinkKeyRequest(const hci::EventPacket& event) {
     // |status_cb| are not created yet. After the connection is complete, they
     // are initialized in |PairingStateManager|'s constructor.
     std::unique_ptr<LegacyPairingState> legacy_pairing_state =
-        std::make_unique<LegacyPairingState>(peer->GetWeakPtr(),
-                                             std::move(pairing_delegate_),
-                                             outgoing_connection);
+        std::make_unique<LegacyPairingState>(
+            peer->GetWeakPtr(), pairing_delegate_, outgoing_connection);
 
     connection_req.value()->set_legacy_pairing_state(
         std::move(legacy_pairing_state));
@@ -1791,9 +1793,8 @@ BrEdrConnectionManager::OnPinCodeRequest(const hci::EventPacket& event) {
       // |status_cb| are not created yet. After the connection is complete, they
       // are initialized in |PairingStateManager|'s constructor.
       std::unique_ptr<LegacyPairingState> legacy_pairing_state =
-          std::make_unique<LegacyPairingState>(peer->GetWeakPtr(),
-                                               std::move(pairing_delegate_),
-                                               outgoing_connection);
+          std::make_unique<LegacyPairingState>(
+              peer->GetWeakPtr(), pairing_delegate_, outgoing_connection);
 
       connection_req.value()->set_legacy_pairing_state(
           std::move(legacy_pairing_state));

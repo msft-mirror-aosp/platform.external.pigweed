@@ -17,7 +17,9 @@ load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_build:pw_facade.bzl", "pw_facade")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+)
 
 licenses(["notice"])
 
@@ -69,12 +71,11 @@ cc_library(
 
 pw_facade(
     name = "fake_dispatcher",
+    testonly = True,
     hdrs = ["public/pw_async/fake_dispatcher.h"],
     backend = ":fake_dispatcher_backend",
     strip_include_prefix = "public",
-    deps = [
-        ":dispatcher",
-    ],
+    deps = [":dispatcher"],
 )
 
 label_flag(
@@ -87,6 +88,7 @@ pw_cc_test(
     srcs = ["fake_dispatcher_test.cc"],
     deps = [
         ":fake_dispatcher",
+        "//pw_chrono:system_clock",
         "//pw_containers:vector",
         "//pw_log",
         "//pw_string:to_string",
@@ -97,9 +99,13 @@ pw_cc_test(
 
 cc_library(
     name = "fake_dispatcher_fixture",
+    testonly = True,
     hdrs = ["public/pw_async/fake_dispatcher_fixture.h"],
     strip_include_prefix = "public",
-    deps = [":fake_dispatcher"],
+    deps = [
+        ":fake_dispatcher",
+        "//pw_unit_test",
+    ],
 )
 
 cc_library(

@@ -15,6 +15,7 @@
 #include "pw_bluetooth_sapphire/fuchsia/host/fidl/low_energy_connection_server.h"
 
 #include <fuchsia/bluetooth/cpp/fidl.h>
+#include <pw_assert/check.h>
 #include <pw_status/status.h>
 #include <pw_status/try.h>
 
@@ -203,7 +204,7 @@ void LowEnergyConnectionServer::AcceptCis(
       iso_streams_[id]->Close(ZX_ERR_INVALID_ARGS);
       return;
     default:
-      BT_PANIC("Invalid AcceptCisStatus value %d", static_cast<int>(result));
+      PW_CRASH("Invalid AcceptCisStatus value %d", static_cast<int>(result));
   }
 }
 

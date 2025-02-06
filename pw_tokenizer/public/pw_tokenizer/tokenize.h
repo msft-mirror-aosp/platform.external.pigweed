@@ -45,6 +45,18 @@ typedef uint32_t pw_tokenizer_Token;
 // The default domain is an empty string.
 #define PW_TOKENIZER_DEFAULT_DOMAIN ""
 
+/// Tokenizes a string literal along with an optional domain value. If the
+/// domain value is present, will tokenize the string using that domain,
+/// otherwise will tokenize the string using the default domain value.
+#define PW_TOKENIZE_STRING_OPTIONAL_DOMAIN(...) \
+  PW_DELEGATE_BY_ARG_COUNT(_PW_TOKENIZE_STRING_OPTIONAL_DOMAIN_, __VA_ARGS__)
+
+#define _PW_TOKENIZE_STRING_OPTIONAL_DOMAIN_1(string_literal) \
+  PW_TOKENIZE_STRING(string_literal)
+
+#define _PW_TOKENIZE_STRING_OPTIONAL_DOMAIN_2(domain, string_literal) \
+  PW_TOKENIZE_STRING_DOMAIN(domain, string_literal)
+
 /// Converts a string literal to a `pw_tokenizer_Token` (`uint32_t`) token in a
 /// standalone statement. C and C++ compatible. In C++, the string may be a
 /// literal or a constexpr char array, including function variables like
@@ -292,6 +304,10 @@ PW_EXTERN_C_END
 /// enum support, the enum name should be used as the string, and the enum value
 /// as the token.
 #define PW_TOKENIZER_DEFINE_TOKEN(token, domain, string)                       \
+  static_assert(::pw::tokenizer::internal::ValidDomain(domain),                \
+                "pw_tokenizer domains may only contain alphanumeric "          \
+                "characters, underscore, or colon, and cannot start with a "   \
+                "number; space characters are ignored");                       \
   alignas(1) static constexpr auto _PW_TOKENIZER_SECTION _PW_TOKENIZER_UNIQUE( \
       _pw_tokenizer_string_entry_) =                                           \
       ::pw::tokenizer::internal::MakeEntry(token, domain, string)

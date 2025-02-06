@@ -16,8 +16,10 @@
 
 #include <cstdint>
 #include <numeric>
+#include <variant>
 #include <vector>
 
+#include "pw_assert/check.h"
 #include "pw_bluetooth/emboss_util.h"
 #include "pw_bluetooth/hci_common.emb.h"
 #include "pw_bluetooth/hci_data.emb.h"
@@ -32,6 +34,7 @@
 #include "pw_bluetooth_proxy/proxy_host.h"
 #include "pw_containers/flat_map.h"
 #include "pw_function/function.h"
+#include "pw_multibuf/simple_allocator_for_test.h"
 #include "pw_status/status.h"
 #include "pw_status/try.h"
 #include "pw_unit_test/framework.h"  // IWYU pragma: keep
@@ -72,6 +75,29 @@ Result<CFrameWithStorage> SetupCFrame(uint16_t handle,
                                       uint16_t channel_id,
                                       uint16_t cframe_len);
 
+struct KFrameWithStorage {
+  AclFrameWithStorage acl;
+  std::variant<emboss::FirstKFrameWriter, emboss::SubsequentKFrameWriter>
+      writer;
+};
+
+// Size of sdu_length field in first K-frames.
+constexpr uint8_t kSduLengthFieldSize = 2;
+
+// Populate a KFrame that encodes a particular segment of `payload` based on the
+// `mps`, or maximum PDU payload size of a segment. `segment_no` is the nth
+// segment that would be generated based on the `mps`. The first segment is
+// `segment_no == 0` and returns the `FirstKFrameWriter` variant in
+// `KFrameWithStorage`.
+//
+// Returns PW_STATUS_OUT_OF_RANGE if a segment is requested beyond the last
+// segment that would be generated based on `mps`.
+Result<KFrameWithStorage> SetupKFrame(uint16_t handle,
+                                      uint16_t channel_id,
+                                      uint16_t mps,
+                                      uint16_t segment_no,
+                                      span<const uint8_t> payload);
+
 // Populate passed H4 command buffer and return Emboss view on it.
 template <typename EmbossT>
 Result<EmbossT> CreateAndPopulateToControllerView(H4PacketWithH4& h4_packet,
@@ -80,7 +106,7 @@ Result<EmbossT> CreateAndPopulateToControllerView(H4PacketWithH4& h4_packet,
   std::iota(h4_packet.GetHciSpan().begin(), h4_packet.GetHciSpan().end(), 100);
   h4_packet.SetH4Type(emboss::H4PacketType::COMMAND);
   PW_TRY_ASSIGN(auto view, MakeEmbossWriter<EmbossT>(h4_packet.GetHciSpan()));
-  view.header().opcode_enum().Write(opcode);
+  view.header().opcode().Write(opcode);
   view.header().parameter_total_size().Write(parameter_total_size);
   return view;
 }
@@ -93,7 +119,7 @@ Result<EmbossT> CreateAndPopulateToHostEventView(H4PacketWithHci& h4_packet,
   h4_packet.SetH4Type(emboss::H4PacketType::EVENT);
 
   PW_TRY_ASSIGN(auto view, MakeEmbossWriter<EmbossT>(h4_packet.GetHciSpan()));
-  view.header().event_code_enum().Write(event_code);
+  view.header().event_code().Write(event_code);
   view.status().Write(emboss::StatusCode::SUCCESS);
   EXPECT_TRUE(view.Ok());
   return view;
@@ -101,8 +127,10 @@ Result<EmbossT> CreateAndPopulateToHostEventView(H4PacketWithHci& h4_packet,
 
 // Send an LE_Read_Buffer_Size (V2) CommandComplete event to `proxy` to request
 // the reservation of a number of LE ACL send credits.
-Status SendLeReadBufferResponseFromController(ProxyHost& proxy,
-                                              uint8_t num_credits_to_reserve);
+Status SendLeReadBufferResponseFromController(
+    ProxyHost& proxy,
+    uint8_t num_credits_to_reserve,
+    uint16_t le_acl_data_packet_length = 251);
 
 Status SendReadBufferResponseFromController(ProxyHost& proxy,
                                             uint8_t num_credits_to_reserve);
@@ -125,7 +153,7 @@ Status SendNumberOfCompletedPackets(
   PW_TRY_ASSIGN(auto view,
                 MakeEmbossWriter<emboss::NumberOfCompletedPacketsEventWriter>(
                     nocp_event.GetHciSpan()));
-  view.header().event_code_enum().Write(
+  view.header().event_code().Write(
       emboss::EventCode::NUMBER_OF_COMPLETED_PACKETS);
   view.num_handles().Write(kNumConnections);
 
@@ -189,28 +217,19 @@ struct CocParameters {
   uint16_t tx_mtu = 100;
   uint16_t tx_mps = 100;
   uint16_t tx_credits = 1;
-  pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn = nullptr;
+  Function<void(multibuf::MultiBuf&& payload)>&& receive_fn = nullptr;
   pw::Function<void(L2capChannelEvent event)>&& event_fn = nullptr;
 };
-
-// Attempt to AcquireL2capCoc and return result.
-pw::Result<L2capCoc> BuildCocWithResult(ProxyHost& proxy, CocParameters params);
-
-// Acquire L2capCoc and return result.
-L2capCoc BuildCoc(ProxyHost& proxy, CocParameters params);
 
 struct BasicL2capParameters {
   uint16_t handle = 123;
   uint16_t local_cid = 234;
   uint16_t remote_cid = 456;
   AclTransportType transport = AclTransportType::kLe;
-  Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn =
-      nullptr;
+  OptionalPayloadReceiveCallback&& payload_from_controller_fn = nullptr;
+  OptionalPayloadReceiveCallback&& payload_from_host_fn = nullptr;
   Function<void(L2capChannelEvent event)>&& event_fn = nullptr;
 };
-
-BasicL2capChannel BuildBasicL2capChannel(ProxyHost& proxy,
-                                         BasicL2capParameters params);
 
 struct RfcommParameters {
   uint16_t handle = 123;
@@ -221,12 +240,6 @@ struct RfcommParameters {
   uint8_t rfcomm_channel = 3;
 };
 
-RfcommChannel BuildRfcomm(
-    ProxyHost& proxy,
-    RfcommParameters params = {},
-    Function<void(pw::span<uint8_t> payload)>&& receive_fn = nullptr,
-    Function<void(L2capChannelEvent event)>&& event_fn = nullptr);
-
 // ########## Test Suites
 
 class ProxyHostTest : public testing::Test {
@@ -235,6 +248,47 @@ class ProxyHostTest : public testing::Test {
                                           CocParameters params);
 
   L2capCoc BuildCoc(ProxyHost& proxy, CocParameters params);
+
+  Result<BasicL2capChannel> BuildBasicL2capChannelWithResult(
+      ProxyHost& proxy, BasicL2capParameters params);
+
+  BasicL2capChannel BuildBasicL2capChannel(ProxyHost& proxy,
+                                           BasicL2capParameters params);
+
+  RfcommChannel BuildRfcomm(
+      ProxyHost& proxy,
+      RfcommParameters params = {},
+      Function<void(multibuf::MultiBuf&& payload)>&& receive_fn = nullptr,
+      Function<void(L2capChannelEvent event)>&& event_fn = nullptr);
+
+  template <typename T, size_t N>
+  pw::multibuf::MultiBuf MultiBufFromSpan(span<T, N> buf) {
+    std::optional<pw::multibuf::MultiBuf> multibuf =
+        test_multibuf_allocator_.AllocateContiguous(buf.size());
+    PW_ASSERT(multibuf.has_value());
+    std::optional<ConstByteSpan> multibuf_span = multibuf->ContiguousSpan();
+    PW_ASSERT(multibuf_span);
+    PW_TEST_EXPECT_OK(multibuf->CopyFrom(as_bytes(buf)));
+    return std::move(*multibuf);
+  }
+
+  template <typename T, size_t N>
+  pw::multibuf::MultiBuf MultiBufFromArray(const std::array<T, N>& arr) {
+    return MultiBufFromSpan(pw::span{arr});
+  }
+
+ private:
+  // MultiBuf allocator for creating objects to pass to the system under
+  // test (e.g. creating test packets to send to proxy host).
+  pw::multibuf::test::SimpleAllocatorForTest</*kDataSizeBytes=*/2 * 1024,
+                                             /*kMetaSizeBytes=*/2 * 1024>
+      test_multibuf_allocator_{};
+
+  // Default MultiBuf allocator to be passed to system under test (e.g.
+  // to pass to AcquireL2capCoc).
+  pw::multibuf::test::SimpleAllocatorForTest</*kDataSizeBytes=*/1024,
+                                             /*kMetaSizeBytes=*/2 * 1024>
+      sut_multibuf_allocator_{};
 };
 
 }  // namespace pw::bluetooth::proxy

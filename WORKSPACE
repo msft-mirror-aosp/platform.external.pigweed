@@ -22,75 +22,26 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 # TODO: b/383856665 - rules_fuchsia requires host_platform. Once this is fixed
 # we can remove this entry.
 load("@platforms//host:extension.bzl", "host_platform_repo")
-load(
-    "//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl",
-    "cipd_repository",
-)
 
 host_platform_repo(
     name = "host_platform",
 )
 
 # Setup Fuchsia SDK.
-# Required by: bt-host.
-# Used in modules: //pw_bluetooth_sapphire.
-# NOTE: These blocks cannot feasibly be moved into a macro.
-# See https://github.com/bazelbuild/bazel/issues/1550
 git_repository(
     name = "fuchsia_infra",
     # ROLL: Warning: this entry is automatically updated.
-    # ROLL: Last updated 2024-12-14.
-    # ROLL: By https://cr-buildbucket.appspot.com/build/8728540143689849873.
-    commit = "5c63ca84b6cc9d3e5b3c38e7dbd0b68eb77886f1",
+    # ROLL: Last updated 2025-01-25.
+    # ROLL: By https://cr-buildbucket.appspot.com/build/8724735070800369633.
+    commit = "124a9b90520a48e9076d6167f3abfb55ce0aa9aa",
     remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
 )
 
+# fuchsia_infra_workspace is a macro, not a repository rule, so we can't call
+# it from MODULE.bazel.
 load("@fuchsia_infra//:workspace.bzl", "fuchsia_infra_workspace")
 
 fuchsia_infra_workspace()
-
-FUCHSIA_SDK_VERSION = "version:26.20241210.7.1"
-
-cipd_repository(
-    name = "fuchsia_sdk",
-    path = "fuchsia/sdk/core/fuchsia-bazel-rules/linux-amd64",
-    tag = FUCHSIA_SDK_VERSION,
-)
-
-cipd_repository(
-    name = "rules_fuchsia",
-    path = "fuchsia/development/rules_fuchsia",
-    tag = FUCHSIA_SDK_VERSION,
-)
-
-register_toolchains("//pw_toolchain/fuchsia:fuchsia_sdk_toolchain")
-
-cipd_repository(
-    name = "fuchsia_products_metadata",
-    path = "fuchsia/development/product_bundles/v2",
-    tag = FUCHSIA_SDK_VERSION,
-)
-
-load("//pw_build/bazel_internal/fuchsia_sdk_workspace:products.bzl", "fuchsia_products_repository")
-
-fuchsia_products_repository(
-    name = "fuchsia_products",
-    metadata_file = "@fuchsia_products_metadata//:product_bundles.json",
-)
-
-cipd_repository(
-    name = "fuchsia_clang",
-    path = "fuchsia/development/fuchsia_clang/linux-amd64",
-    tag = "git_revision:aea60ab94db4729bad17daa86ccfc411d48a1699",
-)
-
-# TODO: b/354268150 - googletest is in the BCR, but its MODULE.bazel doesn't
-# express its dependency on the Fuchsia SDK correctly.
-git_repository(
-    name = "com_google_googletest",
-    commit = "3b6d48e8d5c1d9b3f9f10ac030a94008bfaf032b",
-    remote = "https://pigweed.googlesource.com/third_party/github/google/googletest",
-)
 
 # Required by fuzztest
 http_archive(
@@ -106,6 +57,14 @@ http_archive(
     sha256 = "338420448b140f0dfd1a1ea3c3ce71b3bc172071f24f4d9a57d59b45037da440",
     strip_prefix = "abseil-cpp-20240116.0",
     url = "https://github.com/abseil/abseil-cpp/releases/download/20240116.0/abseil-cpp-20240116.0.tar.gz",
+)
+
+# Required by fuzztest
+http_archive(
+    name = "rules_proto",
+    sha256 = "14a225870ab4e91869652cfd69ef2028277fc1dc4910d65d353b62d6e0ae21f4",
+    strip_prefix = "rules_proto-7.1.0",
+    url = "https://github.com/bazelbuild/rules_proto/releases/download/7.1.0/rules_proto-7.1.0.tar.gz",
 )
 
 # TODO: https://pwbug.dev/365103864 - Fuzztest is not in the BCR yet (also see

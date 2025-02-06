@@ -19,6 +19,7 @@
 #include "pw_async2/dispatcher_base.h"
 #include "pw_log/log.h"
 #include "pw_multibuf/allocator.h"
+#include "pw_multibuf/allocator_async.h"
 #include "pw_multibuf/multibuf.h"
 #include "pw_status/status.h"
 
@@ -184,10 +185,6 @@ ByteReaderWriter& Rp2StdioChannelInit(MultiBufAllocator& read_allocator,
     return Rp2StdioChannel(read_allocator, write_allocator);
   }();
   return channel.channel();
-}
-
-ByteReaderWriter& Rp2StdioChannelInit(MultiBufAllocator& allocator) {
-  return Rp2StdioChannelInit(allocator, allocator);
 }
 
 }  // namespace pw::channel

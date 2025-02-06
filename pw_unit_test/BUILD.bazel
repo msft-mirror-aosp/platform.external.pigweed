@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@local_config_platform//:constraints.bzl", "HOST_CONSTRAINTS")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
@@ -25,7 +26,10 @@ load(
 )
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -105,7 +109,7 @@ cc_library(
         "//pw_preprocessor",
         "//pw_span",
         "//pw_status",
-        "//pw_string",
+        "//pw_string:builder",
     ],
 )
 
@@ -163,6 +167,10 @@ cc_library(
     testonly = True,
     hdrs = ["public/pw_unit_test/status_macros.h"],
     strip_include_prefix = "public",
+    deps = [
+        "//pw_status",
+        "//third_party/fuchsia:stdcompat",
+    ],
 )
 
 cc_library(
@@ -222,6 +230,7 @@ cc_library(
     ],
     strip_include_prefix = "public",
     deps = [
+        ":event_handler",
         ":googletest_style_event_handler",
         "//pw_preprocessor",
     ],
@@ -299,6 +308,26 @@ pw_cc_binary(
     deps = [
         ":logging",
         "//pw_unit_test",
+    ],
+)
+
+cc_library(
+    name = "constexpr",
+    hdrs = ["public/pw_unit_test/constexpr.h"],
+    includes = ["public"],
+    deps = [
+        "//pw_preprocessor",
+        "//third_party/fuchsia:stdcompat",
+    ],
+)
+
+pw_cc_test(
+    name = "constexpr_test",
+    srcs = ["constexpr_test.cc"],
+    deps = [
+        ":constexpr",
+        ":pw_unit_test",
+        "//pw_compilation_testing:negative_compilation_testing",
     ],
 )
 
@@ -501,6 +530,7 @@ filegroup(
     srcs = [
         "light_public_overrides/pw_unit_test/framework_backend.h",
         "public/pw_unit_test/config.h",
+        "public/pw_unit_test/constexpr.h",
         "public/pw_unit_test/event_handler.h",
         "public/pw_unit_test/googletest_handler_adapter.h",
         "public/pw_unit_test/googletest_style_event_handler.h",
@@ -517,6 +547,7 @@ filegroup(
 sphinx_docs_library(
     name = "docs",
     srcs = [
+        "constexpr_test.cc",
         "docs.rst",
     ],
     prefix = "pw_unit_test/",

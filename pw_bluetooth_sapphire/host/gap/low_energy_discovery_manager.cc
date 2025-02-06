@@ -15,8 +15,8 @@
 #include "pw_bluetooth_sapphire/internal/host/gap/low_energy_discovery_manager.h"
 
 #include <lib/fit/function.h>
+#include <pw_assert/check.h>
 
-#include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/peer.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/peer_cache.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/transport.h"
@@ -254,7 +254,7 @@ LowEnergyDiscoveryManager::AddSession(bool active) {
     RemoveSession(session_to_remove);
   };
   auto cached_scan_results_fn =
-      [this]() -> const decltype(cached_scan_results_)& {
+      [this]() -> const decltype(cached_scan_results_) & {
     return this->cached_scan_results_;
   };
   auto session = std::make_unique<LowEnergyDiscoverySession>(

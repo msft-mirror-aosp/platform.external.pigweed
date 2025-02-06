@@ -21,7 +21,10 @@ load(
 load("//pw_build:pw_facade.bzl", "pw_facade")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -35,6 +38,7 @@ pw_facade(
     ],
     backend = ":binary_semaphore_backend",
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         "//pw_chrono:system_clock",
         "//pw_preprocessor",
@@ -61,6 +65,7 @@ pw_facade(
     ],
     backend = ":counting_semaphore_backend",
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         "//pw_chrono:system_clock",
         "//pw_preprocessor",
@@ -111,6 +116,21 @@ cc_library(
 )
 
 cc_library(
+    name = "timed_borrow",
+    hdrs = [
+        "public/pw_sync/timed_borrow.h",
+    ],
+    strip_include_prefix = "public",
+    deps = [
+        ":borrow",
+        ":lock_annotations",
+        ":lock_traits",
+        ":virtual_basic_lockable",
+        "//pw_chrono:system_clock",
+    ],
+)
+
+cc_library(
     name = "inline_borrowable",
     hdrs = [
         "public/pw_sync/inline_borrowable.h",
@@ -146,6 +166,7 @@ pw_facade(
     ],
     backend = ":mutex_backend",
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         ":lock_annotations",
         ":virtual_basic_lockable",
@@ -224,6 +245,7 @@ pw_facade(
     ],
     backend = ":interrupt_spin_lock_backend",
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         ":lock_annotations",
         ":virtual_basic_lockable",
@@ -248,6 +270,7 @@ pw_facade(
     ],
     backend = ":thread_notification_backend",
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         "//pw_chrono:system_clock",
     ],
@@ -270,6 +293,7 @@ pw_facade(
     ],
     backend = ":timed_thread_notification_backend",
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         ":thread_notification",
         "//pw_chrono:system_clock",
@@ -298,6 +322,7 @@ cc_library(
         "public",
         "public_overrides",
     ],
+    tags = ["noclangtidy"],
     target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":binary_semaphore",
@@ -315,6 +340,7 @@ cc_library(
         "public",
         "public_overrides",
     ],
+    tags = ["noclangtidy"],
     target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":binary_semaphore_thread_notification_backend",
@@ -337,6 +363,7 @@ cc_library(
         "public/pw_sync/condition_variable.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         "//pw_chrono:system_clock",
         "//pw_sync:mutex",
@@ -375,15 +402,29 @@ cc_library(
     deps = [
         ":virtual_basic_lockable",
         "//pw_assert",
+        "//pw_chrono:system_clock",
     ],
 )
 
 cc_library(
-    name = "borrow_lockable_tests",
-    hdrs = ["pw_sync_private/borrow_lockable_tests.h"],
+    name = "borrow_testing",
+    hdrs = ["public/pw_sync/borrow_testing.h"],
+    strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         ":borrow",
         ":lock_traits",
+    ],
+)
+
+cc_library(
+    name = "timed_borrow_testing",
+    hdrs = ["public/pw_sync/timed_borrow_testing.h"],
+    strip_include_prefix = "public",
+    tags = ["noclangtidy"],
+    deps = [
+        ":borrow_testing",
+        ":timed_borrow",
     ],
 )
 
@@ -401,8 +442,8 @@ pw_cc_test(
     srcs = ["borrow_test.cc"],
     deps = [
         ":borrow",
-        ":borrow_lockable_tests",
         ":lock_testing",
+        ":timed_borrow_testing",
         "//pw_unit_test",
     ],
 )
@@ -454,7 +495,7 @@ pw_cc_test(
         "mutex_facade_test_c.c",
     ],
     deps = [
-        ":borrow_lockable_tests",
+        ":borrow_testing",
         ":mutex",
         "//pw_preprocessor",
         "//pw_unit_test",
@@ -468,7 +509,7 @@ pw_cc_test(
         "timed_mutex_facade_test_c.c",
     ],
     deps = [
-        ":borrow_lockable_tests",
+        ":timed_borrow_testing",
         ":timed_mutex",
         "//pw_chrono:system_clock",
         "//pw_preprocessor",
@@ -502,7 +543,7 @@ pw_cc_test(
         "//conditions:default": [],
     }),
     deps = [
-        ":borrow_lockable_tests",
+        ":borrow_testing",
         ":interrupt_spin_lock",
         "//pw_preprocessor",
         "//pw_unit_test",
@@ -543,6 +584,7 @@ filegroup(
         "public/pw_sync/lock_annotations.h",
         "public/pw_sync/mutex.h",
         "public/pw_sync/thread_notification.h",
+        "public/pw_sync/timed_borrow.h",
         "public/pw_sync/timed_mutex.h",
         "public/pw_sync/timed_thread_notification.h",
         "public/pw_sync/virtual_basic_lockable.h",

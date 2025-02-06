@@ -23,8 +23,6 @@ pw_doc_group("static_assets") {
     "_static/css/pigweed.css",
     "_static/js/changelog.js",
     "_static/js/pigweed.js",
-    "_static/pw_logo.ico",
-    "_static/pw_logo.svg",
   ]
 }
 
@@ -32,6 +30,7 @@ pw_doc_group("static_assets") {
 # split out from the overall docgen target below.
 pw_doc_group("core_docs") {
   inputs = [
+    "$dir_pigweed/.bazelversion",
     "$dir_pigweed/Kconfig.zephyr",
     "$dir_pw_async2/examples/coro_blinky_loop.cc",
     "$dir_pw_async2/examples/count.cc",
@@ -41,6 +40,8 @@ pw_doc_group("core_docs") {
     "$dir_pw_build/py/pw_build/generate_python_wheel_cache.py",
     "$dir_pw_build/python.gni",
     "$dir_pw_build/python_gn_args.gni",
+    "_extensions/bug.py",
+    "_extensions/sitemap.py",
     "layout/layout.html",
     "run_doxygen.py",
   ]
@@ -52,16 +53,18 @@ pw_doc_group("core_docs") {
     "blog/04-fixed-point.rst",
     "blog/05-coroutines.rst",
     "blog/06-better-cpp-toolchains.rst",
+    "blog/07-bazelcon-2024.rst",
     "blog/index.rst",
     "blog/rss.xml",
     "code_of_conduct.rst",
     "code_reviews.rst",
     "community/index.rst",
     "concepts/index.rst",
+    "contributing/docs/build.rst",
     "contributing/docs/changelog.rst",
-    "contributing/docs/guides.rst",
     "contributing/docs/index.rst",
     "contributing/docs/modules.rst",
+    "contributing/docs/website.rst",
     "contributing/index.rst",
     "embedded_cpp_guide.rst",
     "facades.rst",
@@ -130,6 +133,7 @@ group("target_docs") {
     "$dir_pigweed/targets/host_device_simulator:target_docs",
     "$dir_pigweed/targets/lm3s6965evb_qemu:target_docs",
     "$dir_pigweed/targets/mimxrt595_evk:target_docs",
+    "$dir_pigweed/targets/mimxrt595_evk_freertos:target_docs",
     "$dir_pigweed/targets/rp2040:target_docs",
     "$dir_pigweed/targets/stm32f429i_disc1:target_docs",
     "$dir_pigweed/targets/stm32f429i_disc1_stm32cube:target_docs",
@@ -198,6 +202,7 @@ _doxygen_input_files = [  # keep-sorted: start
   "$dir_pw_allocator/public/pw_allocator/synchronized_allocator.h",
   "$dir_pw_allocator/public/pw_allocator/test_harness.h",
   "$dir_pw_allocator/public/pw_allocator/testing.h",
+  "$dir_pw_allocator/public/pw_allocator/tlsf_allocator.h",
   "$dir_pw_allocator/public/pw_allocator/tracking_allocator.h",
   "$dir_pw_allocator/public/pw_allocator/typed_pool.h",
   "$dir_pw_allocator/public/pw_allocator/unique_ptr.h",
@@ -276,6 +281,8 @@ _doxygen_input_files = [  # keep-sorted: start
   "$dir_pw_crypto/public/pw_crypto/sha256.h",
   "$dir_pw_digital_io/public/pw_digital_io/digital_io.h",
   "$dir_pw_digital_io/public/pw_digital_io/digital_io_mock.h",
+  "$dir_pw_digital_io_mcuxpresso/public/pw_digital_io_mcuxpresso/digital_io.h",
+  "$dir_pw_digital_io_mcuxpresso/public/pw_digital_io_mcuxpresso/pint.h",
   "$dir_pw_display/public/pw_display/color.h",
   "$dir_pw_elf/public/pw_elf/reader.h",
   "$dir_pw_function/public/pw_function/function.h",
@@ -307,6 +314,7 @@ _doxygen_input_files = [  # keep-sorted: start
   "$dir_pw_malloc/public/pw_malloc/config.h",
   "$dir_pw_malloc/public/pw_malloc/malloc.h",
   "$dir_pw_multibuf/public/pw_multibuf/allocator.h",
+  "$dir_pw_multibuf/public/pw_multibuf/allocator_async.h",
   "$dir_pw_multibuf/public/pw_multibuf/chunk.h",
   "$dir_pw_multibuf/public/pw_multibuf/from_span.h",
   "$dir_pw_multibuf/public/pw_multibuf/header_chunk_region_tracker.h",
@@ -315,6 +323,7 @@ _doxygen_input_files = [  # keep-sorted: start
   "$dir_pw_multibuf/public/pw_multibuf/simple_allocator_for_test.h",
   "$dir_pw_multibuf/public/pw_multibuf/single_chunk_region_tracker.h",
   "$dir_pw_multibuf/public/pw_multibuf/stream.h",
+  "$dir_pw_numeric/public/pw_numeric/checked_arithmetic.h",
   "$dir_pw_numeric/public/pw_numeric/integer_division.h",
   "$dir_pw_perf_test/public/pw_perf_test/event_handler.h",
   "$dir_pw_perf_test/public/pw_perf_test/perf_test.h",
@@ -349,6 +358,7 @@ _doxygen_input_files = [  # keep-sorted: start
   "$dir_pw_sync/public/pw_sync/lock_annotations.h",
   "$dir_pw_sync/public/pw_sync/mutex.h",
   "$dir_pw_sync/public/pw_sync/thread_notification.h",
+  "$dir_pw_sync/public/pw_sync/timed_borrow.h",
   "$dir_pw_sync/public/pw_sync/timed_mutex.h",
   "$dir_pw_sync/public/pw_sync/timed_thread_notification.h",
   "$dir_pw_sync/public/pw_sync/virtual_basic_lockable.h",
@@ -356,7 +366,12 @@ _doxygen_input_files = [  # keep-sorted: start
   "$dir_pw_system/public/pw_system/system.h",
   "$dir_pw_third_party/freertos/pw_assert_stack_overflow_hook.cc",
   "$dir_pw_third_party/freertos/static_task_allocation.cc",
+  "$dir_pw_thread/public/pw_thread/attrs.h",
+  "$dir_pw_thread/public/pw_thread/context.h",
+  "$dir_pw_thread/public/pw_thread/internal/priority.h",
   "$dir_pw_thread/public/pw_thread/options.h",
+  "$dir_pw_thread/public/pw_thread/priority.h",
+  "$dir_pw_thread/public/pw_thread/stack.h",
   "$dir_pw_thread/public/pw_thread/test_thread_context.h",
   "$dir_pw_thread/public/pw_thread/thread.h",
   "$dir_pw_tokenizer/public/pw_tokenizer/config.h",
@@ -375,6 +390,7 @@ _doxygen_input_files = [  # keep-sorted: start
   "$dir_pw_uart/public/pw_uart/uart_non_blocking.h",
   "$dir_pw_unit_test/light_public_overrides/pw_unit_test/framework_backend.h",
   "$dir_pw_unit_test/public/pw_unit_test/config.h",
+  "$dir_pw_unit_test/public/pw_unit_test/constexpr.h",
   "$dir_pw_unit_test/public/pw_unit_test/event_handler.h",
   "$dir_pw_unit_test/public/pw_unit_test/googletest_handler_adapter.h",
   "$dir_pw_unit_test/public/pw_unit_test/googletest_style_event_handler.h",
@@ -428,8 +444,12 @@ pw_doc_gen("docs") {
     "index.rst",
     "modules.rst",
     "python_build.rst",
+
+    # TODO: b/388905813 - Delete this file.
+    "size_report_notice",
     "targets.rst",
     "third_party_support.rst",
+    "toolchain.rst",
   ]
   output_directory = target_gen_dir
   deps = [

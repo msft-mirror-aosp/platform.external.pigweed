@@ -16,11 +16,11 @@
 #include <memory>
 #include <unordered_map>
 
-#include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/uint128.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/gap.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/link_key.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/connection.h"
+#include "pw_bluetooth_sapphire/internal/host/hci/low_energy_connection.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/channel.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/delegate.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/error.h"
@@ -37,11 +37,13 @@ namespace bt::sm::testing {
 // implementations for others.
 class TestSecurityManager final : public SecurityManager {
  public:
-  ~TestSecurityManager() = default;
+  ~TestSecurityManager() override = default;
 
   // SecurityManager overrides:
   bool AssignLongTermKey(const LTK& ltk) override;
   void UpgradeSecurity(SecurityLevel level, PairingCallback callback) override;
+  void InitiateBrEdrCrossTransportKeyDerivation(
+      CrossTransportKeyDerivationResultCallback) override;
   void Reset(IOCapability io_capability) override;
   void Abort(ErrorCode ecode) override;
 
@@ -51,12 +53,25 @@ class TestSecurityManager final : public SecurityManager {
     return last_requested_upgrade_;
   }
 
+  std::optional<sm::IdentityInfo> last_identity_info() const {
+    return last_identity_info_;
+  }
+
+  // Set pairing data to return to InitiateBrEdrCrossTransportKeyDerivation().
+  // If not set, CTKD will fail.
+  void set_pairing_data(std::optional<sm::PairingData> data) {
+    pairing_data_ = std::move(data);
+  }
+
+  void TriggerPairingComplete(sm::PairingData data);
+
   using WeakPtr = WeakSelf<TestSecurityManager>::WeakPtr;
   WeakPtr GetWeakPtr() { return weak_self_.GetWeakPtr(); }
 
  private:
   friend class TestSecurityManagerFactory;
   TestSecurityManager(hci::LowEnergyConnection::WeakPtr link,
+                      hci::BrEdrConnection::WeakPtr bredr_link,
                       l2cap::Channel::WeakPtr smp,
                       IOCapability io_capability,
                       Delegate::WeakPtr delegate,
@@ -65,6 +80,9 @@ class TestSecurityManager final : public SecurityManager {
   Role role_;
   std::optional<LTK> current_ltk_;
   std::optional<SecurityLevel> last_requested_upgrade_;
+  Delegate::WeakPtr delegate_;
+  std::optional<sm::IdentityInfo> last_identity_info_;
+  std::optional<sm::PairingData> pairing_data_;
   WeakSelf<TestSecurityManager> weak_self_;
 };
 
@@ -94,7 +112,16 @@ class TestSecurityManagerFactory {
       Delegate::WeakPtr delegate,
       BondableMode bondable_mode,
       gap::LESecurityMode security_mode,
-      pw::async::Dispatcher& dispatcher);
+      pw::async::Dispatcher& dispatcher,
+      gap::Peer::WeakPtr peer);
+
+  std::unique_ptr<SecurityManager> CreateBrEdr(
+      hci::BrEdrConnection::WeakPtr link,
+      l2cap::Channel::WeakPtr smp,
+      Delegate::WeakPtr delegate,
+      bool is_controller_remote_public_key_validation_supported,
+      pw::async::Dispatcher& dispatcher,
+      bt::gap::Peer::WeakPtr peer);
 
   // Obtain a reference to the TestSecurityManager associated with
   // |conn_handle|'s connection for use in test code.

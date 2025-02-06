@@ -17,6 +17,7 @@ from collections.abc import Sequence
 import importlib.resources
 import logging
 from pathlib import Path
+import re
 
 import jsonschema  # type: ignore
 import jsonschema.exceptions  # type: ignore
@@ -122,23 +123,26 @@ class Validator:
             "Resolved dependencies:\n%s", yaml.safe_dump(result, indent=2)
         )
 
-        # Resolve all channel entries
+        # Resolve all channel entries (must be done before attributes)
         self._resolve_channels(metadata=metadata, out=result)
+
+        # Resolve all trigger entries (must be done before attributes)
+        self._resolve_triggers(metadata=metadata, out=result)
 
         # Resolve all attribute entries
         self._resolve_attributes(metadata=metadata, out=result)
 
-        # Resolve all trigger entries
-        self._resolve_triggers(metadata=metadata, out=result)
-
-        compatible = metadata.pop("compatible")
+        compatible, compatible_str = Validator._get_compatible_string_and_dict(
+            metadata.pop("compatible")
+        )
         supported_buses = metadata.pop("supported-buses")
         channels = metadata.pop("channels")
         attributes = metadata.pop("attributes")
         triggers = metadata.pop("triggers")
-        result["sensors"][f"{compatible['org']},{compatible['part']}"] = {
+
+        result["sensors"][compatible_str] = {
             "compatible": compatible,
-            "supported-buses": supported_buses,
+            "supported-buses": self._normalize_supported_buses(supported_buses),
             "channels": channels,
             "attributes": attributes,
             "triggers": triggers,
@@ -150,12 +154,73 @@ class Validator:
         try:
             jsonschema.validate(instance=result, schema=_RESOLVED_SCHEMA)
         except jsonschema.exceptions.ValidationError as e:
-            raise RuntimeError(
+            msg = (
                 "ERROR: Malformed output YAML: "
                 f"{yaml.safe_dump(result, indent=2)}"
-            ) from e
+            )
+            raise RuntimeError(msg) from e
 
         return result
+
+    @staticmethod
+    def _normalize_supported_buses(buses: list[str]) -> list[str]:
+        """Resolve a list of supported buses
+
+        Each bus string will be converted to lowercase and all sequential
+        whitespace & '-' characters will be replaced by a single '_'.
+
+        Args:
+            buses: A list of the supported sensor buses
+
+        Returns:
+            Normalized list of buses
+
+        """
+        filtered_list = list(
+            {re.sub(r"[\s\-]+", "_", s.lower()) for s in buses}
+        )
+        if len(buses) != len(filtered_list):
+            error = (
+                "ERROR: bus list contains duplicates when converted to "
+                f"lowercase and concatenated with '_': {sorted(buses)} -> "
+                f"{sorted(filtered_list)}"
+            )
+            raise RuntimeError(error)
+        return filtered_list
+
+    @staticmethod
+    def _get_compatible_string_and_dict(
+        compatible: dict[str, str],
+    ) -> tuple[dict[str, str], str]:
+        """
+        Normalize compatible info
+
+        This function processes a 'compatible' dictionary with a 'part' key and
+        an optional 'org' key. It returns a new dictionary with the 'org' key
+        removed if it was empty or missing, and a formatted string based on the
+        'org' key's presence and value.
+
+        Args:
+            compatible (dict[str, str]): A dictionary with a 'part' key and an
+            optional 'org' key.
+
+        Returns:
+            Tuple[dict[str, str], str]: A tuple containing:
+            - A new dictionary with the 'org' key removed if it was empty or
+              missing.
+            - A formatted string:
+              - "{org},{part}" if 'org' exists and is not empty (after trimming)
+              - "part" otherwise.
+
+        """
+        part = compatible["part"].lower()
+        org = compatible.get("org", "").strip().lower()
+
+        new_compatible = {"part": part}
+        if org:
+            new_compatible["org"] = org
+            return new_compatible, f"{org},{part}"
+        return new_compatible, part
 
     def _resolve_dependencies(self, metadata: dict, out: dict) -> None:
         """
@@ -351,7 +416,8 @@ class Validator:
                 trigger["description"] = ""
 
     def _resolve_attributes(self, metadata: dict, out: dict) -> None:
-        """
+        """Resolve and validate any default values in Attributes
+
         For each attribute in the metadta, find the matching definition in the
         'out/attributes' entry and use the data to fill any missing information.
         For example, if an entry exists that looks like:
@@ -369,6 +435,7 @@ class Validator:
         Raises:
           RuntimeError: An error in the schema validation or a missing
             definition.
+
         """
         attributes: list | None = metadata.get("attributes")
         if not attributes:
@@ -379,8 +446,21 @@ class Validator:
         attribute: dict
         for attribute in attributes:
             assert attribute["attribute"] in out["attributes"]
-            assert attribute["channel"] in out["channels"]
             assert attribute["units"] in out["units"]
+
+            has_channel_name = "channel" in attribute
+            has_trigger_name = "trigger" in attribute
+
+            if has_channel_name and has_trigger_name:
+                error = (
+                    "Attribute instances cannot specify both channel AND "
+                    f"trigger:\n{yaml.safe_dump(attribute, indent=2)}"
+                )
+                raise RuntimeError(error)
+            if has_channel_name:
+                assert attribute["channel"] in out["channels"]
+            if has_trigger_name:
+                assert attribute["trigger"] in out["triggers"]
 
     def _resolve_channels(self, metadata: dict, out: dict) -> None:
         """

@@ -24,19 +24,19 @@ cc_library(
     name = "pw_digital_io_mcuxpresso",
     srcs = [
         "digital_io.cc",
-        "interrupt_controller.cc",
-        "interrupt_line.cc",
+        "pint.cc",
     ],
     hdrs = [
         "public/pw_digital_io_mcuxpresso/digital_io.h",
-        "public/pw_digital_io_mcuxpresso/interrupt_controller.h",
-        "public/pw_digital_io_mcuxpresso/interrupt_line.h",
+        "public/pw_digital_io_mcuxpresso/pint.h",
     ],
     strip_include_prefix = "public",
     deps = [
+        "//pw_containers:intrusive_forward_list",
         "//pw_digital_io",
         "//pw_preprocessor",
         "//pw_sync:borrow",
+        "//pw_sync:interrupt_spin_lock",
         "//targets:mcuxpresso_sdk",
     ],
 )
@@ -54,4 +54,12 @@ sphinx_docs_library(
     ],
     prefix = "pw_digital_io_mcuxpresso/",
     target_compatible_with = incompatible_with_mcu(),
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_digital_io_mcuxpresso/digital_io.h",
+        "public/pw_digital_io_mcuxpresso/pint.h",
+    ],
 )

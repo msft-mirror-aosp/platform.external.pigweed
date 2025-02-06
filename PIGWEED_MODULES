@@ -17,6 +17,7 @@ pw_async2_basic
 pw_async2_epoll
 pw_async_basic
 pw_async_fuchsia
+pw_atomic
 pw_base64
 pw_bloat
 pw_blob_store
@@ -79,6 +80,7 @@ pw_i2c_mcuxpresso
 pw_i2c_rp2040
 pw_ide
 pw_interrupt
+pw_interrupt_cortex_a
 pw_interrupt_cortex_m
 pw_interrupt_xtensa
 pw_interrupt_zephyr
@@ -168,7 +170,6 @@ pw_tls_client_boringssl
 pw_tls_client_mbedtls
 pw_tokenizer
 pw_toolchain
-pw_toolchain_bazel
 pw_trace
 pw_trace_tokenized
 pw_transfer

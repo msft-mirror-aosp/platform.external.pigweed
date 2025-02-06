@@ -12,9 +12,11 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
-load("//pw_build:compatibility.bzl", "host_backend_alias", "incompatible_with_mcu")
+load("//pw_build:compatibility.bzl", "HOST_PLATFORMS", "host_backend_alias", "incompatible_with_mcu")
 load("//pw_build:pw_facade.bzl", "pw_facade")
 load(
     "//pw_protobuf_compiler:pw_proto_library.bzl",
@@ -23,7 +25,10 @@ load(
 )
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -122,16 +127,26 @@ pw_facade(
     name = "thread",
     srcs = ["public/pw_thread/config.h"],
     hdrs = [
+        "public/pw_thread/attrs.h",
+        "public/pw_thread/context.h",
         "public/pw_thread/detached_thread.h",
+        "public/pw_thread/native_options.h",
+        "public/pw_thread/priority.h",
+        "public/pw_thread/stack.h",
+        "public/pw_thread/stack_not_supported.h",
         "public/pw_thread/thread.h",
     ],
     backend = ":thread_backend",
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
+        ":generic_priority",
         ":id",
         ":options",
-        ":thread_core",
+        ":thread_creation_backend",
         "//pw_function",
+        "//pw_preprocessor",
+        "//pw_span",
     ],
 )
 
@@ -151,6 +166,19 @@ host_backend_alias(
     backend = "//pw_thread_stl:thread",
 )
 
+label_flag(
+    name = "thread_creation_backend",
+    build_setting_default = ":thread_creation_default_backend",
+)
+
+alias(
+    name = "thread_creation_default_backend",
+    actual = selects.with_or({
+        HOST_PLATFORMS: "//pw_thread_stl:thread_creation",
+        "//conditions:default": ":generic_thread_creation_unsupported",
+    }),
+)
+
 cc_library(
     name = "thread_core",
     hdrs = [
@@ -168,6 +196,7 @@ cc_library(
     ],
     hdrs = ["public/pw_thread/thread_snapshot_service.h"],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         "//pw_protobuf",
         "//pw_rpc/raw:server_api",
@@ -182,6 +211,18 @@ cc_library(
         # TODO(amontanez): This should depend on FreeRTOS but our third parties
         # currently do not have Bazel support.
     ],
+)
+
+cc_library(
+    name = "generic_thread_creation_unsupported",
+    hdrs = [
+        "null_thread_creation_public_overrides/pw_thread_backend/context.h",
+        "null_thread_creation_public_overrides/pw_thread_backend/options.h",
+        "null_thread_creation_public_overrides/pw_thread_backend/priority.h",
+        "null_thread_creation_public_overrides/pw_thread_backend/stack.h",
+    ],
+    strip_include_prefix = "null_thread_creation_public_overrides",
+    tags = ["noclangtidy"],
 )
 
 pw_facade(
@@ -229,6 +270,19 @@ label_flag(
 host_backend_alias(
     name = "yield_unspecified_backend",
     backend = "//pw_thread_stl:yield",
+)
+
+cc_library(
+    name = "generic_priority",
+    hdrs = ["public/pw_thread/internal/priority.h"],
+    strip_include_prefix = "public",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//pw_assert",
+        "//pw_numeric:integer_division",
+        "//pw_polyfill",
+        "//third_party/fuchsia:stdcompat",
+    ],
 )
 
 cc_library(
@@ -359,7 +413,10 @@ pw_cc_test(
         "thread_snapshot_service_test.cc",
     ],
     # TODO: https://pwbug.dev/342662853 - This test fails under ASAN.
-    tags = ["noasan"],
+    tags = [
+        "noasan",
+        "noclangtidy",
+    ],
     deps = [
         ":thread_info",
         ":thread_iteration",
@@ -370,6 +427,42 @@ pw_cc_test(
         "//pw_span",
         "//pw_sync:thread_notification",
     ],
+)
+
+pw_cc_test(
+    name = "priority_test",
+    srcs = ["priority_test.cc"],
+    deps = [
+        ":generic_priority",
+        "//pw_compilation_testing:negative_compilation_testing",
+        "//pw_unit_test",
+        "//pw_unit_test:constexpr",
+    ],
+)
+
+pw_cc_test(
+    name = "thread_creation_test",
+    srcs = ["thread_creation_test.cc"],
+    deps = [
+        ":thread",
+        "//pw_compilation_testing:negative_compilation_testing",
+    ],
+)
+
+pw_cc_test(
+    name = "attrs_test",
+    srcs = ["attrs_test.cc"],
+    deps = [
+        ":thread",
+        "//pw_compilation_testing:negative_compilation_testing",
+        "//pw_unit_test:constexpr",
+    ],
+)
+
+pw_cc_test(
+    name = "stack_test",
+    srcs = ["stack_test.cc"],
+    deps = [":thread"],
 )
 
 pw_cc_test(
@@ -432,7 +525,12 @@ pwpb_proto_library(
 filegroup(
     name = "doxygen",
     srcs = [
+        "public/pw_thread/attrs.h",
+        "public/pw_thread/context.h",
+        "public/pw_thread/internal/priority.h",
         "public/pw_thread/options.h",
+        "public/pw_thread/priority.h",
+        "public/pw_thread/stack.h",
         "public/pw_thread/test_thread_context.h",
         "public/pw_thread/thread.h",
     ],

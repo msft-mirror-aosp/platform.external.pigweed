@@ -12,9 +12,13 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@pigweed//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
+load("//pw_fuzzer:fuzzer.bzl", "pw_cc_fuzz_test")
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 cc_library(
     name = "definitions",
@@ -30,8 +34,8 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/sdp/service_record.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
-        "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/common",
     ],
 )
@@ -51,11 +55,11 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/sdp/service_discoverer.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         ":definitions",
-        "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/l2cap",
-        "//third_party/fuchsia:stdcompat",
+        "//third_party/fuchsia:fit",
     ],
 )
 
@@ -75,5 +79,20 @@ pw_cc_test(
         "//pw_bluetooth_sapphire/host/common",
         "//pw_bluetooth_sapphire/host/l2cap:testing",
         "//pw_bluetooth_sapphire/host/testing",
+        "//pw_bluetooth_sapphire/host/testing:fake_controller",
+        "//pw_bluetooth_sapphire/host/testing:gtest_helpers",
+        "//pw_bluetooth_sapphire/host/testing:test_helpers",
     ],
+)
+
+pw_cc_fuzz_test(
+    name = "data_element_fuzzer",
+    srcs = ["data_element_fuzztest.cc"],
+    deps = [":definitions"],
+)
+
+pw_cc_fuzz_test(
+    name = "pdu_fuzzer",
+    srcs = ["pdu_fuzztest.cc"],
+    deps = [":sdp"],
 )

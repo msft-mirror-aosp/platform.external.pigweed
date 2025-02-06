@@ -12,9 +12,12 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@pigweed//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 cc_library(
     name = "hci",
@@ -56,13 +59,18 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/hci/sco_connection.h",
         "public/pw_bluetooth_sapphire/internal/host/hci/sequential_command_runner.h",
     ],
+    implementation_deps = [
+        "//pw_async:heap_dispatcher",
+        "//pw_bluetooth:emboss_hci",
+        "//pw_preprocessor",
+    ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
-        "//pw_bluetooth_sapphire:public",
+        "//pw_bluetooth_sapphire/host/common",
+        "//pw_bluetooth_sapphire/host/hci-spec",
         "//pw_bluetooth_sapphire/host/transport",
-        "@pigweed//pw_async:heap_dispatcher",
-        "@pigweed//pw_bluetooth:emboss_hci",
-        "@pigweed//third_party/fuchsia:fit",
+        "//third_party/fuchsia:fit",
     ],
 )
 
@@ -81,11 +89,11 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/hci/fake_sco_connection.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         ":hci",
-        "//pw_bluetooth_sapphire:public",
+        "//pw_async:heap_dispatcher",
         "//pw_bluetooth_sapphire/host/common",
-        "@pigweed//pw_async:heap_dispatcher",
     ],
 )
 
@@ -108,7 +116,12 @@ pw_cc_test(
     deps = [
         ":hci",
         ":testing",
+        "//pw_bluetooth:emboss_hci_test",
         "//pw_bluetooth_sapphire/host/testing",
-        "@pigweed//pw_bluetooth:emboss_hci_test",
+        "//pw_bluetooth_sapphire/host/testing:fake_controller",
+        "//pw_bluetooth_sapphire/host/testing:gtest_helpers",
+        "//pw_bluetooth_sapphire/host/testing:mock_controller",
+        "//pw_bluetooth_sapphire/host/testing:test_helpers",
+        "//pw_bluetooth_sapphire/host/transport:testing",
     ],
 )

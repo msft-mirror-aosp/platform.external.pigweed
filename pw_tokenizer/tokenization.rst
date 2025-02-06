@@ -526,11 +526,16 @@ following:
 * Create a separate database for a small number of strings that use truncated
   tokens, for example only 10 or 16 bits instead of the full 32 bits.
 
-When a domain is specified, any whitespace will be ignored in domain names and
-removed from the database.
+Domain names must meet the following requirements:
 
-If no domain is specified, the domain is empty (``""``). For many projects, this
-default domain is sufficient, so no additional configuration is required.
+- Domain names may only contain alphanumeric characters (``A–Z``, ``a–z``,
+  ``0–9``), colon (``:``), or underscore (``_``).
+- The first character must not be a digit (``0–9``).
+- Whitespace is ignored. Source files may include whitespace in domain names,
+  but it is removed from token databases. The following domains are equivalent:
+  ``name``, ``n  a m  e``, and ``na\tme\n``.
+
+If no domain is specified, the domain is empty (``""``).
 
 .. code-block:: cpp
 
@@ -546,9 +551,9 @@ from all domains. The domain may be specified for ELF files by appending
 domain. For example, the following reads strings in ``some_domain`` from
 ``my_image.elf``.
 
-.. code-block:: sh
+.. code-block:: console
 
-   ./database.py create --database my_db.csv "path/to/my_image.elf#some_domain"
+   $ ./database.py create --database my_db.csv "path/to/my_image.elf#some_domain"
 
 See :ref:`module-pw_tokenizer-managing-token-databases` for information about
 the ``database.py`` command line tool.

@@ -129,7 +129,7 @@ interacting with hardware devices via :ref:`module-pw_rpc` over a
 :ref:`module-pw_hdlc` transport. Gone are the days of hacking together a REPL
 and log viewer for each new project!
 
-.. figure:: pw_console/images/python_completion.png
+.. figure:: https://storage.googleapis.com/pigweed-media/pw_console/python_completion.png
    :alt: Using pw_console to interact with a device
 
    Using pw_console to interact with a device
@@ -193,6 +193,7 @@ Talk to us
    Source code <https://cs.pigweed.dev/pigweed>
    docs/showcases/index
    docs/concepts/index
+   Toolchain <toolchain>
    docs/3p/index
    docs/community/index
    Developing & contributing <docs/contributing/index>

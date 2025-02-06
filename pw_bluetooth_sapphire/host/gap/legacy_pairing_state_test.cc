@@ -22,12 +22,11 @@
 #include "pw_bluetooth_sapphire/internal/host/sm/smp.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/types.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/controller_test.h"
+#include "pw_bluetooth_sapphire/internal/host/testing/gtest_helpers.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/inspect_util.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/mock_controller.h"
-#include "pw_bluetooth_sapphire/internal/host/testing/test_helpers.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/test_packets.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/error.h"
-#include "pw_unit_test/framework.h"
 
 namespace bt::gap {
 namespace {
@@ -207,8 +206,8 @@ TEST_F(LegacyPairingStateTest, BuildEstablishedLink) {
   // |pairing_state|'s temporary |link_key_| is empty
   EXPECT_FALSE(pairing_state.link_key().has_value());
 
-  peer()->MutBrEdr().SetBondData(
-      sm::LTK(sm::SecurityProperties(kTestLegacyLinkKeyType), kTestLinkKey));
+  EXPECT_TRUE(peer()->MutBrEdr().SetBondData(
+      sm::LTK(sm::SecurityProperties(kTestLegacyLinkKeyType), kTestLinkKey)));
 
   std::optional<hci_spec::LinkKey> reply_key = pairing_state.OnLinkKeyRequest();
   ASSERT_TRUE(reply_key.has_value());
@@ -219,6 +218,7 @@ TEST_F(LegacyPairingStateTest, BuildEstablishedLink) {
   EXPECT_FALSE(connection()->ltk().has_value());
   EXPECT_TRUE(pairing_state.link_key().has_value());
   EXPECT_EQ(kTestLinkKey, pairing_state.link_key().value());
+  EXPECT_TRUE(peer()->MutBrEdr().is_pairing());
 
   // Authentication is done and connection gets made by BrEdrConnectionManager.
   // For testing, we manually set the link info using |connection()|
@@ -232,6 +232,7 @@ TEST_F(LegacyPairingStateTest, BuildEstablishedLink) {
   EXPECT_TRUE(connection()->ltk().has_value());
   EXPECT_EQ(kTestLinkKeyValue, connection()->ltk()->value());
   EXPECT_EQ(kTestLinkKeyValue, pairing_state.link_ltk()->value());
+  EXPECT_TRUE(peer()->MutBrEdr().is_pairing());
 }
 
 TEST_F(LegacyPairingStateTest, PairingStateStartsAsResponder) {
@@ -260,6 +261,7 @@ TEST_F(LegacyPairingStateTest,
   // |auth_cb| is only called if initiation was successful
   EXPECT_EQ(0, auth_request_count());
   EXPECT_FALSE(pairing_state.initiator());
+  EXPECT_FALSE(peer()->MutBrEdr().is_pairing());
 }
 
 TEST_F(LegacyPairingStateTest, NeverInitiateLegacyPairingWhenPeerSupportsSSP) {
@@ -312,6 +314,7 @@ TEST_F(LegacyPairingStateTest,
   EXPECT_FALSE(pairing_state.initiator());
   ASSERT_EQ(1, initiator_status_handler.call_count());
   EXPECT_EQ(fit::ok(), *initiator_status_handler.status());
+  EXPECT_FALSE(peer()->MutBrEdr().is_pairing());
 }
 
 TEST_F(
@@ -324,8 +327,8 @@ TEST_F(
                                    /*outgoing_connection=*/false);
   EXPECT_FALSE(pairing_state.initiator());
 
-  peer()->MutBrEdr().SetBondData(
-      sm::LTK(sm::SecurityProperties(kTestLegacyLinkKeyType), kTestLinkKey));
+  EXPECT_TRUE(peer()->MutBrEdr().SetBondData(
+      sm::LTK(sm::SecurityProperties(kTestLegacyLinkKeyType), kTestLinkKey)));
   EXPECT_FALSE(connection()->ltk().has_value());
 
   std::optional<hci_spec::LinkKey> reply_key = pairing_state.OnLinkKeyRequest();
@@ -337,6 +340,7 @@ TEST_F(
   EXPECT_FALSE(connection()->ltk().has_value());
   EXPECT_TRUE(pairing_state.link_key().has_value());
   EXPECT_EQ(kTestLinkKey, pairing_state.link_key().value());
+  EXPECT_TRUE(peer()->MutBrEdr().is_pairing());
 }
 
 TEST_F(
@@ -352,8 +356,8 @@ TEST_F(
                                    NoOpStatusCallback);
   EXPECT_FALSE(pairing_state.initiator());
 
-  peer()->MutBrEdr().SetBondData(
-      sm::LTK(sm::SecurityProperties(kTestLegacyLinkKeyType), kTestLinkKey));
+  EXPECT_TRUE(peer()->MutBrEdr().SetBondData(
+      sm::LTK(sm::SecurityProperties(kTestLegacyLinkKeyType), kTestLinkKey)));
   EXPECT_FALSE(connection()->ltk().has_value());
 
   std::optional<hci_spec::LinkKey> reply_key = pairing_state.OnLinkKeyRequest();
@@ -379,8 +383,8 @@ TEST_F(
                                    NoOpStatusCallback);
   EXPECT_FALSE(pairing_state.initiator());
 
-  peer()->MutBrEdr().SetBondData(
-      sm::LTK(sm::SecurityProperties(kTestLegacyLinkKeyType), kTestLinkKey));
+  EXPECT_TRUE(peer()->MutBrEdr().SetBondData(
+      sm::LTK(sm::SecurityProperties(kTestLegacyLinkKeyType), kTestLinkKey)));
   EXPECT_FALSE(connection()->ltk().has_value());
 
   pairing_state.InitiatePairing(NoOpStatusCallback);
@@ -494,6 +498,7 @@ TEST_F(LegacyPairingStateTest,
   EXPECT_EQ(kTestHandle, *status_handler.handle());
   ASSERT_TRUE(status_handler.status());
   EXPECT_EQ(ToResult(HostError::kFailed), *status_handler.status());
+  EXPECT_FALSE(peer()->MutBrEdr().is_pairing());
 }
 
 TEST_F(LegacyPairingStateTest, PairingInitiatorWithNoInputGeneratesRandomPin) {
@@ -804,6 +809,7 @@ TEST_F(
   ASSERT_EQ(1, status_handler.call_count());
   EXPECT_EQ(ToResult(pw::bluetooth::emboss::StatusCode::AUTHENTICATION_FAILURE),
             status_handler.status().value());
+  EXPECT_FALSE(peer()->MutBrEdr().is_pairing());
 }
 
 TEST_F(LegacyPairingStateTest,
@@ -1015,6 +1021,7 @@ TEST_F(LegacyPairingStateTest,
 
   // Advance state machine as pairing responder.
   pairing_state.OnPinCodeRequest(NoOpUserPinCodeCallback);
+  EXPECT_TRUE(peer()->MutBrEdr().is_pairing());
 
   // Try to initiate pairing while pairing is in progress.
   TestStatusHandler status_handler;
@@ -1038,6 +1045,7 @@ TEST_F(LegacyPairingStateTest,
   EXPECT_EQ(kTestHandle, *status_handler.handle());
   ASSERT_TRUE(status_handler.status());
   EXPECT_EQ(fit::ok(), *status_handler.status());
+  EXPECT_FALSE(peer()->MutBrEdr().is_pairing());
 
   // Errors for a new pairing shouldn't invoke the attempted initiator's
   // callback.
@@ -1354,8 +1362,8 @@ TEST_P(HandlesLegacyEvent, InWaitLinkKeyState) {
 }
 
 TEST_P(HandlesLegacyEvent, InInitiatorWaitAuthCompleteSkippingLegacyPairing) {
-  peer()->MutBrEdr().SetBondData(
-      sm::LTK(sm::SecurityProperties(kTestLegacyLinkKeyType), kTestLinkKey));
+  EXPECT_TRUE(peer()->MutBrEdr().SetBondData(
+      sm::LTK(sm::SecurityProperties(kTestLegacyLinkKeyType), kTestLinkKey)));
 
   // Advance state machine
   pairing_state().InitiatePairing(NoOpStatusCallback);

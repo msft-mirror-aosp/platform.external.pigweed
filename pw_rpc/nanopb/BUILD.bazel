@@ -16,7 +16,10 @@ load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -68,6 +71,7 @@ cc_library(
         "public/pw_rpc/nanopb/test_method_context.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         "//pw_containers",
         "//pw_rpc:internal_test_utils",
@@ -80,6 +84,7 @@ cc_library(
         "public/pw_rpc/nanopb/client_testing.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         ":test_method_context",
         "//pw_rpc",
@@ -93,6 +98,7 @@ cc_library(
         "public/pw_rpc/nanopb/client_server_testing.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         ":test_method_context",
         "//pw_rpc:client_server_testing",
@@ -105,6 +111,7 @@ cc_library(
         "public/pw_rpc/nanopb/client_server_testing_threaded.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         ":test_method_context",
         "//pw_rpc:client_server_testing_threaded",
@@ -114,6 +121,7 @@ cc_library(
 cc_library(
     name = "internal_test_utils",
     hdrs = ["pw_rpc_nanopb_private/internal_test_utils.h"],
+    tags = ["noclangtidy"],
     deps = ["//pw_rpc:internal_test_utils"],
 )
 
@@ -343,6 +351,7 @@ pw_cc_test(
 sphinx_docs_library(
     name = "docs",
     srcs = [
+        "Kconfig",
         "docs.rst",
     ],
     target_compatible_with = incompatible_with_mcu(),

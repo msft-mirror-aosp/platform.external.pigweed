@@ -295,7 +295,7 @@ and ``DoDeallocate`` methods.
 For example, the following is a forwarding allocator that simply writes to the
 log whenever a threshold is exceeded:
 
-.. literalinclude:: examples/custom_allocator.h
+.. literalinclude:: examples/public/examples/custom_allocator.h
    :language: cpp
    :linenos:
    :start-after: [pw_allocator-examples-custom_allocator]
@@ -464,7 +464,7 @@ You can also extend the :ref:`module-pw_allocator-api-test_harness` to perform
 pseudorandom sequences of allocations and deallocations, e.g. as part of a
 performance test:
 
-.. literalinclude:: examples/custom_allocator_test_harness.h
+.. literalinclude:: examples/public/examples/custom_allocator_test_harness.h
    :language: cpp
    :linenos:
    :start-after: [pw_allocator-examples-custom_allocator-test_harness]
@@ -522,7 +522,9 @@ For example, the GN build rule to generate a size report might look liek:
 
 The size report produced by this rule would render as:
 
-.. include:: examples/custom_allocator_size_report
+.. TODO: b/388905812 - Re-enable the size report.
+.. .. include:: examples/custom_allocator_size_report
+.. include:: ../size_report_notice
 
 .. _AllocatorAwareContainers: https://en.cppreference.com/w/cpp/named_req/AllocatorAwareContainer
 .. _NVI: https://en.wikipedia.org/wiki/Non-virtual_interface_pattern

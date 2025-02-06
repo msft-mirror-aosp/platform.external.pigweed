@@ -14,8 +14,16 @@
 
 #pragma once
 
+#include <optional>
+
+#include "pw_function/function.h"
+#include "pw_multibuf/multibuf.h"
+#include "pw_status/status.h"
+
 namespace pw::bluetooth::proxy {
 
+/// Events returned from all client-facing channel objects in their `event_fn`
+/// callback.
 enum class L2capChannelEvent {
   /// The channel was closed by something other than `ProxyHost`. The channel is
   /// now `State::kClosed` and should be cleaned up. See logs for details.
@@ -41,5 +49,26 @@ enum class L2capChannelEvent {
   /// returned UNAVAILABLE.
   kWriteAvailable,
 };
+
+/// Result object with status and optional MultiBuf that is only present if the
+/// status is NOT `ok()`.
+// `pw::Result` can't be used because it only has a value for `ok()` status.
+// `std::expected` can't be used because it only has a value OR a status.
+struct StatusWithMultiBuf {
+  pw::Status status;
+  std::optional<pw::multibuf::MultiBuf> buf = std::nullopt;
+};
+
+/// Alias for a client provided callback function for that can receive data from
+/// a channel and optionally own the handling that data.
+///
+/// @param[in] payload  The payload being passed to the client.
+///
+///
+/// @returns If the client will own handling the payload then std::nullopt
+/// should be returned. If the client will not own handling the payload then the
+/// payload MultiBuf should be returned (unaltered).
+using OptionalPayloadReceiveCallback =
+    Function<std::optional<multibuf::MultiBuf>(multibuf::MultiBuf&& payload)>;
 
 }  // namespace pw::bluetooth::proxy

@@ -28,9 +28,11 @@ cc_library(
     ],
     strip_include_prefix = "public",
     deps = [
+        "//pw_assert:check",
         "//pw_containers:inline_queue",
         "//pw_function",
         "//pw_metric:metric",
+        "//pw_span",
         "//pw_status",
         "//pw_sync:interrupt_spin_lock",
         "//pw_sync:lock_annotations",
@@ -44,6 +46,7 @@ cc_library(
     name = "test_thread_header",
     hdrs = ["public/pw_work_queue/test_thread.h"],
     strip_include_prefix = "public",
+    deps = ["//pw_thread:thread"],
 )
 
 cc_library(
@@ -55,7 +58,11 @@ cc_library(
     deps = [
         ":pw_work_queue",
         ":stl_test_thread",
+        ":test_thread_header",
+        "//pw_function",
         "//pw_log",
+        "//pw_sync:thread_notification",
+        "//pw_thread:thread",
         "//pw_unit_test",
     ],
 )
@@ -69,7 +76,7 @@ cc_library(
     deps = [
         ":test_thread_header",
         "//pw_thread:thread",
-        "//pw_thread_stl:thread",
+        "//pw_thread_stl:options",
     ],
 )
 

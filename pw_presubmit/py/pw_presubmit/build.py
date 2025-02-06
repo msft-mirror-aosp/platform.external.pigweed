@@ -53,6 +53,8 @@ from pw_presubmit.presubmit import (
     SubStep,
 )
 from pw_presubmit.presubmit_context import (
+    LuciContext,
+    LuciTrigger,
     PresubmitContext,
     PresubmitFailure,
 )
@@ -72,13 +74,27 @@ _LOG = logging.getLogger(__name__)
 BAZEL_EXECUTABLE = 'bazel'
 
 
+def _get_remote_instance_name(ctx_luci: LuciContext) -> str:
+    instance_name = ''
+    if ctx_luci.project == 'pigweed':
+        instance_name = 'pigweed-rbe-open'
+    else:
+        instance_name = 'pigweed-rbe-private'
+    if ctx_luci.is_try:
+        instance_name += '-pre'
+
+    # pylint: disable-next=line-too-long
+    return f'--remote_instance_name=projects/{instance_name}/instances/default-instance'
+
+
 def bazel(
     ctx: PresubmitContext,
     cmd: str,
     *args: str,
+    remote_download_outputs: str = 'minimal',
+    stdout: io.TextIOWrapper | None = None,
     strict_module_lockfile: bool = False,
     use_remote_cache: bool = False,
-    stdout: io.TextIOWrapper | None = None,
     **kwargs,
 ) -> None:
     """Invokes Bazel with some common flags set.
@@ -101,10 +117,11 @@ def bazel(
     remote_cache: list[str] = []
     if use_remote_cache and ctx.luci:
         remote_cache.append('--config=remote_cache')
-        if ctx.luci.is_ci:
-            # Only CI builders should attempt to write to the cache. Try
-            # builders will be denied permission if they do so.
-            remote_cache.append('--remote_upload_local_results=true')
+        remote_cache.append('--remote_upload_local_results=true')
+        remote_cache.append(_get_remote_instance_name(ctx.luci))
+        remote_cache.append(
+            f'--remote_download_outputs={remote_download_outputs}'
+        )
 
     symlink_prefix: list[str] = []
     if cmd not in ('mod', 'query'):
@@ -1018,13 +1035,29 @@ def _copy_to_gcs(ctx: PresubmitContext, filepath: Path, gcs_dst: str):
         call(*cmd, tee=outs)
 
 
+class NoPrimaryTriggerError(Exception):
+    pass
+
+
+def _get_primary_change(ctx: PresubmitContext) -> LuciTrigger:
+    assert ctx.luci is not None
+
+    if len(ctx.luci.triggers) == 1:
+        return ctx.luci.triggers[0]
+
+    for trigger in ctx.luci.triggers:
+        if trigger.primary:
+            return trigger
+
+    raise NoPrimaryTriggerError(repr(ctx.luci.triggers))
+
+
 def _write_coverage_metadata(
     ctx: PresubmitContext, options: CoverageOptions
 ) -> Sequence[Path]:
     """Write out Kalypsi coverage metadata file(s) and return their paths."""
     assert ctx.luci is not None
-    assert len(ctx.luci.triggers) == 1
-    change = ctx.luci.triggers[0]
+    change = _get_primary_change(ctx)
 
     metadata = {
         'trace_type': options.common.trace_type,

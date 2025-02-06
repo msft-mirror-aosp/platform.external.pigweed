@@ -3,12 +3,11 @@
 ===========
 pw_transfer
 ===========
+.. pigweed-module::
+   :name: pw_transfer
+
 ``pw_transfer`` is a reliable data transfer protocol which runs on top of
 Pigweed RPC.
-
-.. attention::
-
-  ``pw_transfer`` is under construction and so is its documentation.
 
 -----
 Usage
@@ -678,11 +677,11 @@ retries is hit.
 
 Server to client transfer (read)
 ================================
-.. image:: read.svg
+.. image:: https://storage.googleapis.com/pigweed-media/pw_transfer/read.svg
 
 Client to server transfer (write)
 =================================
-.. image:: write.svg
+.. image:: https://storage.googleapis.com/pigweed-media/pw_transfer/write.svg
 
 Protocol buffer definition
 ==========================

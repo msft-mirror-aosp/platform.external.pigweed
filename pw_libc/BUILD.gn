@@ -27,6 +27,7 @@ config("default_config") {
 pw_test_group("tests") {
   tests = [
     ":llvm_libc_tests",
+    ":logf_test",
     ":memset_test",
   ]
 }
@@ -34,6 +35,10 @@ pw_test_group("tests") {
 pw_test("memset_test") {
   sources = [ "memset_test.cc" ]
   deps = [ "$dir_pw_containers" ]
+}
+
+pw_test("logf_test") {
+  sources = [ "logf_test.cc" ]
 }
 
 # Clang has __attribute__(("no-builtin")), but gcc doesn't support it so we
@@ -128,16 +133,20 @@ if (dir_pw_third_party_llvm_libc != "") {
       "printf_core/converter.cpp",
     ]
 
-    defines = [
-      "LIBC_COPT_PRINTF_DISABLE_FLOAT",
-      "LIBC_COPT_PRINTF_DISABLE_WRITE_INT",
-      "LIBC_COPT_PRINTF_DISABLE_INDEX_MODE",
-    ]
+    # If we happen to be using pw_libc for host, let's keep all the normal features.
+    if (current_os != host_os) {
+      defines = [
+        "LIBC_COPT_PRINTF_DISABLE_FLOAT",
+        "LIBC_COPT_PRINTF_DISABLE_WRITE_INT",
+        "LIBC_COPT_PRINTF_DISABLE_INDEX_MODE",
+      ]
+    }
 
     # This config includes -Wshadow. On gcc, this warns even for constructor
     # arguments which shadow members. This is too pedantic and shouldn't be
     # changed upstream.
-    remove_configs = [ "//pw_build:extra_strict_warnings" ]
+    remove_configs = [ "$dir_pw_build:extra_strict_warnings" ]
+    configs = [ ":no-shadow" ]
   }
 
   pw_libc_source_set("stdfix") {

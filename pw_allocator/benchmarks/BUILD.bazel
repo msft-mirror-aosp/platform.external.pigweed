@@ -17,7 +17,10 @@ load(
     "pw_cc_test",
 )
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -51,6 +54,7 @@ cc_library(
         "public/pw_allocator/benchmarks/config.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     target_compatible_with = select({
         "@platforms//os:linux": [],
         "//conditions:default": ["@platforms//:incompatible"],
@@ -116,6 +120,19 @@ cc_binary(
     deps = [
         ":benchmark",
         "//pw_allocator:first_fit",
+        "//pw_random",
+    ],
+)
+
+cc_binary(
+    name = "tlsf_benchmark",
+    testonly = True,
+    srcs = [
+        "tlsf_benchmark.cc",
+    ],
+    deps = [
+        ":benchmark",
+        "//pw_allocator:tlsf_allocator",
         "//pw_random",
     ],
 )

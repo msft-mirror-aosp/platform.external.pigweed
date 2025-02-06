@@ -21,6 +21,7 @@ sphinx_docs_library(
     name = "docs",
     srcs = [
         "Kconfig",
+        "Kconfig.tokenized",
         "docs.rst",
     ],
     prefix = "pw_log_zephyr/",

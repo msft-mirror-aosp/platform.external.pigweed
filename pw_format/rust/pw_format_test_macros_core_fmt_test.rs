@@ -43,6 +43,7 @@ pub enum PrintfTestGeneratorOps {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::literal_string_with_formatting_args)]
     use pw_format_test_macros::{
         core_fmt_format_core_fmt_generator_test_macro, core_fmt_format_generator_test_macro,
         core_fmt_format_printf_generator_test_macro,
@@ -163,6 +164,12 @@ mod tests {
         assert_eq!(
             core_fmt_format_core_fmt_generator_test_macro!("Test {:08} test", 0x42 as u32),
             ("Test {:08} test", expected_fragments.clone())
+        );
+
+        // Alternate syntax.
+        assert_eq!(
+            core_fmt_format_core_fmt_generator_test_macro!("Test {:#08x} test", 0x42 as u32),
+            ("Test {:#08x} test", expected_fragments.clone())
         );
     }
 }

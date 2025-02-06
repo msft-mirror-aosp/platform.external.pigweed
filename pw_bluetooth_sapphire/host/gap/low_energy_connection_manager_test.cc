@@ -16,13 +16,13 @@
 
 #include <gmock/gmock.h>
 #include <lib/fit/function.h>
+#include <pw_assert/check.h>
 
 #include <cstddef>
 #include <limits>
 #include <memory>
 #include <vector>
 
-#include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/byte_buffer.h"
 #include "pw_bluetooth_sapphire/internal/host/common/device_address.h"
 #include "pw_bluetooth_sapphire/internal/host/common/macros.h"
@@ -2512,7 +2512,7 @@ TEST_F(LowEnergyConnectionManagerTest,
   EXPECT_TRUE(conn);
   EXPECT_TRUE(peer->version().has_value());
   EXPECT_TRUE(peer->le()->features().has_value());
-  EXPECT_EQ(kLEFeatures.le_features, peer->le()->features()->le_features);
+  EXPECT_EQ(kLEFeatures, peer->le()->features());
   EXPECT_FALSE(peer->temporary());
 }
 
@@ -3349,70 +3349,6 @@ TEST_F(LowEnergyConnectionManagerTest, AutoConnectSkipsScanning) {
   EXPECT_EQ(scan_cb_count, 0u);
 }
 
-TEST_F(LowEnergyConnectionManagerTest, ConnectSinglePeerStartDiscoveryFailed) {
-  auto* peer = peer_cache()->NewPeer(kAddress0, /*connectable=*/true);
-  EXPECT_TRUE(peer->temporary());
-
-  auto fake_peer = std::make_unique<FakePeer>(kAddress0, dispatcher());
-  test_device()->AddPeer(std::move(fake_peer));
-
-  size_t connect_cb_count = 0;
-  auto callback = [&connect_cb_count](auto result) {
-    EXPECT_TRUE(result.is_error());
-    connect_cb_count++;
-  };
-
-  // Cause discovery to fail.
-  test_device()->SetDefaultCommandStatus(
-      hci_spec::kLESetScanEnable,
-      pw::bluetooth::emboss::StatusCode::COMMAND_DISALLOWED);
-
-  EXPECT_TRUE(connected_peers().empty());
-  conn_mgr()->Connect(peer->identifier(), callback, kConnectionOptions);
-  ASSERT_TRUE(peer->le());
-  EXPECT_EQ(Peer::ConnectionState::kInitializing,
-            peer->le()->connection_state());
-
-  RunUntilIdle();
-  EXPECT_EQ(connect_cb_count, 1u);
-  EXPECT_FALSE(peer->temporary());
-  EXPECT_EQ(Peer::ConnectionState::kNotConnected,
-            peer->le()->connection_state());
-}
-
-TEST_F(LowEnergyConnectionManagerTest,
-       ConnectSinglePeerDiscoveryFailedDuringScan) {
-  auto* peer = peer_cache()->NewPeer(kAddress0, /*connectable=*/true);
-  EXPECT_TRUE(peer->temporary());
-
-  // Don't add peer to FakeController to prevent scan from completing.
-
-  size_t connect_cb_count = 0;
-  auto callback = [&connect_cb_count](auto result) {
-    EXPECT_TRUE(result.is_error());
-    connect_cb_count++;
-  };
-
-  EXPECT_TRUE(connected_peers().empty());
-  conn_mgr()->Connect(peer->identifier(), callback, kConnectionOptions);
-  ASSERT_TRUE(peer->le());
-  EXPECT_EQ(Peer::ConnectionState::kInitializing,
-            peer->le()->connection_state());
-  RunUntilIdle();
-  EXPECT_EQ(connect_cb_count, 0u);
-
-  // Cause discovery to fail when attempting to restart scan after scan period
-  // ends.
-  test_device()->SetDefaultCommandStatus(
-      hci_spec::kLESetScanEnable,
-      pw::bluetooth::emboss::StatusCode::COMMAND_DISALLOWED);
-  RunFor(kLEGeneralDiscoveryScanMin);
-  EXPECT_EQ(connect_cb_count, 1u);
-  EXPECT_FALSE(peer->temporary());
-  EXPECT_EQ(Peer::ConnectionState::kNotConnected,
-            peer->le()->connection_state());
-}
-
 TEST_F(LowEnergyConnectionManagerTest,
        PeerDisconnectBeforeInterrogationCompletes) {
   auto* peer = peer_cache()->NewPeer(kAddress0, /*connectable=*/true);
@@ -3924,7 +3860,7 @@ TEST_F(LowEnergyConnectionManagerTest, Inspect) {
                             StringIs("peer_id", peer->identifier().ToString()),
                             IntIs("connection_attempt", 0),
                             BoolIs("is_outbound", true),
-                            StringIs("state", "StartingScanning"))))));
+                            StringIs("state", "Connecting"))))));
 
   auto empty_connections_matcher =
       AllOf(NodeMatches(NameMatches("connections")),

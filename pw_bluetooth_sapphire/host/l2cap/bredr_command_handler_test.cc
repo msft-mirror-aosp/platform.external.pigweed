@@ -14,6 +14,7 @@
 
 #include "pw_bluetooth_sapphire/internal/host/l2cap/bredr_command_handler.h"
 
+#include <pw_assert/check.h>
 #include <pw_async/fake_dispatcher_fixture.h>
 
 #include <memory>
@@ -23,6 +24,7 @@
 #include "pw_bluetooth_sapphire/internal/host/l2cap/channel_configuration.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/fake_signaling_channel.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/l2cap_defs.h"
+#include "pw_bluetooth_sapphire/internal/host/testing/gtest_helpers.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/test_helpers.h"
 
 namespace bt::l2cap::internal {

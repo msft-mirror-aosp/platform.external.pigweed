@@ -16,7 +16,6 @@
 #include <cstdint>
 
 #include "pw_bluetooth/controller.h"
-#include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/device_address.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/android_vendor_capabilities.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/gap.h"
@@ -72,6 +71,13 @@ struct AdapterState final {
   inline auto SupportedCommands() const {
     return pw::bluetooth::emboss::MakeSupportedCommandsView(
         supported_commands, sizeof(supported_commands));
+  }
+
+  inline bool IsControllerRemotePublicKeyValidationSupported() const {
+    // We don't actually need to send the command:  "Note: If this command is
+    // supported, then the Controller must support remote public key validation"
+    // (v6.0, Vol 4, Part E, Sec. 7.4.9).
+    return SupportedCommands().read_local_simple_pairing_options().Read();
   }
 
   // HCI version supported by the controller.

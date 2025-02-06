@@ -3,5 +3,7 @@
 -----------
 pw_sync_stl
 -----------
-This is a set of backends for pw_sync based on the C++ STL. It is not ready for
-use, and is under construction.
+.. pigweed-module::
+   :name: pw_sync_stl
+
+This is a set of backends for pw_sync based on the C++ STL.

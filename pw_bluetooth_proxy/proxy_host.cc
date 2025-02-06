@@ -41,39 +41,55 @@ ProxyHost::ProxyHost(
                         l2cap_channel_manager_,
                         le_acl_credits_to_reserve,
                         br_edr_acl_credits_to_reserve),
-      l2cap_channel_manager_(acl_data_channel_) {}
+      l2cap_channel_manager_(acl_data_channel_) {
+  PW_LOG_INFO(
+      "btproxy: ProxyHost ctor - le_acl_credits_to_reserve: %u, "
+      "br_edr_acl_credits_to_reserve: %u",
+      le_acl_credits_to_reserve,
+      br_edr_acl_credits_to_reserve);
+}
 
-ProxyHost::~ProxyHost() { acl_data_channel_.Reset(); }
+ProxyHost::~ProxyHost() {
+  PW_LOG_INFO("btproxy: ProxyHost dtor");
+  acl_data_channel_.Reset();
+}
 
 void ProxyHost::HandleH4HciFromHost(H4PacketWithH4&& h4_packet) {
-  if (h4_packet.GetH4Type() == emboss::H4PacketType::COMMAND) {
-    HandleCommandFromHost(std::move(h4_packet));
-    return;
+  switch (h4_packet.GetH4Type()) {
+    case emboss::H4PacketType::COMMAND:
+      HandleCommandFromHost(std::move(h4_packet));
+      return;
+    case emboss::H4PacketType::EVENT:
+      HandleEventFromHost(std::move(h4_packet));
+      return;
+    case emboss::H4PacketType::ACL_DATA:
+      HandleAclFromHost(std::move(h4_packet));
+      return;
+    case emboss::H4PacketType::UNKNOWN:
+    case emboss::H4PacketType::SYNC_DATA:
+    case emboss::H4PacketType::ISO_DATA:
+    default:
+      hci_transport_.SendToController(std::move(h4_packet));
+      return;
   }
-
-  if (h4_packet.GetH4Type() == emboss::H4PacketType::EVENT) {
-    HandleEventFromHost(std::move(h4_packet));
-    return;
-  }
-
-  if (h4_packet.GetH4Type() == emboss::H4PacketType::ACL_DATA) {
-    HandleAclFromHost(std::move(h4_packet));
-    return;
-  }
-
-  hci_transport_.SendToController(std::move(h4_packet));
 }
 
 void ProxyHost::HandleH4HciFromController(H4PacketWithHci&& h4_packet) {
-  if (h4_packet.GetH4Type() == emboss::H4PacketType::EVENT) {
-    HandleEventFromController(std::move(h4_packet));
-    return;
+  switch (h4_packet.GetH4Type()) {
+    case emboss::H4PacketType::EVENT:
+      HandleEventFromController(std::move(h4_packet));
+      return;
+    case emboss::H4PacketType::ACL_DATA:
+      HandleAclFromController(std::move(h4_packet));
+      return;
+    case emboss::H4PacketType::UNKNOWN:
+    case emboss::H4PacketType::COMMAND:
+    case emboss::H4PacketType::SYNC_DATA:
+    case emboss::H4PacketType::ISO_DATA:
+    default:
+      hci_transport_.SendToHost(std::move(h4_packet));
+      return;
   }
-  if (h4_packet.GetH4Type() == emboss::H4PacketType::ACL_DATA) {
-    HandleAclFromController(std::move(h4_packet));
-    return;
-  }
-  hci_transport_.SendToHost(std::move(h4_packet));
 }
 
 bool ProxyHost::CheckForActiveFragmenting(AclDataChannel::Direction direction,
@@ -114,7 +130,7 @@ bool ProxyHost::CheckForFragmentedStart(
   if (boundary_flag == emboss::AclDataPacketBoundaryFlag::CONTINUING_FRAGMENT) {
     PW_LOG_INFO("(CID: 0x%X) Received unexpected continuing PDU fragment.",
                 handle);
-    channel->OnFragmentedPduReceived();
+    channel->HandleFragmentedPdu();
     return true;
   }
   const uint16_t l2cap_frame_length =
@@ -124,7 +140,7 @@ bool ProxyHost::CheckForFragmentedStart(
     pw::Status status =
         acl_data_channel_.FragmentedPduStarted(direction, handle);
     PW_CHECK(status.ok());
-    channel->OnFragmentedPduReceived();
+    channel->HandleFragmentedPdu();
     return true;
   }
 
@@ -145,7 +161,7 @@ void ProxyHost::HandleEventFromController(H4PacketWithHci&& h4_packet) {
 
   PW_MODIFY_DIAGNOSTICS_PUSH();
   PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
-  switch (event->event_code_enum().Read()) {
+  switch (event->event_code().Read()) {
     case emboss::EventCode::NUMBER_OF_COMPLETED_PACKETS: {
       acl_data_channel_.HandleNumberOfCompletedPacketsEvent(
           std::move(h4_packet));
@@ -191,7 +207,7 @@ void ProxyHost::HandleEventFromHost(H4PacketWithH4&& h4_packet) {
 
   PW_MODIFY_DIAGNOSTICS_PUSH();
   PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
-  switch (event->event_code_enum().Read()) {
+  switch (event->event_code().Read()) {
     case emboss::EventCode::DISCONNECTION_COMPLETE: {
       acl_data_channel_.ProcessDisconnectionCompleteEvent(
           h4_packet.GetHciSpan());
@@ -252,7 +268,7 @@ void ProxyHost::HandleAclFromController(H4PacketWithHci&& h4_packet) {
     return;
   }
 
-  if (!channel->OnPduReceivedFromController(
+  if (!channel->HandlePduFromController(
           pw::span(acl->payload().BackingStorage().data(),
                    acl->payload().SizeInBytes()))) {
     hci_transport_.SendToHost(std::move(h4_packet));
@@ -307,7 +323,7 @@ void ProxyHost::HandleCommandCompleteEvent(H4PacketWithHci&& h4_packet) {
 
   PW_MODIFY_DIAGNOSTICS_PUSH();
   PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
-  switch (command_complete_event->command_opcode_enum().Read()) {
+  switch (command_complete_event->command_opcode().Read()) {
     case emboss::OpCode::READ_BUFFER_SIZE: {
       Result<emboss::ReadBufferSizeCommandCompleteEventWriter> read_event =
           MakeEmbossWriter<emboss::ReadBufferSizeCommandCompleteEventWriter>(
@@ -367,7 +383,7 @@ void ProxyHost::HandleCommandFromHost(H4PacketWithH4&& h4_packet) {
 
   // TODO: https://pwbug.dev/381902130 - Handle reset on command complete
   // successful instead. Also event to container on reset.
-  if (command->header().opcode_enum().Read() == emboss::OpCode::RESET) {
+  if (command->header().opcode().Read() == emboss::OpCode::RESET) {
     PW_LOG_INFO("Resetting proxy on seeing RESET command.");
     Reset();
   }
@@ -406,11 +422,10 @@ void ProxyHost::HandleAclFromHost(H4PacketWithH4&& h4_packet) {
     return;
   }
 
-  L2capChannel* channel = acl_data_channel_.FindSignalingChannel(
+  L2capChannel* channel = l2cap_channel_manager_.FindChannelByRemoteCid(
       acl->header().handle().Read(), l2cap_header.channel_id().Read());
   if (!channel) {
     hci_transport_.SendToController(std::move(h4_packet));
-
     return;
   }
 
@@ -432,10 +447,11 @@ void ProxyHost::Reset() {
 }
 
 pw::Result<L2capCoc> ProxyHost::AcquireL2capCoc(
+    pw::multibuf::MultiBufAllocator& rx_multibuf_allocator,
     uint16_t connection_handle,
     L2capCoc::CocConfig rx_config,
     L2capCoc::CocConfig tx_config,
-    Function<void(pw::span<uint8_t> payload)>&& receive_fn,
+    Function<void(multibuf::MultiBuf&& payload)>&& receive_fn,
     Function<void(L2capChannelEvent event)>&& event_fn) {
   Status status = acl_data_channel_.CreateAclConnection(connection_handle,
                                                         AclTransportType::kLe);
@@ -449,13 +465,14 @@ pw::Result<L2capCoc> ProxyHost::AcquireL2capCoc(
           connection_handle,
           static_cast<uint16_t>(emboss::L2capFixedCid::LE_U_SIGNALING));
   PW_CHECK(signaling_channel);
-  return L2capCocInternal::Create(l2cap_channel_manager_,
+  return L2capCocInternal::Create(rx_multibuf_allocator,
+                                  l2cap_channel_manager_,
                                   signaling_channel,
                                   connection_handle,
                                   rx_config,
                                   tx_config,
-                                  std::move(receive_fn),
-                                  std::move(event_fn));
+                                  std::move(event_fn),
+                                  /*receive_fn=*/std::move(receive_fn));
 }
 
 pw::Status ProxyHost::SendAdditionalRxCredits(uint16_t connection_handle,
@@ -469,11 +486,13 @@ pw::Status ProxyHost::SendAdditionalRxCredits(uint16_t connection_handle,
 }
 
 pw::Result<BasicL2capChannel> ProxyHost::AcquireBasicL2capChannel(
+    multibuf::MultiBufAllocator& rx_multibuf_allocator,
     uint16_t connection_handle,
     uint16_t local_cid,
     uint16_t remote_cid,
     AclTransportType transport,
-    Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+    OptionalPayloadReceiveCallback&& payload_from_controller_fn,
+    OptionalPayloadReceiveCallback&& payload_from_host_fn,
     Function<void(L2capChannelEvent event)>&& event_fn) {
   Status status =
       acl_data_channel_.CreateAclConnection(connection_handle, transport);
@@ -481,28 +500,60 @@ pw::Result<BasicL2capChannel> ProxyHost::AcquireBasicL2capChannel(
     return pw::Status::Unavailable();
   }
   PW_CHECK(status.ok() || status.IsAlreadyExists());
-  return BasicL2capChannel::Create(
-      /*l2cap_channel_manager=*/l2cap_channel_manager_,
-      /*connection_handle=*/connection_handle,
-      /*transport=*/transport,
-      /*local_cid=*/local_cid,
-      /*remote_cid=*/remote_cid,
-      /*payload_from_controller_fn=*/std::move(payload_from_controller_fn),
-      /*event_fn=*/std::move(event_fn));
+  return BasicL2capChannel::Create(l2cap_channel_manager_,
+                                   &rx_multibuf_allocator,
+                                   /*connection_handle=*/connection_handle,
+                                   /*transport=*/transport,
+                                   /*local_cid=*/local_cid,
+                                   /*remote_cid=*/remote_cid,
+                                   /*payload_from_controller_fn=*/
+                                   std::move(payload_from_controller_fn),
+                                   /*payload_from_host_fn=*/
+                                   std::move(payload_from_host_fn),
+                                   /*event_fn=*/std::move(event_fn));
+}
+
+namespace {
+
+pw::Result<GattNotifyChannel> CreateGattNotifyChannel(
+    AclDataChannel& acl_data_channel,
+    L2capChannelManager& l2cap_channel_manager,
+    uint16_t connection_handle,
+    uint16_t attribute_handle) {
+  Status status = acl_data_channel.CreateAclConnection(connection_handle,
+                                                       AclTransportType::kLe);
+  if (status != OkStatus() && status != Status::AlreadyExists()) {
+    return pw::Status::Unavailable();
+  }
+  return GattNotifyChannelInternal::Create(
+      l2cap_channel_manager, connection_handle, attribute_handle);
+}
+}  // namespace
+
+StatusWithMultiBuf ProxyHost::SendGattNotify(uint16_t connection_handle,
+                                             uint16_t attribute_handle,
+                                             pw::multibuf::MultiBuf&& payload) {
+  // TODO: https://pwbug.dev/369709521 - Migrate clients to channel API.
+  pw::Result<GattNotifyChannel> channel_result =
+      CreateGattNotifyChannel(acl_data_channel_,
+                              l2cap_channel_manager_,
+                              connection_handle,
+                              attribute_handle);
+  if (!channel_result.ok()) {
+    return {channel_result.status(), std::move(payload)};
+  }
+  return channel_result->Write(std::move(payload));
 }
 
 pw::Status ProxyHost::SendGattNotify(uint16_t connection_handle,
                                      uint16_t attribute_handle,
                                      pw::span<const uint8_t> attribute_value) {
   // TODO: https://pwbug.dev/369709521 - Migrate clients to channel API.
-  Status status = acl_data_channel_.CreateAclConnection(connection_handle,
-                                                        AclTransportType::kLe);
-  if (status != OkStatus() && status != Status::AlreadyExists()) {
-    return pw::Status::Unavailable();
-  }
   pw::Result<GattNotifyChannel> channel_result =
-      GattNotifyChannelInternal::Create(
-          l2cap_channel_manager_, connection_handle, attribute_handle);
+      CreateGattNotifyChannel(acl_data_channel_,
+                              l2cap_channel_manager_,
+                              connection_handle,
+                              attribute_handle);
   if (!channel_result.ok()) {
     return channel_result.status();
   }
@@ -510,11 +561,12 @@ pw::Status ProxyHost::SendGattNotify(uint16_t connection_handle,
 }
 
 pw::Result<RfcommChannel> ProxyHost::AcquireRfcommChannel(
+    multibuf::MultiBufAllocator& rx_multibuf_allocator,
     uint16_t connection_handle,
     RfcommChannel::Config rx_config,
     RfcommChannel::Config tx_config,
     uint8_t channel_number,
-    Function<void(pw::span<uint8_t> payload)>&& receive_fn,
+    Function<void(multibuf::MultiBuf&& payload)>&& payload_from_controller_fn,
     Function<void(L2capChannelEvent event)>&& event_fn) {
   Status status = acl_data_channel_.CreateAclConnection(
       connection_handle, AclTransportType::kBrEdr);
@@ -522,33 +574,12 @@ pw::Result<RfcommChannel> ProxyHost::AcquireRfcommChannel(
     return pw::Status::Unavailable();
   }
   return RfcommChannel::Create(l2cap_channel_manager_,
+                               rx_multibuf_allocator,
                                connection_handle,
                                rx_config,
                                tx_config,
                                channel_number,
-                               std::move(receive_fn),
-                               std::move(event_fn));
-}
-
-pw::Result<RfcommChannel> ProxyHost::AcquireRfcommChannel(
-    uint16_t connection_handle,
-    RfcommChannel::Config rx_config,
-    RfcommChannel::Config tx_config,
-    uint8_t channel_number,
-    Function<void(pw::span<uint8_t> payload)>&& receive_fn,
-    Function<void()>&&,
-    Function<void(L2capChannelEvent event)>&& event_fn) {
-  Status status = acl_data_channel_.CreateAclConnection(
-      connection_handle, AclTransportType::kBrEdr);
-  if (status != OkStatus() && status != Status::AlreadyExists()) {
-    return pw::Status::Unavailable();
-  }
-  return RfcommChannel::Create(l2cap_channel_manager_,
-                               connection_handle,
-                               rx_config,
-                               tx_config,
-                               channel_number,
-                               std::move(receive_fn),
+                               std::move(payload_from_controller_fn),
                                std::move(event_fn));
 }
 

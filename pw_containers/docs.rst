@@ -3,6 +3,9 @@
 =============
 pw_containers
 =============
+.. pigweed-module::
+   :name: pw_containers
+
 The ``pw_containers`` module provides embedded-friendly container classes.
 
 ----------
@@ -235,7 +238,9 @@ Notably, ``pw::IntrusiveForwardList<T>::end()`` is constant complexity (i.e.
 
 Size report
 ===========
-.. include:: intrusive_list_size_report
+.. TODO: b/388905812 - Re-enable the size report.
+.. .. include:: intrusive_list_size_report
+.. include:: ../size_report_notice
 
 .. _module-pw_containers-intrusive_set:
 

@@ -80,16 +80,15 @@ fuchsia_cc_test(
         ":controllers",
         "//pw_bluetooth_sapphire/fuchsia/host/fidl:fake_vendor_server",
         "//pw_bluetooth_sapphire/host/testing",
+        "//pw_bluetooth_sapphire/host/testing:gtest_helpers",
         "//pw_bluetooth_sapphire/host/testing:gtest_main",
         "//pw_bluetooth_sapphire/host/testing:loop_fixture",
-        "//pw_bluetooth_sapphire/host/testing:test_helpers",
     ],
 )
 
 fuchsia_unittest_package(
     name = "test_pkg",
     package_name = "controllers_tests",
-    testonly = True,
     fuchsia_api_level = FUCHSIA_API_LEVEL,
     unit_tests = [
         ":controllers_test",

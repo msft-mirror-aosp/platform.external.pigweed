@@ -14,7 +14,8 @@
 
 #include "pw_bluetooth_sapphire/internal/host/sm/pairing_channel.h"
 
-#include "pw_bluetooth_sapphire/internal/host/common/assert.h"
+#include <pw_assert/check.h>
+
 #include "pw_bluetooth_sapphire/internal/host/common/byte_buffer.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/channel.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/scoped_channel.h"
@@ -33,7 +34,7 @@ PairingChannel::PairingChannel(l2cap::Channel::WeakPtr chan,
   } else if (chan_->link_type() == bt::LinkType::kACL) {
     PW_CHECK(chan_->id() == l2cap::kSMPChannelId);
   } else {
-    BT_PANIC("unsupported link type for SMP!");
+    PW_CRASH("unsupported link type for SMP!");
   }
   auto self = weak_self_.GetWeakPtr();
   chan_->Activate(

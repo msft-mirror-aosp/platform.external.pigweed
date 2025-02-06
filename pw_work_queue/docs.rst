@@ -3,12 +3,11 @@
 =============
 pw_work_queue
 =============
+.. pigweed-module::
+   :name: pw_work_queue
+
 The ``pw_work_queue`` module contains utilities for deferring work to be
 executed by another thread.
-
-.. warning::
-
-   This module is still under construction; the API is not yet stable.
 
 -------
 Example

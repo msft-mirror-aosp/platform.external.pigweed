@@ -14,7 +14,10 @@
 
 load("//pw_build:pw_cc_binary.bzl", "pw_cc_binary")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -155,6 +158,15 @@ pw_cc_binary(
         "//pw_allocator:first_fit",
         "//pw_allocator:size_reporter",
         "//pw_allocator:tracking_allocator",
+    ],
+)
+
+pw_cc_binary(
+    name = "tlsf_allocator",
+    srcs = ["tlsf_allocator.cc"],
+    deps = [
+        "//pw_allocator:size_reporter",
+        "//pw_allocator:tlsf_allocator",
     ],
 )
 

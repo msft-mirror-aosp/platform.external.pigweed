@@ -14,10 +14,11 @@
 
 #include "pw_bluetooth_sapphire/internal/host/gap/pairing_state_manager.h"
 
+#include <pw_assert/check.h>
+
 #include <memory>
 #include <utility>
 
-#include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/legacy_pairing_state.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/constants.h"
@@ -60,7 +61,7 @@ PairingStateManager::PairingStateManager(
     // didn't have until after the connection was complete (e.g. link, auth_cb,
     // status_cb)
     legacy_pairing_state_->BuildEstablishedLink(
-        link_, std::move(auth_cb_), std::move(status_cb_));
+        link_, auth_cb_.share(), status_cb_.share());
     legacy_pairing_state_->set_link_ltk();
 
     // We should also check that |peer| and |outgoing_connection| are unchanged
@@ -202,8 +203,8 @@ void PairingStateManager::CreateOrUpdatePairingState(
                                                    std::move(pairing_delegate),
                                                    link_,
                                                    outgoing_connection_,
-                                                   std::move(auth_cb_),
-                                                   std::move(status_cb_));
+                                                   auth_cb_.share(),
+                                                   status_cb_.share());
 
     secure_simple_pairing_state_->AttachInspect(
         inspect_node_, kInspectSecureSimplePairingStateNodeName);
@@ -214,8 +215,8 @@ void PairingStateManager::CreateOrUpdatePairingState(
                                              std::move(pairing_delegate),
                                              link_,
                                              outgoing_connection_,
-                                             std::move(auth_cb_),
-                                             std::move(status_cb_));
+                                             auth_cb_.share(),
+                                             status_cb_.share());
 
     legacy_pairing_state_->AttachInspect(inspect_node_,
                                          kInspectLegacyPairingStateNodeName);

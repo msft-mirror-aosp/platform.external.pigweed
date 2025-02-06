@@ -15,6 +15,7 @@
 #include "pw_bluetooth_sapphire/internal/host/common/advertising_data.h"
 
 #include <cpp-string/string_printf.h>
+#include <pw_assert/check.h>
 #include <pw_bytes/endian.h>
 #include <pw_preprocessor/compiler.h>
 #include <pw_string/utf_codecs.h>
@@ -22,7 +23,6 @@
 #include <string>
 #include <type_traits>
 
-#include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/byte_buffer.h"
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
 #include "pw_bluetooth_sapphire/internal/host/common/to_string.h"
@@ -44,7 +44,7 @@ DataType ServiceUuidTypeForUuidSize(UUIDElemSize size, bool complete) {
       return complete ? DataType::kComplete128BitServiceUuids
                       : DataType::kIncomplete128BitServiceUuids;
     default:
-      BT_PANIC(
+      PW_CRASH(
           "called ServiceUuidTypeForUuidSize with unknown UUIDElemSize %du",
           size);
   }
@@ -59,7 +59,7 @@ DataType ServiceDataTypeForUuidSize(UUIDElemSize size) {
     case UUIDElemSize::k128Bit:
       return DataType::kServiceData128Bit;
     default:
-      BT_PANIC(
+      PW_CRASH(
           "called ServiceDataTypeForUuidSize with unknown UUIDElemSize %du",
           size);
   };
@@ -71,7 +71,7 @@ size_t EncodedServiceDataSize(const UUID& uuid, const BufferView data) {
 
 // clang-format off
 // https://www.bluetooth.com/specifications/assigned-numbers/uri-scheme-name-string-mapping
-const char* kUriSchemes[] = {"aaa:", "aaas:", "about:", "acap:", "acct:", "cap:", "cid:",
+constexpr const char* kUriSchemes[] = {"aaa:", "aaas:", "about:", "acap:", "acct:", "cap:", "cid:",
         "coap:", "coaps:", "crid:", "data:", "dav:", "dict:", "dns:", "file:", "ftp:", "geo:",
         "go:", "gopher:", "h323:", "http:", "https:", "iax:", "icap:", "im:", "imap:", "info:",
         "ipp:", "ipps:", "iris:", "iris.beep:", "iris.xpc:", "iris.xpcs:", "iris.lwz:", "jabber:",
@@ -102,7 +102,7 @@ std::string EncodeUri(const std::string& uri) {
   for (uint32_t i = 0; i < kUriSchemesSize; i++) {
     const char* scheme = kUriSchemes[i];
     size_t scheme_len = strlen(scheme);
-    if (std::equal(scheme, scheme + scheme_len, uri.begin())) {
+    if (std::strncmp(uri.c_str(), scheme, scheme_len) == 0) {
       const pw::Result<pw::utf8::EncodedCodePoint> encoded_scheme =
           pw::utf8::EncodeCodePoint(i + 2);
       PW_DCHECK(encoded_scheme.ok());

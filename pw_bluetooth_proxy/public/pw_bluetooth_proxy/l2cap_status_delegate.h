@@ -30,8 +30,10 @@ struct L2capChannelConnectionInfo {
   Direction direction;
   uint16_t psm;
   uint16_t connection_handle;
-  uint16_t source_cid;
-  uint16_t destination_cid;
+  // Otherwise known as source_cid
+  uint16_t remote_cid;
+  // Otherwise known as destination_cid
+  uint16_t local_cid;
 };
 
 class L2capStatusDelegate

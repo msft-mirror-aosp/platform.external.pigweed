@@ -17,7 +17,6 @@
 #include "pw_containers/intrusive_list.h"
 #include "pw_multibuf/allocator.h"
 #include "pw_multibuf/multibuf.h"
-#include "pw_sync/interrupt_spin_lock.h"
 
 namespace pw::multibuf {
 
@@ -75,6 +74,10 @@ class SimpleAllocator : public MultiBufAllocator {
       size_t min_size,
       size_t desired_size,
       ContiguityRequirement contiguity_requirement) final;
+
+  std::optional<size_t> DoGetBackingCapacity() final {
+    return data_area_.size();
+  }
 
   /// Allocates a contiguous buffer of exactly ``size`` bytes.
   pw::Result<MultiBuf> InternalAllocateContiguous(size_t size)
@@ -151,7 +154,7 @@ class SimpleAllocator : public MultiBufAllocator {
     }
   }
 
-  pw::sync::InterruptSpinLock lock_;
+  pw::sync::Mutex lock_;
   IntrusiveList<internal::LinkedRegionTracker> regions_ PW_GUARDED_BY(lock_);
   pw::allocator::Allocator& metadata_alloc_;
   const ByteSpan data_area_;

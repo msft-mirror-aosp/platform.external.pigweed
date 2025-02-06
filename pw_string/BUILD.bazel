@@ -16,7 +16,10 @@ load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -24,6 +27,7 @@ cc_library(
     name = "config",
     hdrs = ["public/pw_string/internal/config.h"],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [":config_override"],
 )
 
@@ -53,6 +57,7 @@ cc_library(
         ":to_string",
         ":util",
         "//pw_preprocessor",
+        "//pw_span",
         "//pw_status",
     ],
 )
@@ -78,6 +83,7 @@ cc_library(
         "public/pw_string/string.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = ["//pw_assert"],
 )
 
@@ -94,6 +100,7 @@ cc_library(
         ":format",
         ":util",
         "//pw_result",
+        "//pw_span",
         "//pw_status",
         "//third_party/fuchsia:stdcompat",
     ],

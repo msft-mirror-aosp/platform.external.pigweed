@@ -24,27 +24,49 @@ py_library(
     srcs = [
         "pw_watch/__init__.py",
         "pw_watch/argparser.py",
+        "pw_watch/common.py",
         "pw_watch/debounce.py",
-        "pw_watch/watch.py",
-        "pw_watch/watch_app.py",
+        "pw_watch/run.py",
     ],
     imports = ["."],
     deps = [
-        "//pw_build/py:pw_project_builder",
         "//pw_cli/py:pw_cli",
-        "//pw_config_loader/py:pw_config_loader",
-        "//pw_console/py:pw_console",
-        "@python_packages//prompt_toolkit",
         "@python_packages//watchdog",
     ],
 )
 
 pw_py_binary(
     name = "watch",
-    srcs = ["pw_watch/watch.py"],
+    srcs = [
+        "pw_watch/watch.py",
+        "pw_watch/watch_app.py",
+    ],
     deps = [
         ":pw_watch",
+        "//pw_build/py:pw_project_builder",
+        "//pw_config_loader/py:pw_config_loader",
+        "//pw_console/py:pw_console",
+        "@python_packages//prompt_toolkit",
     ],
+)
+
+pw_py_binary(
+    name = "bazel",
+    srcs = ["pw_watch/run.py"],
+    args = [
+        "--keep-going",
+        "--prefix",
+        "bazelisk",
+        "--pw-watch-commands",
+    ],
+    main = "pw_watch/run.py",
+    deps = [":pw_watch"],
+)
+
+pw_py_binary(
+    name = "run",
+    srcs = ["pw_watch/run.py"],
+    deps = [":pw_watch"],
 )
 
 pw_py_test(

@@ -162,6 +162,9 @@ enum OpCode:
   USER_CONFIRMATION_REQUEST_REPLY                              = 0x042C
     -- User Confirmation Request Reply Command (v2.1 + EDR) (BR/EDR)
 
+  USER_CONFIRMATION_REQUEST_NEGATIVE_REPLY                     = 0x042D
+    -- User Confirmation Request Negative Reply Command (v2.1 + EDR) (BR/EDR)
+
   USER_PASSKEY_REQUEST_REPLY                                   = 0x042E
     -- User Passkey Request Reply Command (v2.1 + EDR) (BR/EDR)
 
@@ -170,6 +173,33 @@ enum OpCode:
 
   IO_CAPABILITY_REQUEST_NEGATIVE_REPLY                         = 0x0434
     -- IO Capability Request Negative Reply Command (v2.1 + EDR) (BR/EDR)
+
+  ENHANCED_SETUP_SYNCHRONOUS_CONNECTION                        = 0x043D
+    -- Enhanced Setup Synchronous Connection Command (CSA2) (BR/EDR)
+
+  ENHANCED_ACCEPT_SYNCHRONOUS_CONNECTION_REQUEST               = 0x043E
+    -- Enhanced Accept Synchronous Connection Request Command (CSA2) (BR/EDR)
+
+  TRUNCATED_PAGE                                               = 0x043F
+    -- Truncated Page Command (CSA4) (BR/EDR)
+
+  TRUNCATED_PAGE_CANCEL                                        = 0x0440
+    -- Truncated Page Cancel Command (CSA4) (BR/EDR)
+
+  SET_CONNECTIONLESS_PERIPHERAL_BROADCAST                      = 0x0441
+    -- Set Connectionless Peripheral Broadcast Command (CSA4) (BR/EDR)
+
+  SET_CONNECTIONLESS_PERIPHERAL_BROADCAST_RECEIVE              = 0x0442
+    -- Set Connectionless Peripheral Broadcast Receive Command (CSA4) (BR/EDR)
+
+  START_SYNCHRONIZATION_TRAIN                                  = 0x0443
+    -- Start Synchronization Train Command (CSA4) (BR/EDR)
+
+  RECEIVE_SYNCHRONIZATION_TRAIN                                = 0x0444
+    -- Receive Synchronization Train Command (CSA4) (BR/EDR)
+
+  REMOTE_OOB_EXTENDED_DATA_REQUEST_REPLY                       = 0x0445
+    -- Remote OOB Extended Data Request Reply Command (4.1) (BR/EDR)
 
   ### Link Policy Commands - Core Spec v5.4, Part E, Section 7.32 (OGF 0x02)
 
@@ -208,14 +238,47 @@ enum OpCode:
   READ_INQUIRY_SCAN_ACTIVITY                                   = 0x0C1D
     -- Read Inquiry Scan Activity Command (v1.1) (BR/EDR)
 
-  READ_CLASS_OFDEVICE                                          = 0x0C23
+  READ_CLASS_OF_DEVICE                                         = 0x0C23
     -- Read Class of Device Command (v1.1) (BR/EDR)
 
-  WRITE_CLASS_OFDEVICE                                         = 0x0C24
+  WRITE_CLASS_OF_DEVICE                                        = 0x0C24
     -- Write Class Of Device Command (v1.1) (BR/EDR)
 
   READ_TRANSMIT_POWER_LEVEL                                    = 0x0C2D
     -- Read Transmit Transmit Power Level Command (v1.1) (BR/EDR & LE)
+
+  READ_SYNCHRONOUS_FLOW_CONTROL_ENABLE                         = 0x0C2E
+    -- Read Synchronous Flow Control Enable Command (v1.1) (BR/EDR)
+
+  WRITE_SYNCHRONOUS_FLOW_CONTROL_ENABLE                        = 0x0C2F
+    -- Write Synchronous Flow Control Enable Command (v1.1) (BR/EDR)
+
+  SET_CONTROLLER_TO_HOST_FLOW_CONTROL                          = 0x0C31
+    -- Set Controller To Host Flow Control Command () ()
+
+  HOST_BUFFER_SIZE                                             = 0x0C33
+    -- Host Buffer Size Command () ()
+
+  HOST_NUMBER_OF_COMPLETED_PACKETS                             = 0x0C35
+    -- Host Number Of Completed Packets Command () ()
+
+  READ_LINK_SUPERVISION_TIMEOUT                                = 0x0C36
+    -- Read Link Supervision Timeout Command () ()
+
+  WRITE_LINK_SUPERVISION_TIMEOUT                               = 0x0C37
+    -- Write Link Supervision Timeout Command () ()
+
+  READ_NUMBER_OF_SUPPORTED_IAC                                 = 0x0C38
+    -- Read Number Of Supported IAC Command () ()
+
+  READ_CURRENT_IAC_LAP                                         = 0x0C39
+    -- Read Current IAC LAP Command () ()
+
+  WRITE_CURRENT_IAC_LAP                                        = 0x0C3A
+    -- Write Current IAC LAP Command () ()
+
+  SET_AFH_HOST_CHANNEL_CLASSIFICATION                          = 0x0C3F
+    -- Set AFH Host Channel Classification Command () ()
 
   READ_INQUIRY_SCAN_TYPE                                       = 0x0C42
     -- Read Inquiry Scan Type (v1.2) (BR/EDR)
@@ -234,6 +297,12 @@ enum OpCode:
 
   WRITE_PAGE_SCAN_TYPE                                         = 0x0C47
     -- Write Page Scan Type (v1.2) (BR/EDR)
+
+  READ_EXTENDED_INQUIRY_RESPONSE                               = 0x0C51
+    -- Read Extended Inquiry Response (v2.1 + EDR) (BR/EDR)
+
+  WRITE_EXTENDED_INQUIRY_RESPONSE                              = 0x0C52
+    -- Write Extended Inquiry Response (v2.1 + EDR) (BR/EDR)
 
   READ_SIMPLE_PAIRING_MODE                                     = 0x0C55
     -- Read Simple Pairing Mode (v2.1 + EDR) (BR/EDR)
@@ -255,6 +324,45 @@ enum OpCode:
 
   WRITE_LE_HOST_SUPPORT                                        = 0x0C6D
     -- Write LE Host Support Command (v4.0) (BR/EDR)
+
+  SET_MWS_CHANNEL_PARAMETERS                                   = 0x0C6E
+    -- Set MWS Channel Parameters Command (CSA3)
+
+  SET_EXTERNAL_FRAME_CONFIGURATION                             = 0x0C6F
+    -- Set External Frame Configuration Command (CSA3)
+
+  SET_MWS_SIGNALING                                            = 0x0C70
+    -- Set MWS Signaling Command (CSA)
+
+  SET_MWS_TRANSPORT_LAYER                                      = 0x0C71
+    -- Set MWS Transport Layer Command (CSA3)
+
+  SET_MWS_SCAN_FREQUENCY_TABLE                                 = 0x0C72
+    -- Set MWS Scan Frequency Table Command (CSA3)
+
+  SET_MWS_PATTERN_CONFIGURATION                                = 0x0C73
+    -- Set MWS_PATTERN Configuration Command (CSA3) (BR/EDR)
+
+  SET_RESERVED_LT_ADDR                                         = 0x0C74
+    -- Set Reserved LT_ADDR Command (CSA4) (BR/EDR)
+
+  DELETE_RESERVED_LT_ADDR                                      = 0x0C75
+    -- Delete Reserved LT_ADDR Command (CSA4) (BR/EDR)
+
+  SET_CONNECTIONLESS_PERIPHERAL_BROADCAST_DATA                 = 0x0C76
+    -- Set Connectionless Peripheral Broadcast Data Command (CSA4) (BR/EDR)
+
+  READ_SYNCHRONIZATION_TRAIN_PARAMETERS                        = 0x0C77
+    -- Read Synchronization Train Parameters Command (CSA4) (BR/EDR)
+
+  WRITE_SYNCHRONIZATION_TRAIN_PARAMETERS                       = 0x0C78
+    -- Write Synchronization Train Parameters Command (CSA4) (BR/EDR)
+
+  READ_SECURE_CONNECTIONS_HOST_SUPPORT                         = 0x0C79
+    -- Read Secure Connections Host Support Command (v4.1) (BR/EDR)
+
+  WRITE_SECURE_CONNECTIONS_HOST_SUPPORT                        = 0x0C7A
+    -- Write Secure Connections Host Support Command (v4.1) (BR/EDR)
 
   ### Informational Parameters - Core Spec v5.0 Vol 2, Part E, Section 7.4 (OGF 0x04)
 
@@ -439,8 +547,23 @@ enum OpCode:
   LE_CLEAR_ADVERTISING_SETS                                    = 0x203D
     -- LE Clear Advertising Sets Command (v5.0) (LE)
 
+  LE_SET_PERIODIC_ADVERTISING_PARAMETERS_V1                    = 0x203E
+    -- LE Set Periodic Advertising Parameters Command [v1] (v5.0) (LE)
+
+  LE_SET_PERIODIC_ADVERTISING_DATA                             = 0x203F
+    -- LE Set Periodic Advertising Data Command (v5.0) (LE)
+
+  LE_SET_PERIODIC_ADVERTISING_ENABLE                           = 0x2040
+    -- LE Set Periodic Advertising Enable Command (v5.0) (LE)
+
+  LE_SET_EXTENDED_SCAN_PARAMETERS                              = 0x2041
+    -- LE Set Extended Scan Parameters Command (v5.0) (LE)
+
   LE_SET_EXTENDED_SCAN_ENABLE                                  = 0x2042
     -- LE Set Extended Scan Enable Command (v5.0) (LE)
+
+  LE_EXTENDED_CREATE_CONNECTION_V1                             = 0x2043
+    -- LE Extended Create Connection Command [v1] (v5.0) (LE)
 
   LE_READ_TRANSMIT_POWER                                       = 0x204B
     -- LE Read Transmit Power Command (v5.0) (LE)
@@ -540,6 +663,47 @@ enum OpCode:
 
   LE_SET_EXTENDED_ADVERTISING_PARAMETERS_V2                    = 0x207F
     -- LE Set Extended Advertising Parameters Command (v5.4) (LE)
+
+  LE_EXTENDED_CREATE_CONNECTION_V2                             = 0x2085
+    -- LE Extended Create Connection Command [v2] (v5.4) (LE)
+
+  LE_SET_PERIODIC_ADVERTISING_PARAMETERS_V2                    = 0x2086
+    -- LE Set Periodic Advertising Parameters Command [v2] (v5.4) (LE)
+
+  ### Android Vendor Commands (OGF 0x3F)
+  ### See https://source.android.com/devices/bluetooth/hci_requirements
+
+  ANDROID_LE_GET_VENDOR_CAPABILITIES                           = 0xFD53
+    -- LE Get Vendor Capabilities Command
+
+  ANDROID_LE_MULTI_ADVT                                        = 0xFD54
+    -- Multi-Advertiser Command
+    -- Deprecated in Google feature spec v0.98 and higher.
+    -- Use the standard in the Bluetooth Core 5.0 Specification instead.
+
+  ANDROID_LE_BATCH_SCAN                                        = 0xFD56
+    -- LE Batch Scan Command
+
+  ANDROID_APCF                                                 = 0xFD57
+    -- LE APCF (Advertising Packet Content Filter) Command
+
+  ANDROID_LE_GET_CONTROLLER_ACTIVITY_ENERGY_INFO               = 0xFD59
+    -- LE Get Controller Activity Energy Info Command
+
+  ANDROID_LE_EXTENDED_SET_SCAN_PARAMETERS                      = 0xFD5A
+    -- LE Extended Set Scan Parameters Command
+
+  ANDROID_GET_CONTROLLER_DEBUG_INFO                            = 0xFD5B
+    -- Get Controller Debug Info Command
+
+  ANDROID_A2DP_HARDWARE_OFFLOAD                                = 0xFD5D
+    -- A2DP Hardware Offload Support
+
+  ANDROID_BLUETOOTH_QUALITY_REPORT                             = 0xFD5E
+    -- Bluetooth Quality Report Command
+
+  ANDROID_DYNAMIC_AUDIO_BUFFER                                 = 0xFD5F
+    -- Dynamic Audio Buffer Command
 
 
 enum EventCode:
@@ -1184,35 +1348,19 @@ bits OpCodeBits:
 
 struct CommandHeader:
   -- HCI Command packet header.
-
-  0     [+2]  OpCode      opcode_enum
+  0     [+2]  OpCode      opcode
     -- Full HCI command opcode.
 
   0     [+2]  OpCodeBits  opcode_bits
-    # Note that this field overlaps opcode_enum field.
     -- Access opcode ogf or ocf sub-fields.
-
-  let opcode = opcode_bits
-  # TODO: https://pwbug.dev/338068316 - Once Fuchsia has transitioned off using
-  # opcode for OpCodeBits, opcode_enum will be renamed to opcode and this alias
-  # will be dropped.
 
   $next [+1]  UInt        parameter_total_size
 
 
 struct EventHeader:
   -- HCI Event packet header.
-
-  0     [+1]  EventCode  event_code_enum
-
+  0     [+1]  EventCode  event_code
   0     [+1]  UInt       event_code_uint
-  # Note that this field overlaps the event_code_enum field.
-
-  let event_code = event_code_uint
-  # TODO: https://pwbug.dev/338068316 - Once Fuchsia has transitioned off using
-  # event_code for UInt, event_code_enum will be renamed to event_code and
-  # this event_code_uint alias will be dropped.
-
   $next [+1]  UInt       parameter_total_size
 
 
@@ -1220,20 +1368,13 @@ struct CommandCompleteEvent:
   -- Core Spec v5.3 Vol 4, Part E, Section 7.7.14
   -- EventHeader.opcode == 0xe
   let hdr_size = EventHeader.$size_in_bytes
-  0          [+hdr_size]  EventHeader  header
-  hdr_size   [+1]         UInt         num_hci_command_packets
-  hdr_size+1 [+2]         OpCode       command_opcode_enum
-  hdr_size+1 [+2]         OpCodeBits   command_opcode_bits
-  hdr_size+1 [+2]         UInt         command_opcode_uint
-    # Note that this field overlaps command_opcode_enum field.
-    -- Access opcode ogf or ocf sub-fields.
-
-  let command_opcode = command_opcode_bits
-  # TODO: https://pwbug.dev/338068316 - Once Fuchsia has transitioned off using
-  # command_opcode for OpCodeBits, command_opcode_enum will be renamed to
-  # command_opcode and this alias will be dropped.
   let event_fixed_size = $size_in_bytes-hdr_size
   let return_parameters_size = header.parameter_total_size-event_fixed_size
+  0          [+hdr_size]  EventHeader  header
+  hdr_size   [+1]         UInt         num_hci_command_packets
+  hdr_size+1 [+2]         OpCode       command_opcode
+  hdr_size+1 [+2]         OpCodeBits   command_opcode_bits
+  hdr_size+1 [+2]         UInt         command_opcode_uint
 
 
 struct VendorDebugEvent:

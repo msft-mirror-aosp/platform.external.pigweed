@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
@@ -25,7 +26,10 @@ load(
 )
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -39,9 +43,11 @@ cc_library(
     strip_include_prefix = "public",
     deps = [
         "//pw_assert",
-        "//pw_containers",
+        "//pw_containers:intrusive_list",
         "//pw_log",
+        "//pw_preprocessor",
         "//pw_span",
+        "//pw_tokenizer",
         "//pw_tokenizer:base64",
     ],
 )
@@ -61,6 +67,7 @@ cc_library(
 cc_library(
     name = "metric_walker",
     hdrs = ["pw_metric_private/metric_walker.h"],
+    tags = ["noclangtidy"],
     visibility = ["//visibility:private"],
     deps = [
         ":metric",

@@ -14,7 +14,7 @@
 """Extension for declaring Pigweed Rust toolchains."""
 
 load("//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl", "cipd_repository")
-load(":templates.bzl", "rust_analyzer_toolchain_template", "rust_toolchain_template", "toolchain_template")
+load(":templates.bzl", "rust_analyzer_toolchain_template", "rust_toolchain_no_prebuilt_template", "rust_toolchain_template", "rustfmt_toolchain_template", "toolchain_template")
 load(":toolchains.bzl", "CHANNELS", "EXTRA_TARGETS", "HOSTS")
 
 def _module_cipd_tag(module):
@@ -82,12 +82,14 @@ def _pw_rust_impl(ctx):
         )
 
     for target in EXTRA_TARGETS:
-        cipd_repository(
-            name = "rust_toolchain_target_{}_{}".format(target["triple"], target["cpu"]),
-            build_file = "//pw_toolchain/rust:rust_stdlib.BUILD",
-            path = "fuchsia/third_party/rust/target/{}".format(target["triple"]),
-            tag = cipd_tag,
-        )
+        build_std = target.get("build_std", False)
+        if not build_std:
+            cipd_repository(
+                name = "rust_toolchain_target_{}_{}".format(target["triple"], target["cpu"]),
+                build_file = "//pw_toolchain/rust:rust_stdlib.BUILD",
+                path = "fuchsia/third_party/rust/target/{}".format(target["triple"]),
+                tag = cipd_tag,
+            )
 
     _toolchain_repository_hub(name = "pw_rust_toolchains")
 
@@ -145,18 +147,32 @@ def _pw_rust_toolchain(
         target_compatible_with,
         target_settings,
         extra_rustc_flags,
-        analyzer_toolchain_name = None):
-    build_file = rust_toolchain_template(
-        name = name,
-        exec_compatible_with = exec_compatible_with,
-        target_compatible_with = target_compatible_with,
-        dylib_ext = dylib_ext,
-        target_repo = target_repo,
-        toolchain_repo = toolchain_repo,
-        exec_triple = exec_triple,
-        target_triple = target_triple,
-        extra_rustc_flags = extra_rustc_flags,
-    )
+        analyzer_toolchain_name = None,
+        rustfmt_toolchain_name = None,
+        build_std = False):
+    if build_std:
+        build_file = rust_toolchain_no_prebuilt_template(
+            name = name,
+            exec_compatible_with = exec_compatible_with,
+            target_compatible_with = target_compatible_with,
+            dylib_ext = dylib_ext,
+            toolchain_repo = toolchain_repo,
+            exec_triple = exec_triple,
+            target_triple = target_triple,
+            extra_rustc_flags = extra_rustc_flags,
+        )
+    else:
+        build_file = rust_toolchain_template(
+            name = name,
+            exec_compatible_with = exec_compatible_with,
+            target_compatible_with = target_compatible_with,
+            dylib_ext = dylib_ext,
+            target_repo = target_repo,
+            toolchain_repo = toolchain_repo,
+            exec_triple = exec_triple,
+            target_triple = target_triple,
+            extra_rustc_flags = extra_rustc_flags,
+        )
 
     build_file += toolchain_template(
         name = name,
@@ -174,16 +190,26 @@ def _pw_rust_toolchain(
             target_settings = target_settings,
         )
 
+    if rustfmt_toolchain_name:
+        build_file += rustfmt_toolchain_template(
+            name = rustfmt_toolchain_name,
+            toolchain_repo = toolchain_repo,
+            exec_compatible_with = exec_compatible_with,
+            target_compatible_with = target_compatible_with,
+            target_settings = target_settings,
+        )
+
     return build_file
 
 def _BUILD_for_toolchain_repo():
     # Declare rust toolchains
-    build_file = """load("@rules_rust//rust:toolchain.bzl", "rust_analyzer_toolchain", "rust_toolchain")\n"""
+    build_file = """load("@rules_rust//rust:toolchain.bzl", "rust_analyzer_toolchain", "rustfmt_toolchain", "rust_toolchain")\n"""
     for channel in CHANNELS:
         for host in HOSTS:
             build_file += _pw_rust_toolchain(
                 name = "host_rust_toolchain_{}_{}_{}".format(host["os"], host["cpu"], channel["name"]),
                 analyzer_toolchain_name = "host_rust_analyzer_toolchain_{}_{}_{}".format(host["os"], host["cpu"], channel["name"]),
+                rustfmt_toolchain_name = "host_rustfmt_toolchain_{}_{}_{}".format(host["os"], host["cpu"], channel["name"]),
                 exec_compatible_with = [
                     "@platforms//cpu:{}".format(host["cpu"]),
                     "@platforms//os:{}".format(host["os"]),
@@ -218,6 +244,7 @@ def _BUILD_for_toolchain_repo():
                     ],
                     target_settings = channel["target_settings"],
                     extra_rustc_flags = channel["extra_rustc_flags"],
+                    build_std = target.get("build_std", False),
                 )
     return build_file
 

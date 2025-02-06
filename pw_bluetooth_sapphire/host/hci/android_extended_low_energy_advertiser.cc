@@ -14,6 +14,7 @@
 
 #include "pw_bluetooth_sapphire/internal/host/hci/android_extended_low_energy_advertiser.h"
 
+#include <pw_assert/check.h>
 #include <pw_bluetooth/hci_android.emb.h>
 #include <pw_bluetooth/hci_common.emb.h>
 
@@ -213,7 +214,7 @@ AndroidExtendedLowEnergyAdvertiser::BuildSetScanResponse(
   view.scan_resp_length().Write(scan_rsp_length);
   view.adv_handle().Write(handle.value());
 
-  MutableBufferView data_view(view.adv_data().BackingStorage().data(),
+  MutableBufferView data_view(view.scan_resp_data().BackingStorage().data(),
                               scan_rsp_length);
   data.WriteBlock(&data_view, std::nullopt);
 

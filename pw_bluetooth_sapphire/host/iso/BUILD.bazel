@@ -12,9 +12,12 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@pigweed//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 cc_library(
     name = "iso",
@@ -29,12 +32,19 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/iso/iso_stream.h",
         "public/pw_bluetooth_sapphire/internal/host/iso/iso_stream_manager.h",
     ],
-    strip_include_prefix = "public",
-    deps = [
-        "//pw_bluetooth_sapphire:public",
-        "//pw_bluetooth_sapphire/host/common",
+    implementation_deps = [
         "//pw_bluetooth_sapphire/host/hci",
+    ],
+    strip_include_prefix = "public",
+    tags = ["noclangtidy"],
+    deps = [
+        "//pw_bluetooth:emboss_hci_data",
+        "//pw_bluetooth:emboss_hci_events",
+        "//pw_bluetooth_sapphire/host/common",
+        "//pw_bluetooth_sapphire/host/hci-spec",
         "//pw_bluetooth_sapphire/host/transport",
+        "//pw_function",
+        "//pw_span",
     ],
 )
 
@@ -45,6 +55,7 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/iso/fake_iso_stream.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         ":iso",
     ],
@@ -62,5 +73,6 @@ pw_cc_test(
     deps = [
         ":iso",
         "//pw_bluetooth_sapphire/host/testing",
+        "//pw_bluetooth_sapphire/host/testing:mock_controller",
     ],
 )

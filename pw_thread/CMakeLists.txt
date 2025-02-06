@@ -54,15 +54,24 @@ pw_add_facade(pw_thread.thread INTERFACE
   BACKEND
     pw_thread.thread_BACKEND
   HEADERS
+    public/pw_thread/attrs.h
+    public/pw_thread/context.h
     public/pw_thread/detached_thread.h
+    public/pw_thread/native_options.h
+    public/pw_thread/priority.h
+    public/pw_thread/stack.h
+    public/pw_thread/stack_not_supported.h
     public/pw_thread/thread.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
-    pw_function
-    pw_thread.thread_core
+    pw_thread._generic_priority
     pw_thread.id
     pw_thread.options
+    pw_function
+    pw_preprocessor
+    pw_span
+    ${pw_thread.thread_creation_BACKEND}
 )
 
 pw_add_library(pw_thread.options INTERFACE
@@ -70,6 +79,28 @@ pw_add_library(pw_thread.options INTERFACE
     public/pw_thread/options.h
   PUBLIC_INCLUDES
     public
+)
+
+pw_add_library(pw_thread.generic_thread_creation_unsupported INTERFACE
+  HEADERS
+    null_thread_creation_public_overrides/pw_thread_backend/context.h
+    null_thread_creation_public_overrides/pw_thread_backend/options.h
+    null_thread_creation_public_overrides/pw_thread_backend/priority.h
+    null_thread_creation_public_overrides/pw_thread_backend/stack.h
+  PUBLIC_INCLUDES
+    null_thread_creation_public_overrides
+)
+
+pw_add_library(pw_thread._generic_priority INTERFACE
+  HEADERS
+    public/pw_thread/internal/priority.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_assert
+    pw_numeric.integer_division
+    pw_polyfill
+    pw_third_party.fuchsia.stdcompat
 )
 
 pw_add_library(pw_thread.thread_core INTERFACE
@@ -178,6 +209,53 @@ pw_proto_library(pw_thread.protos
   DEPS
     pw_tokenizer.proto
 )
+
+pw_add_test(pw_thread.priority_test
+  SOURCES
+    priority_test.cc
+  PRIVATE_DEPS
+    pw_compilation_testing._pigweed_only_negative_compilation
+    pw_thread._generic_priority
+    pw_unit_test.constexpr
+  GROUPS
+    modules
+    pw_thread
+)
+
+if(NOT "${pw_thread.thread_BACKEND}" STREQUAL "")
+  pw_add_test(pw_thread.thread_creation_test
+    SOURCES
+      thread_creation_test.cc
+    PRIVATE_DEPS
+      pw_compilation_testing._pigweed_only_negative_compilation
+      pw_thread.thread
+    GROUPS
+      modules
+      pw_thread
+  )
+
+  pw_add_test(pw_thread.attrs_test
+    SOURCES
+      attrs_test.cc
+    PRIVATE_DEPS
+      pw_compilation_testing._pigweed_only_negative_compilation
+      pw_thread.thread
+      pw_unit_test.constexpr
+    GROUPS
+      modules
+      pw_thread
+  )
+
+  pw_add_test(pw_thread.stack_test
+    SOURCES
+      stack_test.cc
+    PRIVATE_DEPS
+      pw_thread.thread
+    GROUPS
+      modules
+      pw_thread
+  )
+endif()
 
 if(NOT "${pw_thread.id_BACKEND}" STREQUAL "")
   pw_add_test(pw_thread.id_facade_test

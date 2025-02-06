@@ -209,15 +209,16 @@ fuchsia_cc_test(
         "//pw_bluetooth_sapphire/host/iso:testing",
         "//pw_bluetooth_sapphire/host/testing",
         "//pw_bluetooth_sapphire/host/testing:fake_controller",
+        "//pw_bluetooth_sapphire/host/testing:gtest_helpers",
         "//pw_bluetooth_sapphire/host/testing:gtest_main",
         "//pw_bluetooth_sapphire/host/testing:loop_fixture",
+        "//pw_bluetooth_sapphire/host/testing:test_helpers",
     ],
 )
 
 fuchsia_unittest_package(
     name = "test_pkg",
     package_name = "bt_host_fidl_tests_bazel",
-    testonly = True,
     fuchsia_api_level = FUCHSIA_API_LEVEL,
     unit_tests = [
         ":fidl_test",

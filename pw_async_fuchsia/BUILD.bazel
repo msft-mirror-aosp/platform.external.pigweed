@@ -51,6 +51,7 @@ cc_library(
 # Backend for pw_async:fake_dispatcher
 cc_library(
     name = "fake_dispatcher",
+    testonly = True,
     srcs = [
         "fake_dispatcher.cc",
     ],
@@ -96,6 +97,7 @@ cc_library(
         "public",
         "public_overrides",
     ],
+    tags = ["noclangtidy"],
 )
 
 fuchsia_cc_test(

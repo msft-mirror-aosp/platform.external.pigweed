@@ -16,6 +16,9 @@
 # Standard flags required for all Pigweed projects.
 import %workspace%/pw_build/pigweed.bazelrc
 
+# TODO: https://pwbug.dev/258836641 - Only until bzlmod migration is done.
+common --enable_workspace
+
 # UX flags
 # ========
 # Improve debugability by printing all arguments for failing commands.
@@ -89,6 +92,17 @@ build --features=internal_strict_warnings
 coverage --experimental_generate_llvm_lcov
 coverage --combined_report=lcov
 
+# Enable layering check support.
+#
+# NOTE: this _does not_ by itself enable the layering check; that's done in
+# REPO.bazel. This flag only ensures the module maps for sysroot and toolchain
+# headers (needed for the layering check to not produce false positives) are
+# constructed. Module map construction is gated behind a flag because the
+# approach we take does not work in Bazel versions older than 8.0.0, so some
+# downstream projects using Pigweed's toolchains would be broken if this flag
+# was removed and always set to true in the toolchain definition.
+common --//pw_toolchain/host_clang:layering_check
+
 # Java related flags
 # ==================
 # Workaround for https://github.com/bazelbuild/rules_jvm_external/issues/445.
@@ -110,9 +124,14 @@ common --@stm32f4xx_hal_driver//:cmsis_device=@cmsis_device_f4//:cmsis_device
 common --@stm32f4xx_hal_driver//:cmsis_init=@cmsis_device_f4//:default_cmsis_init
 common --@cmsis_device_f4//:cmsis_core=@cmsis_core
 
-common --//pw_env_setup/py:pigweed_json=//:pigweed.json
+common --//pw_env_setup/py:pigweed_json=//:pigweed_json
+common --experimental_propagate_custom_flag=//pw_env_setup/py:pigweed_json
 
 build --//pw_function:config_override=//pw_function:upstream_default_config
+
+# These flags may be read by tooling running in the exec configuration.
+common --experimental_propagate_custom_flag=//pw_build/luci:is_ci
+common --experimental_propagate_custom_flag=//pw_build/luci:is_shadow
 
 # Sanitizer config definitions
 # ============================
@@ -138,6 +157,20 @@ import %workspace%/pw_fuzzer/libfuzzer.bazelrc
 # Include FuzzTest build configurations.
 import %workspace%/pw_fuzzer/fuzztest.bazelrc
 
+# clang-tidy configuration
+build:clang-tidy --aspects @bazel_clang_tidy//clang_tidy:clang_tidy.bzl%clang_tidy_aspect
+build:clang-tidy --output_groups=report
+build:clang-tidy --@bazel_clang_tidy//:clang_tidy_config=//:clang_tidy_config
+build:clang-tidy --@bazel_clang_tidy//:clang_tidy_executable=//pw_toolchain/host_clang:copy_clang_tidy
+build:clang-tidy --@bazel_clang_tidy//:clang_tidy_additional_deps=//pw_toolchain/host_clang:sysroot_root
+build:clang-tidy --build_tag_filters=-noclangtidy
+# We need to disable this warning to avoid spurious "#pragma once in main file"
+# warnings for header-only libraries. For another approach, see
+# https://github.com/mongodb-forks/bazel_clang_tidy/pull/2
+#
+# TODO: https://pwbug.dev/341723612 - What do we do in GN?
+build:clang-tidy --copt=-Wno-pragma-once-outside-header
+
 # For some platforms i.e. google/oss-fuzz we need to use the system provided
 # rather than the hermetic toolchains. This allows oss-fuzz to override the
 # build with specialised compilers that are tightly coupled to the fuzzing
@@ -160,6 +193,11 @@ common --enable_platform_specific_config
 # Import `--config=fuchsia` scoped pigweed backends.
 import %workspace%/pw_bluetooth_sapphire/fuchsia/backends.bazelrc
 
+# TODO: https://pwbug.dev/382533028 - The Fuchsia SDK doesn't work with these
+# flags yet. Unfortunately, this needs to be switched for all build types since
+# it's required for things to load properly in pw_bluetooth_sapphire.
+common --noincompatible_disallow_empty_glob
+
 # Configs for RP2xxx platforms.
 build:rp2040 --platforms=@pigweed//targets/rp2040
 test:rp2040 --run_under=//targets/rp2040/py:unit_test_client
@@ -174,10 +212,21 @@ build:stm32f429i_baremetal --platforms=//targets/stm32f429i_disc1:platform
 build:stm32f429i_freertos --platforms=//targets/stm32f429i_disc1_stm32cube:platform
 
 # Config for the lm3s6965evb platform, used to build pw_rust/examples.
-build:lm3s6965evb --platforms=//pw_build/platforms:lm3s6965evb
+build:lm3s6965evb --platforms=//targets/lm3s6965evb
 
 # Config for the microbit platform, used to build pw_rust/examples.
-build:microbit --platforms=//pw_build/platforms:lm3s6965evb
+build:microbit --platforms=//targets/microbit
+
+# GoogleTest config
+# =================
+# This config can be used to build and run host tests using GoogleTest instead
+# of the default //pw_unit_test:light framework.
+common:googletest --//pw_unit_test:backend=//pw_unit_test:googletest
+common:googletest --//pw_unit_test:main=@com_google_googletest//:gtest_main
+common:googletest --platforms=//pw_unit_test:googletest_platform
+# TODO: https://pwbug.dev/390709187 - Re-enable layering check once the layering
+# issues in the googletest backend are fixed.
+common:googletest --features=-layering_check
 
 # Remote execution config definitions
 # ===================================
@@ -194,6 +243,10 @@ common:remote_cache --legacy_important_outputs
 common:remote_cache --remote_cache=grpcs://remotebuildexecution.googleapis.com
 common:remote_cache --remote_instance_name=projects/pigweed-rbe-open/instances/default-instance
 common:remote_cache --remote_upload_local_results=false
+# TODO: https://github.com/bazelbuild/bazel/issues/24867 - This flag breaks
+# runfiles handling with remote caching, and causes a bunch of
+# java.io.FileNotFoundException when creating runfiles trees.
+common:remote_cache --experimental_inprocess_symlink_creation=false
 
 # cache-silo-key: this is essentially a "salt" added to the remote cache key.
 # Change it to a new value when we want to create a new cache from scratch

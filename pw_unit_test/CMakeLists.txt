@@ -94,6 +94,12 @@ pw_add_library(pw_unit_test.googletest_handler_adapter STATIC
     public
 )
 
+pw_add_library(pw_unit_test.fuzztest INTERFACE
+  PUBLIC_DEPS
+    pw_fuzzer.fuzztest
+    pw_unit_test.googletest
+)
+
 pw_add_test(pw_unit_test.framework_test
     SOURCES
       framework_test.cc
@@ -138,6 +144,9 @@ pw_add_library(pw_unit_test.status_macros INTERFACE
     public/pw_unit_test/status_macros.h
   PUBLIC_INCLUDES
     public
+  PUBLIC_DEPS
+    pw_status
+    pw_third_party.fuchsia.stdcompat
 )
 
 pw_add_library(pw_unit_test.googletest_style_event_handler STATIC
@@ -202,6 +211,26 @@ pw_add_library(pw_unit_test.logging_main STATIC
     logging_main.cc
   PRIVATE_DEPS
     pw_unit_test.logging_event_handler
+    pw_unit_test
+)
+
+pw_add_library(pw_unit_test.constexpr INTERFACE
+  HEADERS
+    public/pw_unit_test/constexpr.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_preprocessor
+    pw_third_party.fuchsia.stdcompat
+)
+
+pw_add_test(pw_unit_test.constexpr_test
+  SOURCES
+    constexpr_test.cc
+  PRIVATE_DEPS
+    pw_compilation_testing._pigweed_only_negative_compilation
+    pw_unit_test.constexpr
+  GROUPS
     pw_unit_test
 )
 

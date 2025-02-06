@@ -40,6 +40,7 @@ pw_add_library(pw_bluetooth_proxy STATIC
     public/pw_bluetooth_proxy/internal/l2cap_status_tracker.h
     public/pw_bluetooth_proxy/internal/l2cap_leu_signaling_channel.h
     public/pw_bluetooth_proxy/internal/logical_transport.h
+    public/pw_bluetooth_proxy/internal/multibuf_writer.h
     public/pw_bluetooth_proxy/internal/rfcomm_fcs.h
     public/pw_bluetooth_proxy/l2cap_channel_common.h
     public/pw_bluetooth_proxy/l2cap_coc.h
@@ -50,6 +51,8 @@ pw_add_library(pw_bluetooth_proxy STATIC
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
+    pw_allocator.best_fit
+    pw_allocator.synchronized_allocator
     pw_bluetooth.emboss_att
     pw_bluetooth.emboss_hci_commands
     pw_bluetooth.emboss_hci_common
@@ -62,6 +65,8 @@ pw_add_library(pw_bluetooth_proxy STATIC
     pw_containers
     pw_function
     pw_log
+    pw_multibuf
+    pw_multibuf.simple_allocator
     pw_result
     pw_span
     pw_status
@@ -79,6 +84,7 @@ pw_add_library(pw_bluetooth_proxy STATIC
     l2cap_leu_signaling_channel.cc
     l2cap_signaling_channel.cc
     l2cap_status_tracker.cc
+    multibuf_writer.cc
     proxy_host.cc
     rfcomm_channel.cc
     rfcomm_fcs.cc
@@ -94,6 +100,7 @@ pw_add_library(pw_bluetooth_proxy.test_utils STATIC
     pw_bluetooth.emboss_hci_common
     pw_bluetooth.emboss_hci_events
     pw_bluetooth.emboss_hci_h4
+    pw_multibuf.testing
     pw_unit_test
   SOURCES
     test_utils.cc
@@ -103,8 +110,11 @@ pw_add_test(pw_bluetooth_proxy.pw_bluetooth_proxy_test
   SOURCES
     proxy_host_test.cc
     h4_packet_test.cc
+    l2cap_coc_test.cc
+    multibuf_writer_test.cc
     rfcomm_fcs_test.cc
     rfcomm_test.cc
+    utils_test.cc
   PRIVATE_DEPS
     pw_bluetooth_proxy
     pw_bluetooth_proxy.test_utils
@@ -114,6 +124,7 @@ pw_add_test(pw_bluetooth_proxy.pw_bluetooth_proxy_test
     pw_bluetooth.emboss_hci_common
     pw_bluetooth.emboss_hci_events
     pw_bluetooth.emboss_hci_h4
+    pw_multibuf
   GROUPS
     modules
 )

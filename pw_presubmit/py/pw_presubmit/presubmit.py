@@ -68,6 +68,7 @@ from typing import (
     Set,
 )
 
+from pw_cli.collect_files import file_summary
 import pw_cli.color
 import pw_cli.env
 from pw_cli.plural import plural
@@ -96,6 +97,7 @@ WIDTH = 80
 
 _LEFT = 7
 _RIGHT = 11
+_CENTER = WIDTH - _LEFT - _RIGHT - 4
 
 
 def _title(msg, style=_SUMMARY_BOX) -> str:
@@ -103,7 +105,7 @@ def _title(msg, style=_SUMMARY_BOX) -> str:
     return tools.make_box('^').format(*style, section1=msg, width1=len(msg))
 
 
-def _format_time(time_s: float) -> str:
+def format_time(time_s: float) -> str:
     minutes, seconds = divmod(time_s, 60)
     if minutes < 60:
         return f' {int(minutes)}:{seconds:04.1f}'
@@ -111,13 +113,15 @@ def _format_time(time_s: float) -> str:
     return f'{int(hours):d}:{int(minutes):02}:{int(seconds):02}'
 
 
-def _box(style, left, middle, right, box=tools.make_box('><>')) -> str:
+def _box(
+    style: str, left: str, middle: str, right: str, box=tools.make_box('><>')
+) -> str:
     return box.format(
         *style,
         section1=left + ('' if left.endswith(' ') else ' '),
         width1=_LEFT,
         section2=' ' + middle,
-        width2=WIDTH - _LEFT - _RIGHT - 4,
+        width2=_CENTER,
         section3=right + ' ',
         width3=_RIGHT,
     )
@@ -142,6 +146,16 @@ class PresubmitResult(enum.Enum):
 
         padding = (width - len(self.value)) // 2 * ' '
         return padding + color(self.value) + padding
+
+
+def _step_header(count: int, total: int, name: str, num_paths: int) -> str:
+    return _box(
+        _CHECK_UPPER, f'{count}/{total}', name, plural(num_paths, "file")
+    )
+
+
+def _step_footer(result: PresubmitResult, name: str, timestamp: str) -> str:
+    return _box(_CHECK_LOWER, result.colorized(_LEFT), name, timestamp)
 
 
 class Program(collections.abc.Sequence):
@@ -360,7 +374,7 @@ class Presubmit:
         )
 
         _print_ui()
-        for line in tools.file_summary(self._relative_paths):
+        for line in file_summary(self._relative_paths):
             _print_ui(line)
         _print_ui()
 
@@ -447,7 +461,7 @@ class Presubmit:
                 _SUMMARY_BOX,
                 result.colorized(_LEFT, invert=True),
                 f'{total} checks on {plural(self._paths, "file")}: {summary}',
-                _format_time(time_s),
+                format_time(time_s),
             )
         )
 
@@ -910,14 +924,7 @@ class Check:
     ) -> PresubmitResult:
         """Runs the presubmit check on the provided paths."""
 
-        _print_ui(
-            _box(
-                _CHECK_UPPER,
-                f'{count}/{total}',
-                self.name,
-                plural(ctx.paths, "file"),
-            )
-        )
+        _print_ui(_step_header(count, total, self.name, len(ctx.paths)))
 
         substep_part = f'.{substep}' if substep else ''
         _LOG.debug(
@@ -935,15 +942,13 @@ class Check:
             result = self.run_substep(ctx, substep)
         else:
             result = self(ctx)
-        time_str = _format_time(time.time() - start_time_s)
+        time_str = format_time(time.time() - start_time_s)
         _LOG.debug('%s %s', self.name, result.value)
 
         if ctx.dry_run:
             log_check_traces(ctx)
 
-        _print_ui(
-            _box(_CHECK_LOWER, result.colorized(_LEFT), self.name, time_str)
-        )
+        _print_ui(_step_footer(result, self.name, time_str))
         _LOG.debug('%s duration:%s', self.name, time_str)
 
         return result

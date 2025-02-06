@@ -1,8 +1,8 @@
 .. _docs-blog-06-better-cpp-toolchains:
 
-=======================================================================
-Pigweed Eng Blog #6: Shaping a better future for Bazel C/C++ toolchains
-=======================================================================
+===================================================================
+Pigweed Blog #6: Shaping a better future for Bazel C/C++ toolchains
+===================================================================
 *Published on 2024-12-11 by Armando Montanez*
 
 ----------------
@@ -233,6 +233,10 @@ with naming), but they’ve been part of an effort to be more forward-looking
 about guiding the future of the underlying constructs.
 
 .. inclusive-language: enable
+
+.. _module-pw_toolchain_bazel:
+
+.. _module-pw_toolchain_bazel-get-started:
 
 -----------
 Try it out!

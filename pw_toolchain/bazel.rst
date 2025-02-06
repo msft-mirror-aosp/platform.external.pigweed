@@ -30,6 +30,144 @@ upstream toolchains by calling ``register_pigweed_cxx_toolchains()``:
    would prefer more stability in toolchain configurations, consider declaring
    custom toolchains in your project.
 
+.. _module-pw_toolchain-bazel-layering-check:
+
+Layering check
+==============
+Upstream Pigweed toolchains have support for `layering check
+<https://maskray.me/blog/2022-09-25-layering-check-with-clang>`__. In short,
+enabling layering check makes it a compile-time error to ``#include`` a header
+that's not in the ``hdrs`` of a ``cc_library`` you directly depend on. This
+produces cleaner dependency graphs and is recommended for all users.
+
+.. admonition:: Note
+
+   Layering check requires Bazel 8.0.0 or newer.
+
+How to enable layering check?
+-----------------------------
+#. Add ``common --@pigweed//pw_toolchain/host_clang:layering_check`` to your
+   ``.bazelrc``. This does not by itself enable the check, it only instructs
+   Bazel to include support for it in the toolchain configuration. (This flag
+   will become true by default and be removed once all known Pigweed users are
+   on Bazel 8.)
+#. Enable the ``layering_check`` feature to enable enforcement. The recommended
+   way to do this is to add a `REPO.bazel
+   <https://bazel.build/external/overview#repo.bazel>`__ file at the root of
+   your project, with the following content:
+
+   .. code-block:: py
+
+      repo(
+          features = ["layering_check"],
+      )
+
+   This will enable ``layering_check`` for all code in your project, but not for
+   code coming from any external dependencies also built with Bazel.
+
+Gradual rollout
+---------------
+When you enable layering check for the first time, you will likely get a very
+large number of errors, since many packages in your project will contain
+layering violations. If there are too many errors to fix at once, here's one way
+to roll out ``layering_check`` gradually:
+
+#. Enable the ``layering_check`` feature for the entire repo, as discussed
+   above.
+#. In the same commit, disable layering check for each individual package
+   (``BUILD.bazel`` file). This can be done using the following `buildozer
+   <https://github.com/bazelbuild/buildtools/blob/main/buildozer/README.md>`__
+   one-liner:
+
+   .. code-block:: console
+
+      buildozer 'add features -layering_check' '//...:__pkg__'
+
+   Note the ``-`` in front of ``layering_check`` in the command above!
+
+#. Re-enable layering check package by package by removing the lines added by
+   buildozer. When no ``-layering_check`` remains in your codebase, you've
+   enabled layering check for the entire repo!
+
+You can also enable or disable the ``layering_check`` feature for individual
+targets, using the `features
+<https://bazel.build/reference/be/common-definitions#common.features>`__
+attribute.
+
+Limitations
+-----------
+#. Layering check only applies to ``#include`` statements in source files, not
+   in header files. To also apply it to header files, you need the
+   ``parse_headers`` feature. Pigweed's toolchains do not yet contain its
+   implementation. Adding it is tracked at :bug:`391367050`.
+#. Layering check will not prevent you from using symbols from transitively
+   included headers. For this, use `misc-include-cleaner
+   <https://clang.llvm.org/extra/clang-tidy/checks/misc/include-cleaner.html>`__
+   in clang-tidy.  See also :bug:`329671260`.
+#. A pattern we use for swapping header implementations using a label flag
+   leads to layering check violations. Figuring out an alternative pattern is
+   tracked at :bug:`391394448`.
+
+.. _module-pw_toolchain-bazel-clang-tidy:
+
+clang-tidy
+==========
+To integrate Pigweed's toolchain with `bazel_clang_tidy
+<https://github.com/erenon/bazel_clang_tidy>`_:
+
+#. Add a ``.clang-tidy`` file at the root of your repository listing the checks
+   you wish to enable. `Pigweed's own .clang-tidy file
+   <https://cs.opensource.google/pigweed/pigweed/+/main:.clang-tidy>`__ shows
+   some checks we recommend.
+
+#. Create a ``filegroup`` target containing that file in ``BUILD.bazel`` at
+   the root of your repo.
+
+   .. code-block:: python
+
+      filegroup(
+         name = "clang_tidy_config",
+         srcs = [".clang-tidy"],
+      )
+
+#. Add `bazel_clang_tidy`_ to your ``MODULE.bazel``.
+
+   .. code-block::python
+
+      git_repository = use_repo_rule(
+         "@bazel_tools//tools/build_defs/repo:git.bzl",
+         "git_repository",
+      )
+      git_repository(
+         name = "bazel_clang_tidy",
+         # Check the repository for the latest version!
+         commit = "db677011c7363509a288a9fb3bf0a50830bbf791",
+         remote = "https://github.com/erenon/bazel_clang_tidy.git",
+      )
+
+#. Add a ``clang-tidy`` config in your ``.bazelrc`` file.
+
+   .. code-block:: python
+
+      # clang-tidy configuration
+      build:clang-tidy --aspects @bazel_clang_tidy//clang_tidy:clang_tidy.bzl%clang_tidy_aspect
+      build:clang-tidy --output_groups=report
+      build:clang-tidy --@bazel_clang_tidy//:clang_tidy_config=//:clang_tidy_config
+      # Use the clang-tidy executable from Pigweed's toolchain, and include
+      # our sysroot headers.
+      build:clang-tidy --@bazel_clang_tidy//:clang_tidy_executable=@pigweed//pw_toolchain/host_clang:copy_clang_tidy
+      build:clang-tidy --@bazel_clang_tidy//:clang_tidy_additional_deps=@pigweed//pw_toolchain/host_clang:sysroot_root
+      # Skip any targets with tags = ["noclangtidy"]. This allows a gradual
+      # rollout.
+      build:clang-tidy --build_tag_filters=-noclangtidy
+      # We need to disable this warning to avoid spurious "#pragma once in main file"
+      # warnings for header-only libraries. For another approach, see
+      # https://github.com/mongodb-forks/bazel_clang_tidy/pull/2
+      build:clang-tidy --copt=-Wno-pragma-once-outside-header
+
+Now ``bazelisk build --config=clang-tidy //...`` will run clang-tidy for all
+``cc_library`` targets in your repo!
+
 .. _module-pw_toolchain-bazel-compiler-specific-logic:
 
 -----------------------------

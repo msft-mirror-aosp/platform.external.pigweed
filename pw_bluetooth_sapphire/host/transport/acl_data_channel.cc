@@ -14,13 +14,13 @@
 
 #include "pw_bluetooth_sapphire/internal/host/transport/acl_data_channel.h"
 
+#include <pw_assert/check.h>
 #include <pw_bytes/endian.h>
 
 #include <iterator>
 
 #include "lib/fit/function.h"
 #include "pw_bluetooth/vendor.h"
-#include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/inspectable.h"
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/util.h"
@@ -470,7 +470,7 @@ AclDataChannelImpl::NumberOfCompletedPacketsCallback(const EventPacket& event) {
   }
   auto view = event.unchecked_view<
       pw::bluetooth::emboss::NumberOfCompletedPacketsEventView>();
-  PW_CHECK(view.header().event_code_enum().Read() ==
+  PW_CHECK(view.header().event_code().Read() ==
            pw::bluetooth::emboss::EventCode::NUMBER_OF_COMPLETED_PACKETS);
 
   size_t handles_in_packet =
@@ -623,7 +623,7 @@ AclDataChannelImpl::DataBufferOverflowCallback(const EventPacket& event) {
 
   // Internal buffer state must be invalid and no further transmissions are
   // possible.
-  BT_PANIC("controller data buffer overflow event received (link type: %s)",
+  PW_CRASH("controller data buffer overflow event received (link type: %s)",
            hci_spec::LinkTypeToString(params.ll_type().Read()));
 
   return CommandChannel::EventCallbackResult::kContinue;

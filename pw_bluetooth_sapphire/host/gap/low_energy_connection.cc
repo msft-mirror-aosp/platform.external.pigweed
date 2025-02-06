@@ -14,6 +14,8 @@
 
 #include "pw_bluetooth_sapphire/internal/host/gap/low_energy_connection.h"
 
+#include <pw_assert/check.h>
+
 #include "pw_bluetooth_sapphire/internal/host/gap/low_energy_connection_manager.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/security_manager.h"
 
@@ -432,7 +434,8 @@ bool LowEnergyConnection::OnL2capFixedChannelsOpened(
                                      weak_delegate_.GetWeakPtr(),
                                      connection_options.bondable_mode,
                                      security_mode,
-                                     dispatcher_);
+                                     dispatcher_,
+                                     peer_);
 
   // Provide SMP with the correct LTK from a previous pairing with the peer, if
   // it exists. This will start encryption if the local device is the link-layer
@@ -478,7 +481,7 @@ void LowEnergyConnection::RequestConnectionParameterUpdate(
   // consider propagating down)
   bool ll_connection_parameters_req_supported =
       peer_->le()->features().has_value() &&
-      (peer_->le()->features()->le_features &
+      (peer_->le()->features().value() &
        static_cast<uint64_t>(hci_spec::LESupportedFeature::
                                  kConnectionParametersRequestProcedure));
 

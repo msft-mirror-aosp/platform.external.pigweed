@@ -1,8 +1,8 @@
 .. _module-pw_fuzzer-guides-using_fuzztest:
 
-========================================
-pw_fuzzer: Adding Fuzzers Using FuzzTest
-========================================
+=============================
+Adding Fuzzers Using FuzzTest
+=============================
 .. pigweed-module-subpage::
    :name: pw_fuzzer
 
@@ -26,7 +26,6 @@ See the following:
 * :ref:`module-pw_third_party_abseil_cpp-using_upstream`
 * :ref:`module-pw_third_party_fuzztest-using_upstream`
 * :ref:`module-pw_third_party_googletest-using_upstream`
-* :ref:`module-pw_third_party_re2-using_upstream`
 
 .. tab-set::
 
@@ -56,26 +55,26 @@ See the following:
       :sync: cmake
 
       FuzzTest is enabled by setting several CMake variables. The easiest way to
-      set these is to extend your ``toolchain.cmake`` file.
+      set these is to extend your ``toolchain.cmake`` file. You need to specify
+      where FuzzTest and its dependencies are, include FuzzTest's build flags,
+      and set the unit test backend to use FuzzTest.
 
       For example:
 
       .. code-block::
 
-         include(my_project_toolchain.cmake)
+         set(dir_pw_third_party_abseil_cpp "path/to/abseil" CACHE INTERNAL "" FORCE)
+         set(dir_pw_third_party_googletest "path/to/googletest" CACHE INTERNAL "" FORCE)
+         set(dir_pw_third_party_fuzztest "path/to/fuzztest" CACHE INTERNAL "" FORCE)
 
-         set(dir_pw_third_party_fuzztest
-             "path/to/fuzztest"
-           CACHE STRING "" FORCE
-         )
-         set(dir_pw_third_party_googletest
-             "path/to/googletest"
-           CACHE STRING "" FORCE
-         )
-         set(pw_unit_test_BACKEND
-             "pw_third_party.fuzztest"
-           CACHE STRING "" FORCE
-         )
+         pw_set_backend(pw_unit_test pw_unit_test.fuzztest)
+
+         # This line should come after adding the Pigweed subdirectory, but
+         # before any fuzz tests.
+         fuzztest_setup_fuzzing_flags()
+
+      You also must enable fuzzing when you build by passing the
+      ``-DFUZZTEST_FUZZING_MODE`` flag to ``cmake`` when building.
 
    .. tab-item:: Bazel
       :sync: bazel
@@ -296,9 +295,9 @@ Step 5: Build the fuzzer
       tests. To build these tests as fuzz tests, specify the ``fuzztest``
       config. For example:
 
-      .. code-block:: sh
+      .. code-block:: console
 
-         bazel build //... --config=fuzztest
+         $ bazel build //... --config=fuzztest
 
 ----------------------------------
 Step 6: Running the fuzzer locally
@@ -320,19 +319,19 @@ Step 6: Running the fuzzer locally
       section, you can find available fuzzers using the generated JSON test
       metadata file:
 
-      .. code-block:: sh
+      .. code-block:: console
 
-         jq '.[] | select(contains({tags: ["fuzztest"]}))' \
-           out/host_clang_fuzz/obj/pw_module_tests.testinfo.json
+         $ jq '.[] | select(contains({tags: ["fuzztest"]}))' \
+         > out/host_clang_fuzz/obj/pw_module_tests.testinfo.json
 
       To run a fuzz with different options, you can pass additional flags to the
       fuzzer binary. This binary will be in a subdirectory related to the
       toolchain. For example:
 
-      .. code-block:: sh
+      .. code-block:: console
 
-         out/host_clang_fuzz/obj/my_module/test/metrics_test \
-           --fuzz=MetricsTest.Roundtrip
+         $ out/host_clang_fuzz/obj/my_module/test/metrics_test \
+         > --fuzz=MetricsTest.Roundtrip
 
       Additional `sanitizer flags`_ may be passed uisng environment variables.
 
@@ -347,9 +346,9 @@ Step 6: Running the fuzzer locally
 
       For example:
 
-      .. code-block:: sh
+      .. code-block:: console
 
-         build/my_module/metrics_test --fuzz=MetricsTest.Roundtrip
+         $ build/my_module/metrics_test --fuzz=MetricsTest.Roundtrip
 
    .. tab-item:: Bazel
       :sync: bazel
@@ -358,9 +357,9 @@ Step 6: Running the fuzzer locally
       unit tests. To build these tests as fuzz tests, specify the "fuzztest"
       config. For example:
 
-      .. code-block:: sh
+      .. code-block:: console
 
-         bazel test //... --config=fuzztest
+         $ bazel test //... --config=fuzztest
 
       This will build the tests as fuzz tests, but only run them for a limited
       time. This makes them suitable for automated testing as in CQ.
@@ -368,10 +367,10 @@ Step 6: Running the fuzzer locally
       To run a fuzz with different options, you can use ``run`` and pass
       additional flags to the fuzzer binary. For example:
 
-      .. code-block:: sh
+      .. code-block:: console
 
-         bazel run //my_module:metrics_test --config=fuzztest \
-           --fuzz=MetricsTest.Roundtrip
+         $ bazel run //my_module:metrics_test --config=fuzztest \
+         > --fuzz=MetricsTest.Roundtrip
 
 Running the fuzzer should produce output similar to the following:
 
