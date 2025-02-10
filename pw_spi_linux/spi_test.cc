@@ -97,19 +97,25 @@ extern "C" int ioctl(int fd, unsigned long request, union spi_ioc_arg arg) {
   return 0;
 }
 
+class LinuxSpiTest : public ::testing::Test {
+ public:
+  LinuxSpiTest() : initiator(kFakeFd, kMaxSpeed) {}
+
+ protected:
+  void SetUp() override {
+    ioctl_requests.clear();
+    ioctl_transfers.clear();
+  }
+
+  LinuxInitiator initiator;
+};
+
 //
 // Tests
 //
 
-TEST(LinuxSpiTest, ConfigureWorks) {
-  Status status;
-
-  ioctl_requests.clear();
-
-  LinuxInitiator initiator(kFakeFd, kMaxSpeed);
-
-  status = initiator.Configure(kConfig);
-  EXPECT_TRUE(status.ok());
+TEST_F(LinuxSpiTest, ConfigureWorks) {
+  PW_TEST_EXPECT_OK(initiator.Configure(kConfig));
 
   std::vector<unsigned long> expect{
       SPI_IOC_WR_MODE32,
@@ -123,20 +129,56 @@ TEST(LinuxSpiTest, ConfigureWorks) {
   EXPECT_EQ(ioctl_requests, expect);
 }
 
-TEST(LinuxSpiTest, WriteReadEqualSize) {
-  ioctl_requests.clear();
-  ioctl_transfers.clear();
+TEST_F(LinuxSpiTest, NoReadOrWrite) {
+  EXPECT_EQ(initiator.WriteRead({}, {}), Status::InvalidArgument());
 
-  LinuxInitiator initiator(kFakeFd, kMaxSpeed);
-  Status status;
+  EXPECT_EQ(ioctl_requests.size(), 0u);
+  EXPECT_EQ(ioctl_transfers.size(), 0u);
+}
 
-  // Write = Read
+TEST_F(LinuxSpiTest, WriteOnly) {
+  // Write only
   constexpr size_t kNumBytes = 4;
-  std::array<std::byte, kNumBytes> write_buf = {1_b, 2_b, 3_b, 4_b};
+  const std::array<std::byte, kNumBytes> write_buf = {1_b, 2_b, 3_b, 4_b};
+
+  PW_TEST_EXPECT_OK(initiator.WriteRead(write_buf, {}));
+
+  EXPECT_EQ(ioctl_requests.size(), 1u);
+  EXPECT_EQ(ioctl_transfers.size(), 1u);
+
+  // Transfer 0: tx={1, 2, 3, 4}, rx==null
+  auto& xfer0 = ioctl_transfers[0];
+  EXPECT_EQ(xfer0.len, kNumBytes);
+  EXPECT_EQ(xfer0.rx_buf, 0u);
+  EXPECT_EQ(xfer0.tx_buf, reinterpret_cast<uintptr_t>(write_buf.data()));
+  ByteSpan xfer0_tx(reinterpret_cast<std::byte*>(xfer0.tx_buf), xfer0.len);
+  EXPECT_TRUE(SpanEq(xfer0_tx, write_buf));
+}
+
+TEST_F(LinuxSpiTest, ReadOnly) {
+  // Read only
+  constexpr size_t kNumBytes = 4;
   std::array<std::byte, kNumBytes> read_buf;
 
-  status = initiator.WriteRead(write_buf, read_buf);
-  EXPECT_TRUE(status.ok());
+  PW_TEST_EXPECT_OK(initiator.WriteRead({}, read_buf));
+
+  EXPECT_EQ(ioctl_requests.size(), 1u);
+  EXPECT_EQ(ioctl_transfers.size(), 1u);
+
+  // Transfer 0: tx==null, rx!=null
+  auto& xfer0 = ioctl_transfers[0];
+  EXPECT_EQ(xfer0.len, kNumBytes);
+  EXPECT_EQ(xfer0.rx_buf, reinterpret_cast<uintptr_t>(read_buf.data()));
+  EXPECT_EQ(xfer0.tx_buf, 0u);
+}
+
+TEST_F(LinuxSpiTest, WriteReadEqualSize) {
+  // Write = Read
+  constexpr size_t kNumBytes = 4;
+  const std::array<std::byte, kNumBytes> write_buf = {1_b, 2_b, 3_b, 4_b};
+  std::array<std::byte, kNumBytes> read_buf;
+
+  PW_TEST_EXPECT_OK(initiator.WriteRead(write_buf, read_buf));
 
   EXPECT_EQ(ioctl_requests.size(), 1u);
   EXPECT_EQ(ioctl_transfers.size(), 1u);
@@ -150,19 +192,12 @@ TEST(LinuxSpiTest, WriteReadEqualSize) {
   EXPECT_TRUE(SpanEq(xfer0_tx, write_buf));
 }
 
-TEST(LinuxSpiTest, WriteLargerThanReadSize) {
-  ioctl_requests.clear();
-  ioctl_transfers.clear();
-
-  LinuxInitiator initiator(kFakeFd, kMaxSpeed);
-  Status status;
-
+TEST_F(LinuxSpiTest, WriteLargerThanReadSize) {
   // Write > Read
-  std::array<std::byte, 5> write_buf = {1_b, 2_b, 3_b, 4_b, 5_b};
+  const std::array<std::byte, 5> write_buf = {1_b, 2_b, 3_b, 4_b, 5_b};
   std::array<std::byte, 2> read_buf;
 
-  status = initiator.WriteRead(write_buf, read_buf);
-  EXPECT_TRUE(status.ok());
+  PW_TEST_EXPECT_OK(initiator.WriteRead(write_buf, read_buf));
 
   EXPECT_EQ(ioctl_requests.size(), 1u);
   EXPECT_EQ(ioctl_transfers.size(), 2u);  // split
@@ -184,19 +219,12 @@ TEST(LinuxSpiTest, WriteLargerThanReadSize) {
   EXPECT_TRUE(SpanEq(xfer1_tx, std::array{3_b, 4_b, 5_b}));
 }
 
-TEST(LinuxSpiTest, ReadLargerThanWriteSize) {
-  ioctl_requests.clear();
-  ioctl_transfers.clear();
-
-  LinuxInitiator initiator(kFakeFd, kMaxSpeed);
-  Status status;
-
+TEST_F(LinuxSpiTest, ReadLargerThanWriteSize) {
   // Read > Write
-  std::array<std::byte, 2> write_buf = {1_b, 2_b};
+  const std::array<std::byte, 2> write_buf = {1_b, 2_b};
   std::array<std::byte, 5> read_buf;
 
-  status = initiator.WriteRead(write_buf, read_buf);
-  EXPECT_TRUE(status.ok());
+  PW_TEST_EXPECT_OK(initiator.WriteRead(write_buf, read_buf));
 
   EXPECT_EQ(ioctl_requests.size(), 1u);
   EXPECT_EQ(ioctl_transfers.size(), 2u);  // split

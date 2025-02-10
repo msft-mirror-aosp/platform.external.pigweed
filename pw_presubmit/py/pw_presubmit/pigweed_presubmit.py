@@ -31,6 +31,7 @@ from pw_cli.plural import plural
 from pw_cli.file_filter import FileFilter
 import pw_package.pigweed_packages
 from pw_presubmit import (
+    bazel_checks,
     build,
     cli,
     cpp_checks,
@@ -164,6 +165,15 @@ def _gn_main_build_check_targets() -> Sequence[str]:
         'pigweed_pypi_distribution',
     ]
 
+    # Since there is no mac-arm64 bloaty binary in CIPD, Arm Macs use the x86_64
+    # binary. However, Arm Macs in Pigweed CI disable Rosetta 2, so skip the
+    # 'default' build on those machines for now.
+    #
+    # TODO: b/368387791 - Add 'default' for all platforms when Arm Mac bloaty is
+    # available.
+    if platform.machine() != 'arm64' or sys.platform != 'darwin':
+        build_targets.append('default')
+
     return build_targets
 
 
@@ -240,6 +250,7 @@ gn_combined_build_check = PigweedGnGenNinja(
     name='gn_combined_build_check',
     doc='Run most host and device (QEMU) tests.',
     path_filter=_BUILD_FILE_FILTER,
+    packages=('emboss',),
     gn_args=dict(
         pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
         pw_BUILD_BROKEN_GROUPS=True,  # Enable to fully test the GN build
@@ -361,8 +372,11 @@ gn_teensy_build = PigweedGnGenNinja(
 gn_pico_build = PigweedGnGenNinja(
     name='gn_pico_build',
     path_filter=_BUILD_FILE_FILTER,
-    packages=('pico_sdk', 'freertos'),
+    packages=('pico_sdk', 'freertos', 'emboss'),
     gn_args={
+        'dir_pw_third_party_emboss': lambda ctx: '"{}"'.format(
+            str(ctx.package_root / 'emboss')
+        ),
         'dir_pw_third_party_freertos': lambda ctx: '"{}"'.format(
             str(ctx.package_root / 'freertos')
         ),
@@ -612,18 +626,51 @@ def zephyr_build(ctx: PresubmitContext) -> None:
     # Produces reports at (ctx.root / 'twister_out' / 'twister*.xml')
 
 
+def assert_non_empty_directory(directory: Path) -> None:
+    if not directory.is_dir():
+        raise PresubmitFailure(f'no directory {directory}')
+
+    for _ in directory.iterdir():
+        return
+
+    raise PresubmitFailure(f'no files in {directory}')
+
+
 def docs_build(ctx: PresubmitContext) -> None:
     """Build Pigweed docs"""
+    if ctx.dry_run:
+        raise PresubmitFailure(
+            'This presubmit cannot be run in dry-run mode. '
+            'Please run with: "pw presubmit --step"'
+        )
 
     build.install_package(ctx, 'emboss')
+    build.install_package(ctx, 'boringssl')
     build.install_package(ctx, 'freertos')
     build.install_package(ctx, 'nanopb')
     build.install_package(ctx, 'pico_sdk')
     build.install_package(ctx, 'pigweed_examples_repo')
     build.install_package(ctx, 'stm32cube_f4')
+    emboss_dir = ctx.package_root / 'emboss'
+    boringssl_dir = ctx.package_root / 'boringssl'
+    pico_sdk_dir = ctx.package_root / 'pico_sdk'
+    stm32cube_dir = ctx.package_root / 'stm32cube_f4'
+    freertos_dir = ctx.package_root / 'freertos'
+    nanopb_dir = ctx.package_root / 'nanopb'
+
+    enable_dynamic_allocation = (
+        ctx.root / 'pw_function:enable_dynamic_allocation'
+    )
 
     # Build main docs through GN/Ninja.
-    build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
+    build.gn_gen(
+        ctx,
+        dir_pw_third_party_emboss=f'"{emboss_dir}"',
+        dir_pw_third_party_boringssl=f'"{boringssl_dir}"',
+        pw_bluetooth_sapphire_ENABLED=True,
+        pw_function_CONFIG=f'"{enable_dynamic_allocation}"',
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+    )
     build.ninja(ctx, 'docs')
     build.gn_check(ctx)
 
@@ -631,6 +678,7 @@ def docs_build(ctx: PresubmitContext) -> None:
     build_bazel(
         ctx,
         'build',
+        '--remote_download_outputs=all',
         '--',
         '//pw_rust:docs',
     )
@@ -668,10 +716,6 @@ def docs_build(ctx: PresubmitContext) -> None:
     )
 
     # Set required GN args.
-    pico_sdk_dir = ctx.package_root / 'pico_sdk'
-    stm32cube_dir = ctx.package_root / 'stm32cube_f4'
-    freertos_dir = ctx.package_root / 'freertos'
-    nanopb_dir = ctx.package_root / 'nanopb'
     build.gn_gen(
         examples_ctx,
         dir_pigweed='"//../../.."',
@@ -710,6 +754,7 @@ def docs_build(ctx: PresubmitContext) -> None:
         copy_function=shutil.copyfile,
         dirs_exist_ok=True,
     )
+    assert_non_empty_directory(rust_docs_output_dir)
 
     # Copy doxygen html outputs.
     shutil.copytree(
@@ -718,6 +763,7 @@ def docs_build(ctx: PresubmitContext) -> None:
         copy_function=shutil.copyfile,
         dirs_exist_ok=True,
     )
+    assert_non_empty_directory(doxygen_html_output_dir)
 
     # mkdir -p the example repo output dir and copy the files over.
     examples_html_output_dir.mkdir(parents=True, exist_ok=True)
@@ -727,6 +773,7 @@ def docs_build(ctx: PresubmitContext) -> None:
         copy_function=shutil.copyfile,
         dirs_exist_ok=True,
     )
+    assert_non_empty_directory(examples_html_output_dir)
 
 
 gn_host_tools = PigweedGnGenNinja(
@@ -1122,6 +1169,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     # keep-sorted: end
     # Test data
     # keep-sorted: start
+    r'\bpw_build/test_data/pw_copy_and_patch_file/',
     r'\bpw_presubmit/py/test/owners_checks/',
     # keep-sorted: end
 )
@@ -1250,12 +1298,16 @@ def _valid_capitalization(word: str) -> bool:
     )  # Matches an executable (clangd)
 
 
-def commit_message_format(_: PresubmitContext):
+def commit_message_format(ctx: PresubmitContext):
     """Checks that the top commit's message is correctly formatted."""
     if git_repo.commit_author().endswith('gserviceaccount.com'):
         return
 
     lines = git_repo.commit_message().splitlines()
+
+    # Ignore fixup/squash commits, but only if running locally.
+    if not ctx.luci and lines[0].startswith(('fixup!', 'squash!')):
+        return
 
     # Show limits and current commit message in log.
     _LOG.debug('%-25s%+25s%+22s', 'Line limits', '72|', '72|')
@@ -1313,7 +1365,9 @@ def commit_message_format(_: PresubmitContext):
 
     # Check that the first line matches the expected pattern.
     match = re.match(
-        r'^(?:[.\w*/]+(?:{[\w* ,]+})?[\w*/]*|SEED-\d+): (?P<desc>.+)$', lines[0]
+        r'^(?P<prefix>[.\w*/]+(?:{[\w* ,]+})?[\w*/]*|SEED-\d+|clang-\w+): '
+        r'(?P<desc>.+)$',
+        lines[0],
     )
     if not match:
         _LOG.warning('The first line does not match the expected format')
@@ -1323,6 +1377,9 @@ def commit_message_format(_: PresubmitContext):
             lines[0],
         )
         errors += 1
+    elif match.group('prefix') == 'roll':
+        # We're much more flexible with roll commits.
+        pass
     elif not _valid_capitalization(match.group('desc').split()[0]):
         _LOG.warning(
             'The first word after the ":" in the first line ("%s") must be '
@@ -1389,6 +1446,8 @@ _EXCLUDE_FROM_TODO_CHECK = (
     r'.dockerignore$',
     r'.gitignore$',
     r'.pylintrc$',
+    r'.ruff.toml$',
+    r'MODULE.bazel.lock$',
     r'\bdocs/build_system.rst',
     r'\bdocs/code_reviews.rst',
     r'\bpw_assert_basic/basic_handler.cc',
@@ -1457,6 +1516,219 @@ SOURCE_FILES_FILTER_CMAKE_EXCLUDE = FileFilter(
     ),
 )
 
+# cc_library targets which contain the forbidden `includes` attribute.
+#
+# TODO: https://pwbug.dev/378564135 - Burn this list down.
+INCLUDE_CHECK_EXCEPTIONS = (
+    # keep-sorted: start
+    "//pw_allocator/block:alignable",
+    "//pw_allocator/block:allocatable",
+    "//pw_allocator/block:basic",
+    "//pw_allocator/block:contiguous",
+    "//pw_allocator/block:detailed_block",
+    "//pw_allocator/block:iterable",
+    "//pw_allocator/block:poisonable",
+    "//pw_allocator/block:result",
+    "//pw_allocator/block:testing",
+    "//pw_allocator/block:with_layout",
+    "//pw_allocator/bucket:base",
+    "//pw_allocator/bucket:fast_sorted",
+    "//pw_allocator/bucket:sequenced",
+    "//pw_allocator/bucket:sorted",
+    "//pw_allocator/bucket:testing",
+    "//pw_allocator/bucket:unordered",
+    "//pw_allocator/examples:custom_allocator",
+    "//pw_allocator/examples:custom_allocator_test_harness",
+    "//pw_allocator/examples:named_u32",
+    "//pw_allocator:best_fit_block_allocator",
+    "//pw_allocator:first_fit_block_allocator",
+    "//pw_allocator:worst_fit_block_allocator",
+    "//pw_assert:assert.facade",
+    "//pw_assert:assert_compatibility_backend",
+    "//pw_assert:check.facade",
+    "//pw_assert:libc_assert",
+    "//pw_assert:print_and_abort_assert_backend",
+    "//pw_assert:print_and_abort_check_backend",
+    "//pw_assert_basic:handler.facade",
+    "//pw_assert_basic:pw_assert_basic",
+    "//pw_assert_fuchsia:pw_assert_fuchsia",
+    "//pw_assert_log:assert_backend",
+    "//pw_assert_log:check_and_assert_backend",
+    "//pw_assert_log:check_backend",
+    "//pw_assert_tokenized:pw_assert_tokenized",
+    "//pw_assert_trap:pw_assert_trap",
+    "//pw_async2_basic:dispatcher",
+    "//pw_async2_epoll:dispatcher",
+    "//pw_async:fake_dispatcher.facade",
+    "//pw_async:task.facade",
+    "//pw_async_basic:fake_dispatcher",
+    "//pw_async_basic:task",
+    "//pw_async_fuchsia:dispatcher",
+    "//pw_async_fuchsia:fake_dispatcher",
+    "//pw_async_fuchsia:task",
+    "//pw_async_fuchsia:util",
+    "//pw_bluetooth:emboss_att",
+    "//pw_bluetooth:emboss_hci_android",
+    "//pw_bluetooth:emboss_hci_commands",
+    "//pw_bluetooth:emboss_hci_common",
+    "//pw_bluetooth:emboss_hci_data",
+    "//pw_bluetooth:emboss_hci_events",
+    "//pw_bluetooth:emboss_hci_h4",
+    "//pw_bluetooth:emboss_hci_test",
+    "//pw_bluetooth:emboss_l2cap_frames",
+    "//pw_bluetooth:emboss_rfcomm_frames",
+    "//pw_bluetooth:emboss_util",
+    "//pw_bluetooth:pw_bluetooth",
+    "//pw_bluetooth:pw_bluetooth2",
+    "//pw_boot:pw_boot.facade",
+    "//pw_build/bazel_internal:header_test",
+    "//pw_chrono:system_clock.facade",
+    "//pw_chrono:system_timer.facade",
+    "//pw_chrono_embos:system_clock",
+    "//pw_chrono_embos:system_timer",
+    "//pw_chrono_freertos:system_clock",
+    "//pw_chrono_freertos:system_timer",
+    "//pw_chrono_rp2040:system_clock",
+    "//pw_chrono_stl:system_clock",
+    "//pw_chrono_stl:system_timer",
+    "//pw_chrono_threadx:system_clock",
+    "//pw_cpu_exception:entry.facade",
+    "//pw_cpu_exception:handler.facade",
+    "//pw_cpu_exception:support.facade",
+    "//pw_cpu_exception_cortex_m:cpu_exception",
+    "//pw_cpu_exception_cortex_m:crash.facade",
+    "//pw_cpu_exception_cortex_m:crash_test.lib",
+    "//pw_crypto:ecdsa.facade",
+    "//pw_crypto:sha256.facade",
+    "//pw_crypto:sha256_mbedtls",
+    "//pw_crypto:sha256_mock",
+    "//pw_fuzzer/examples/fuzztest:metrics_lib",
+    "//pw_fuzzer:fuzztest",
+    "//pw_fuzzer:fuzztest_stub",
+    "//pw_grpc:connection",
+    "//pw_grpc:grpc_channel_output",
+    "//pw_grpc:pw_rpc_handler",
+    "//pw_grpc:send_queue",
+    "//pw_interrupt:context.facade",
+    "//pw_interrupt_cortex_m:context",
+    "//pw_log:pw_log.facade",
+    "//pw_log_basic:headers",
+    "//pw_log_fuchsia:pw_log_fuchsia",
+    "//pw_log_null:headers",
+    "//pw_log_string:handler.facade",
+    "//pw_log_string:pw_log_string",
+    "//pw_log_tokenized:gcc_partially_tokenized",
+    "//pw_log_tokenized:handler.facade",
+    "//pw_log_tokenized:pw_log_tokenized",
+    "//pw_malloc:pw_malloc.facade",
+    "//pw_metric:metric_service_pwpb",
+    "//pw_multibuf:internal_test_utils",
+    "//pw_perf_test:arm_cortex_timer",
+    "//pw_perf_test:chrono_timer",
+    "//pw_perf_test:timer.facade",
+    "//pw_polyfill:standard_library",
+    "//pw_rpc:internal_test_utils",
+    "//pw_sensor:pw_sensor_types",
+    "//pw_sync:binary_semaphore.facade",
+    "//pw_sync:binary_semaphore_thread_notification_backend",
+    "//pw_sync:binary_semaphore_timed_thread_notification_backend",
+    "//pw_sync:counting_semaphore.facade",
+    "//pw_sync:interrupt_spin_lock.facade",
+    "//pw_sync:mutex.facade",
+    "//pw_sync:recursive_mutex.facade",
+    "//pw_sync:thread_notification.facade",
+    "//pw_sync:timed_mutex.facade",
+    "//pw_sync:timed_thread_notification.facade",
+    "//pw_sync_baremetal:interrupt_spin_lock",
+    "//pw_sync_baremetal:mutex",
+    "//pw_sync_baremetal:recursive_mutex",
+    "//pw_sync_embos:binary_semaphore",
+    "//pw_sync_embos:counting_semaphore",
+    "//pw_sync_embos:interrupt_spin_lock",
+    "//pw_sync_embos:mutex",
+    "//pw_sync_embos:timed_mutex",
+    "//pw_sync_freertos:binary_semaphore",
+    "//pw_sync_freertos:counting_semaphore",
+    "//pw_sync_freertos:interrupt_spin_lock",
+    "//pw_sync_freertos:mutex",
+    "//pw_sync_freertos:thread_notification",
+    "//pw_sync_freertos:timed_mutex",
+    "//pw_sync_freertos:timed_thread_notification",
+    "//pw_sync_stl:binary_semaphore",
+    "//pw_sync_stl:condition_variable",
+    "//pw_sync_stl:counting_semaphore",
+    "//pw_sync_stl:interrupt_spin_lock",
+    "//pw_sync_stl:mutex",
+    "//pw_sync_stl:recursive_mutex",
+    "//pw_sync_stl:timed_mutex",
+    "//pw_sync_threadx:binary_semaphore",
+    "//pw_sync_threadx:counting_semaphore",
+    "//pw_sync_threadx:interrupt_spin_lock",
+    "//pw_sync_threadx:mutex",
+    "//pw_sync_threadx:timed_mutex",
+    "//pw_sys_io:pw_sys_io.facade",
+    "//pw_system:device_handler.facade",
+    "//pw_system:io.facade",
+    "//pw_thread:id.facade",
+    "//pw_thread:sleep.facade",
+    "//pw_thread:test_thread_context.facade",
+    "//pw_thread:thread.facade",
+    "//pw_thread:thread_iteration.facade",
+    "//pw_thread:yield.facade",
+    "//pw_thread_embos:id",
+    "//pw_thread_embos:sleep",
+    "//pw_thread_embos:thread",
+    "//pw_thread_embos:yield",
+    "//pw_thread_freertos:freertos_tasktcb",
+    "//pw_thread_freertos:id",
+    "//pw_thread_freertos:sleep",
+    "//pw_thread_freertos:test_thread_context",
+    "//pw_thread_freertos:thread",
+    "//pw_thread_freertos:yield",
+    "//pw_thread_stl:id",
+    "//pw_thread_stl:sleep",
+    "//pw_thread_stl:test_thread_context",
+    "//pw_thread_stl:thread",
+    "//pw_thread_stl:yield",
+    "//pw_thread_threadx:id",
+    "//pw_thread_threadx:sleep",
+    "//pw_thread_threadx:thread",
+    "//pw_thread_threadx:yield",
+    "//pw_tls_client:entropy.facade",
+    "//pw_tls_client:pw_tls_client.facade",
+    "//pw_tls_client_boringssl:pw_tls_client_boringssl",
+    "//pw_tls_client_mbedtls:pw_tls_client_mbedtls",
+    "//pw_trace:null",
+    "//pw_trace:pw_trace.facade",
+    "//pw_trace:pw_trace_sample_app",
+    "//pw_trace:trace_facade_test.lib",
+    "//pw_trace:trace_zero_facade_test.lib",
+    "//pw_trace_tokenized:pw_trace_example_to_file",
+    "//pw_trace_tokenized:pw_trace_host_trace_time",
+    "//pw_trace_tokenized:pw_trace_tokenized",
+    "//pw_trace_tokenized:trace_tokenized_test.lib",
+    "//pw_unit_test:googletest",
+    "//pw_unit_test:light",
+    "//pw_unit_test:pw_unit_test.facade",
+    "//pw_unit_test:rpc_service",
+    "//targets/mimxrt595_evk_freertos:freertos_config",
+    "//targets/rp2040:freertos_config",
+    "//targets/stm32f429i_disc1_stm32cube:freertos_config",
+    "//targets/stm32f429i_disc1_stm32cube:hal_config",
+    "//third_party/boringssl:sysdeps",
+    "//third_party/chromium_verifier:pthread",
+    "//third_party/fuchsia:fit_impl",
+    "//third_party/fuchsia:stdcompat",
+    "//third_party/mbedtls:default_config",
+    "//third_party/smartfusion_mss:debug_config",
+    "//third_party/smartfusion_mss:default_config",
+    # keep-sorted: end
+)
+
+INCLUDE_CHECK_TARGET_PATTERN = "//... " + " ".join(
+    "-" + target for target in INCLUDE_CHECK_EXCEPTIONS
+)
+
 #
 # Presubmit check programs
 #
@@ -1482,11 +1754,14 @@ OTHER_CHECKS = (
     npm_presubmit.npm_test,
     pw_transfer_integration_test,
     python_checks.update_upstream_python_constraints,
+    python_checks.upload_pigweed_pypi_distribution,
     python_checks.vendor_python_wheels,
+    python_checks.version_bump_pigweed_pypi_distribution,
     shell_checks.shellcheck,
     # TODO(hepler): Many files are missing from the CMake build. Add this check
     # to lintformat when the missing files are fixed.
     source_in_build.cmake(SOURCE_FILES_FILTER, _run_cmake),
+    source_in_build.soong(SOURCE_FILES_FILTER),
     static_analysis,
     stm32f429i,
     todo_check.create(todo_check.BUGS_OR_USERNAMES),
@@ -1526,6 +1801,7 @@ SECURITY = (
 FUZZ = (gn_fuzz_build, oss_fuzz_build)
 
 _LINTFORMAT = (
+    bazel_checks.includes_presubmit_check(INCLUDE_CHECK_TARGET_PATTERN),
     commit_message_format,
     copyright_notice,
     format_code.presubmit_checks(),

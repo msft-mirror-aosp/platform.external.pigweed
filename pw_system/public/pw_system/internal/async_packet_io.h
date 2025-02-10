@@ -13,7 +13,6 @@
 // the License.
 #pragma once
 
-#include <atomic>
 #include <cstdint>
 #include <mutex>
 #include <optional>
@@ -70,7 +69,7 @@ class RpcChannelOutputQueue final : public rpc::ChannelOutput {
 
 // Thread that receives inbound RPC packets and calls
 // pw::rpc::Server::ProcessPacket() with them.
-class RpcServerThread final : public thread::ThreadCore {
+class RpcServerThread final {
  public:
   RpcServerThread(Allocator& allocator, rpc::Server& server);
 
@@ -87,21 +86,16 @@ class RpcServerThread final : public thread::ThreadCore {
     if (ready_for_packet_) {
       return async2::Ready();
     }
-    ready_to_receive_packet_ = cx.GetWaker(async2::WaitReason::Unspecified());
+    PW_ASYNC_STORE_WAKER(
+        cx, ready_to_receive_packet_, "RpcServerThread waiting for RPC packet");
     return async2::Pending();
   }
 
   void PushPacket(multibuf::MultiBuf&& packet);
 
- private:
-  void Run() override {
-    while (true) {
-      RunOnce();
-    }
-  }
-
   void RunOnce();
 
+ private:
   Allocator& allocator_;
   sync::Mutex mutex_;
   bool ready_for_packet_ PW_GUARDED_BY(mutex_) = true;
@@ -141,42 +135,23 @@ class PacketIO {
    private:
     async2::Poll<> DoPend(async2::Context& cx) override;
 
-    async2::Poll<> PendFlush(async2::Context& cx);
-
     PacketIO& io_;
     async2::Poll<InlineVarLenEntryQueue<>::Entry> outbound_packet_;
-    std::optional<multibuf::MultiBufAllocationFuture> outbound_packet_multibuf_;
-  };
-
-  class PacketFlusher : public async2::Task {
-   public:
-    constexpr PacketFlusher(PacketIO& io) : io_(io), flush_until_{} {}
-
-    void FlushUntil(channel::WriteToken write_token) {
-      flush_until_ = write_token;
-      std::move(waker_).Wake();
-    }
-
-   private:
-    async2::Poll<> DoPend(async2::Context& cx) override;
-
-    PacketIO& io_;
-    channel::WriteToken flush_until_;
-    async2::Waker waker_;
   };
 
   channel::DatagramReaderWriter& channel() { return channels_.first(); }
 
-  std::byte mb_allocator_buffer_[PW_SYSTEM_MAX_TRANSMISSION_UNIT * 2];
+  std::byte mb_allocator_buffer_1_[PW_SYSTEM_MAX_TRANSMISSION_UNIT];
+  std::byte mb_allocator_buffer_2_[PW_SYSTEM_MAX_TRANSMISSION_UNIT];
   Allocator& allocator_;
-  multibuf::SimpleAllocator mb_allocator_;
+  multibuf::SimpleAllocator mb_allocator_1_;
+  multibuf::SimpleAllocator mb_allocator_2_;
   channel::ForwardingDatagramChannelPair channels_;
   hdlc::Router router_;
   RpcServerThread rpc_server_thread_;
 
   PacketReader packet_reader_;
   PacketWriter packet_writer_;
-  PacketFlusher packet_flusher_;
 };
 
 }  // namespace pw::system::internal

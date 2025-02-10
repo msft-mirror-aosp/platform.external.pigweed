@@ -745,6 +745,8 @@ TYPED_TEST(LowEnergyScannerTest, ScanUsingPublicAddress) {
 
 TYPED_TEST(LowEnergyScannerTest, ScanUsingRandomAddress) {
   this->fake_address_delegate()->set_local_address(kRandomAddress1);
+  // Public address would be used if privacy was disabled
+  this->fake_address_delegate()->EnablePrivacy(true);
   EXPECT_TRUE(this->StartScan(false));
   this->RunUntilIdle();
   EXPECT_TRUE(this->scanner()->IsPassiveScanning());
@@ -783,7 +785,7 @@ TYPED_TEST(LowEnergyScannerTest, CallbackStopsScanning) {
   // crashing, it will likely be due to a use-after-free type bug. Such a bug
   // may or may not manifest itself in a non-asan build.
   this->set_peer_found_callback(
-      [&](const LowEnergyScanResult& result) { this->scanner()->StopScan(); });
+      [&](const LowEnergyScanResult&) { this->scanner()->StopScan(); });
 
   EXPECT_TRUE(this->StartScan(true, kPwScanPeriod));
   this->RunFor(kScanPeriod);

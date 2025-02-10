@@ -82,6 +82,17 @@ def parse_args():
         action='store_true',
         help='Output additional logs as the script runs',
     )
+    parser.add_argument(
+        '--chip',
+        dest='chip',
+        type=str,
+        required=True,
+        choices=[
+            'RP2040',
+            'RP2350',
+        ],
+        help='RP2 chip connected to a debug probe (RP2040 or RP2350)',
+    )
 
     return parser.parse_args()
 
@@ -99,7 +110,7 @@ def generate_runner(command: str, arguments: list[str]) -> str:
 
 
 def generate_server_config(
-    include_picos: bool = True, include_debug_probes: bool = True
+    chip: str, include_picos: bool = True, include_debug_probes: bool = True
 ) -> IO[bytes]:
     """Returns a temporary generated file for use as the server config."""
     boards = device_detector.detect_boards(
@@ -145,6 +156,8 @@ def generate_server_config(
             str(board.bus),
             '--usb-port',
             str(board.port),
+            '--chip',
+            chip,
         ]
         config_file.write(
             generate_runner(_TEST_RUNNER_COMMAND, test_runner_args).encode(
@@ -158,6 +171,7 @@ def generate_server_config(
 def launch_server(
     server_config: IO[bytes] | None,
     server_port: int | None,
+    chip: str,
     include_picos: bool,
     include_debug_probes: bool,
 ) -> int:
@@ -165,7 +179,7 @@ def launch_server(
     if server_config is None:
         # Auto-detect attached boards if no config is provided.
         server_config = generate_server_config(
-            include_picos, include_debug_probes
+            chip, include_picos, include_debug_probes
         )
 
     cmd = [_TEST_SERVER_COMMAND, '-config', server_config.name]
@@ -190,6 +204,7 @@ def main():
     exit_code = launch_server(
         args.server_config,
         args.server_port,
+        args.chip,
         not args.debug_probe_only,
         not args.pico_only,
     )

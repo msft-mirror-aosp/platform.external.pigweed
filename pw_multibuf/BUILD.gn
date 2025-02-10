@@ -115,6 +115,7 @@ pw_source_set("allocator") {
   public_deps = [
     ":pw_multibuf",
     "$dir_pw_async2:dispatcher",
+    "$dir_pw_containers:intrusive_forward_list",
     "$dir_pw_result",
   ]
 }
@@ -171,6 +172,25 @@ pw_test("stream_test") {
   sources = [ "stream_test.cc" ]
 }
 
+pw_source_set("from_span") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_multibuf/from_span.h" ]
+  public_deps = [
+    ":pw_multibuf",
+    dir_pw_allocator,
+    dir_pw_function,
+  ]
+  sources = [ "from_span.cc" ]
+}
+
+pw_test("from_span_test") {
+  deps = [
+    ":from_span",
+    "$dir_pw_allocator:testing",
+  ]
+  sources = [ "from_span_test.cc" ]
+}
+
 pw_source_set("testing") {
   public_configs = [ ":public_include_path" ]
   public = [ "public/pw_multibuf/simple_allocator_for_test.h" ]
@@ -197,6 +217,7 @@ pw_test_group("tests") {
   tests = [
     ":allocator_test",
     ":chunk_test",
+    ":from_span_test",
     ":header_chunk_region_tracker_test",
     ":multibuf_test",
     ":simple_allocator_test",

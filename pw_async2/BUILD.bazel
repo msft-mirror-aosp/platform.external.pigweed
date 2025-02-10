@@ -12,15 +12,13 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load(
     "//pw_build:compatibility.bzl",
     "incompatible_with_mcu",
     "minimum_cxx_20",
 )
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -31,8 +29,9 @@ cc_library(
     hdrs = [
         "public/pw_async2/internal/poll_internal.h",
         "public/pw_async2/poll.h",
+        "public/pw_async2/try.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_polyfill",
         "//pw_string:to_string",
@@ -59,9 +58,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/dispatcher_base.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":poll",
         "//pw_assert",
@@ -79,9 +76,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/dispatcher.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":dispatcher_backend",
         ":dispatcher_base",
@@ -126,11 +121,10 @@ cc_library(
     hdrs = [
         "public/pw_async2/pend_func_task.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":dispatcher",
+        "//pw_function",
     ],
 )
 
@@ -145,9 +139,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/pendable_as_task.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":dispatcher",
     ],
@@ -164,9 +156,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/allocate_task.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":dispatcher",
         "//pw_allocator:allocator",
@@ -187,9 +177,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/once_sender.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":dispatcher",
         "//pw_function",
@@ -218,9 +206,7 @@ cc_library(
     implementation_deps = [
         "//pw_log",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     target_compatible_with = minimum_cxx_20(),
     deps = [
         ":dispatcher",
@@ -245,9 +231,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/coro_or_else_task.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":coro",
         ":dispatcher",
@@ -275,7 +259,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/time_provider.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":dispatcher",
         "//pw_chrono:virtual_clock",
@@ -297,7 +281,7 @@ cc_library(
         "//pw_chrono:system_timer",
         "//pw_toolchain:no_destructor",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":time_provider",
         "//pw_chrono:system_clock",
@@ -320,7 +304,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/simulated_time_provider.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":time_provider",
         "//pw_sync:interrupt_spin_lock",
@@ -336,5 +320,83 @@ pw_cc_test(
         ":simulated_time_provider",
         "//pw_chrono:system_clock",
         "//pw_unit_test",
+    ],
+)
+
+cc_library(
+    name = "enqueue_heap_func",
+    hdrs = [
+        "public/pw_async2/enqueue_heap_func.h",
+    ],
+    strip_include_prefix = "public",
+    deps = [
+        ":dispatcher",
+    ],
+)
+
+pw_cc_test(
+    name = "enqueue_heap_func_test",
+    srcs = [
+        "enqueue_heap_func_test.cc",
+    ],
+    deps = [
+        ":dispatcher",
+        ":enqueue_heap_func",
+        "//pw_unit_test",
+    ],
+)
+
+cc_library(
+    name = "join",
+    hdrs = [
+        "public/pw_async2/join.h",
+    ],
+    strip_include_prefix = "public",
+    deps = [
+        ":dispatcher",
+    ],
+)
+
+pw_cc_test(
+    name = "join_test",
+    srcs = [
+        "join_test.cc",
+    ],
+    deps = [
+        ":dispatcher",
+        ":join",
+    ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "backends.rst",
+        "docs.rst",
+    ],
+    prefix = "pw_async2/",
+    target_compatible_with = incompatible_with_mcu(),
+    deps = [
+        "//pw_async2/examples:docs",
+    ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_async2/allocate_task.h",
+        "public/pw_async2/coro.h",
+        "public/pw_async2/coro_or_else_task.h",
+        "public/pw_async2/dispatcher.h",
+        "public/pw_async2/dispatcher_base.h",
+        "public/pw_async2/enqueue_heap_func.h",
+        "public/pw_async2/join.h",
+        "public/pw_async2/once_sender.h",
+        "public/pw_async2/pend_func_task.h",
+        "public/pw_async2/pendable_as_task.h",
+        "public/pw_async2/poll.h",
+        "public/pw_async2/simulated_time_provider.h",
+        "public/pw_async2/system_time_provider.h",
+        "public/pw_async2/time_provider.h",
     ],
 )

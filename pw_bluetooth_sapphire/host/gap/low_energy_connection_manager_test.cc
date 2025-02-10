@@ -44,6 +44,7 @@
 #include "pw_bluetooth_sapphire/internal/host/l2cap/fake_channel_test.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/fake_l2cap.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/l2cap_defs.h"
+#include "pw_bluetooth_sapphire/internal/host/l2cap/types.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/smp.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/test_security_manager.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/types.h"
@@ -224,10 +225,10 @@ class LowEnergyConnectionManagerTest : public TestingBase {
     if (canceled) {
       canceled_peers_.insert(address);
     } else if (connected) {
-      BT_DEBUG_ASSERT(connected_peers_.find(address) == connected_peers_.end());
+      PW_DCHECK(connected_peers_.find(address) == connected_peers_.end());
       connected_peers_.insert(address);
     } else {
-      BT_DEBUG_ASSERT(connected_peers_.find(address) != connected_peers_.end());
+      PW_DCHECK(connected_peers_.find(address) != connected_peers_.end());
       connected_peers_.erase(address);
     }
   }
@@ -536,7 +537,7 @@ TEST_F(LowEnergyConnectionManagerTest, ConnectSinglePeer) {
 
 struct TestObject final {
   explicit TestObject(bool* d) : deleted(d) {
-    BT_DEBUG_ASSERT(deleted);
+    PW_DCHECK(deleted);
     *deleted = false;
   }
 
@@ -1588,7 +1589,7 @@ TEST_F(LowEnergyConnectionManagerTest,
 
   std::optional<hci_spec::LEConnectionParameters> actual;
 
-  auto conn_params_updated_cb = [&](const auto& addr, const auto& params) {
+  auto conn_params_updated_cb = [&](const auto&, const auto& params) {
     actual = params;
   };
   test_device()->set_le_connection_parameters_callback(conn_params_updated_cb);
@@ -1833,7 +1834,7 @@ TEST_F(LowEnergyConnectionManagerTest, PairWithBondableModes) {
   conn_mgr()->Pair(peer->identifier(),
                    sm::SecurityLevel::kEncrypted,
                    sm::BondableMode::Bondable,
-                   [](sm::Result<> cb_status) {});
+                   [](sm::Result<>) {});
   RunUntilIdle();
 
   EXPECT_EQ(BondableMode::Bondable, mock_sm->bondable_mode());
@@ -1842,7 +1843,7 @@ TEST_F(LowEnergyConnectionManagerTest, PairWithBondableModes) {
   conn_mgr()->Pair(peer->identifier(),
                    sm::SecurityLevel::kAuthenticated,
                    sm::BondableMode::NonBondable,
-                   [](sm::Result<> cb_status) {});
+                   [](sm::Result<>) {});
   RunUntilIdle();
 
   EXPECT_EQ(BondableMode::NonBondable, mock_sm->bondable_mode());
@@ -1854,7 +1855,7 @@ TEST_F(LowEnergyConnectionManagerTest, ConnectAndDiscoverByServiceWithoutUUID) {
   auto* peer = peer_cache()->NewPeer(kAddress0, /*connectable=*/true);
 
   bool cb_called = false;
-  auto expect_uuids = [&cb_called](PeerId peer_id, auto uuids) {
+  auto expect_uuids = [&cb_called](PeerId, auto uuids) {
     ASSERT_TRUE(uuids.empty());
     cb_called = true;
   };
@@ -1886,7 +1887,7 @@ TEST_F(LowEnergyConnectionManagerTest, ConnectAndDiscoverByServiceUuid) {
   std::array<UUID, 2> expected_uuids = {kConnectUuid, kGenericAccessService};
 
   bool cb_called = false;
-  auto expect_uuid = [&cb_called, expected_uuids](PeerId peer_id, auto uuids) {
+  auto expect_uuid = [&cb_called, expected_uuids](PeerId, auto uuids) {
     EXPECT_THAT(uuids, ::testing::UnorderedElementsAreArray(expected_uuids));
     cb_called = true;
   };
@@ -2192,7 +2193,7 @@ TEST_F(
 
   std::optional<hci_spec::LEConnectionParameters> conn_params;
   test_device()->set_le_connection_parameters_callback(
-      [&](auto address, auto parameters) { conn_params = parameters; });
+      [&](auto, auto parameters) { conn_params = parameters; });
 
   RunFor(kLEConnectionPauseCentral);
   ASSERT_TRUE(conn_params.has_value());
@@ -2612,7 +2613,7 @@ TEST_F(LowEnergyConnectionManagerTest,
 
   size_t l2cap_conn_param_update_count = 0;
   fake_l2cap()->set_connection_parameter_update_request_responder(
-      [&](auto handle, auto params) {
+      [&](auto, auto params) {
         EXPECT_EQ(kConnParams, params);
         l2cap_conn_param_update_count++;
         return true;
@@ -2620,7 +2621,7 @@ TEST_F(LowEnergyConnectionManagerTest,
 
   size_t hci_update_conn_param_count = 0;
   test_device()->set_le_connection_parameters_callback(
-      [&](auto address, auto parameters) { hci_update_conn_param_count++; });
+      [&](auto, auto) { hci_update_conn_param_count++; });
 
   RunUntilIdle();
   ASSERT_TRUE(conn_handle);
@@ -2693,7 +2694,7 @@ TEST_F(LowEnergyConnectionManagerTest,
   size_t hci_update_conn_param_count1 = 0;
 
   fake_l2cap()->set_connection_parameter_update_request_responder(
-      [&](auto handle, auto params) {
+      [&](auto handle, auto) {
         if (handle == conn_handle0->handle()) {
           l2cap_conn_param_update_count0++;
           // connection update commands should be sent before l2cap requests
@@ -2707,20 +2708,19 @@ TEST_F(LowEnergyConnectionManagerTest,
         return true;
       });
 
-  test_device()->set_le_connection_parameters_callback(
-      [&](auto address, auto params) {
-        if (address == kAddress0) {
-          hci_update_conn_param_count0++;
-          // l2cap requests should not be sent until after failed HCI connection
-          // update commands
-          EXPECT_EQ(l2cap_conn_param_update_count0, 0u);
-        } else if (address == kAddress1) {
-          hci_update_conn_param_count1++;
-          EXPECT_EQ(l2cap_conn_param_update_count1, 0u);
-        } else {
-          ADD_FAILURE();
-        }
-      });
+  test_device()->set_le_connection_parameters_callback([&](auto address, auto) {
+    if (address == kAddress0) {
+      hci_update_conn_param_count0++;
+      // l2cap requests should not be sent until after failed HCI connection
+      // update commands
+      EXPECT_EQ(l2cap_conn_param_update_count0, 0u);
+    } else if (address == kAddress1) {
+      hci_update_conn_param_count1++;
+      EXPECT_EQ(l2cap_conn_param_update_count1, 0u);
+    } else {
+      ADD_FAILURE();
+    }
+  });
 
   RunFor(kLEConnectionPausePeripheral);
   ASSERT_TRUE(conn_handle0);
@@ -2783,13 +2783,13 @@ TEST_F(
   size_t hci_update_conn_param_count = 0;
 
   fake_l2cap()->set_connection_parameter_update_request_responder(
-      [&](auto handle, auto params) {
+      [&](auto, auto) {
         l2cap_conn_param_update_count++;
         return true;
       });
 
   test_device()->set_le_connection_parameters_callback(
-      [&](auto address, auto params) { hci_update_conn_param_count++; });
+      [&](auto, auto) { hci_update_conn_param_count++; });
 
   test_device()->SetDefaultCommandStatus(
       hci_spec::kLEConnectionUpdate,
@@ -2846,13 +2846,13 @@ TEST_F(
   size_t hci_update_conn_param_count = 0;
 
   fake_l2cap()->set_connection_parameter_update_request_responder(
-      [&](auto handle, auto params) {
+      [&](auto, auto) {
         l2cap_conn_param_update_count++;
         return true;
       });
 
   test_device()->set_le_connection_parameters_callback(
-      [&](auto address, auto params) { hci_update_conn_param_count++; });
+      [&](auto, auto) { hci_update_conn_param_count++; });
 
   test_device()->SetDefaultCommandStatus(
       hci_spec::kLEConnectionUpdate,
@@ -2904,14 +2904,14 @@ TEST_F(LowEnergyConnectionManagerTest, HciUpdateConnParamsAfterInterrogation) {
 
   size_t l2cap_conn_param_update_count = 0;
   fake_l2cap()->set_connection_parameter_update_request_responder(
-      [&](auto handle, const auto params) {
+      [&](auto, const auto) {
         l2cap_conn_param_update_count++;
         return true;
       });
 
   size_t hci_update_conn_param_count = 0;
   test_device()->set_le_connection_parameters_callback(
-      [&](auto address, const hci_spec::LEConnectionParameters& params) {
+      [&](auto, const hci_spec::LEConnectionParameters& params) {
         // FakeController will pick an interval between min and max interval.
         EXPECT_TRUE(
             params.interval() >= hci_spec::defaults::kLEConnectionIntervalMin &&
@@ -2945,7 +2945,7 @@ TEST_F(LowEnergyConnectionManagerTest,
 
   size_t hci_update_conn_param_count = 0;
   test_device()->set_le_connection_parameters_callback(
-      [&](auto address, const hci_spec::LEConnectionParameters& params) {
+      [&](auto, const hci_spec::LEConnectionParameters& params) {
         // FakeController will pick an interval between min and max interval.
         EXPECT_TRUE(
             params.interval() >= hci_spec::defaults::kLEConnectionIntervalMin &&
@@ -3181,7 +3181,7 @@ TEST_F(LowEnergyConnectionManagerTest,
   ASSERT_FALSE(fake_peer_0_ptr->logical_links().empty());
   auto handle_0 = *fake_peer_0_ptr->logical_links().begin();
 
-  auto response = hci::EmbossEventPacket::New<
+  auto response = hci::EventPacket::New<
       pw::bluetooth::emboss::LEReadRemoteFeaturesCompleteSubeventWriter>(
       hci_spec::kLEMetaEventCode);
   auto view = response.view_t();
@@ -3255,7 +3255,7 @@ TEST_F(LowEnergyConnectionManagerTest,
   // Complete interrogation of peer_0. No asserts should fail.
   ASSERT_FALSE(fake_peer_0_ptr->logical_links().empty());
   auto handle_0 = *fake_peer_0_ptr->logical_links().begin();
-  auto response = hci::EmbossEventPacket::New<
+  auto response = hci::EventPacket::New<
       pw::bluetooth::emboss::LEReadRemoteFeaturesCompleteSubeventWriter>(
       hci_spec::kLEMetaEventCode);
   auto view = response.view_t();
@@ -3320,7 +3320,7 @@ TEST_F(LowEnergyConnectionManagerTest, AutoConnectSkipsScanning) {
 
   size_t scan_cb_count = 0;
   test_device()->set_scan_state_callback(
-      [&scan_cb_count](bool enabled) { scan_cb_count++; });
+      [&scan_cb_count](bool) { scan_cb_count++; });
 
   std::unique_ptr<LowEnergyConnectionHandle> conn_handle;
   auto callback = [&conn_handle](auto result) {
@@ -3450,7 +3450,7 @@ TEST_F(LowEnergyConnectionManagerTest,
   RunUntilIdle();
 
   // Complete interrogation so that callback gets called.
-  auto response = hci::EmbossEventPacket::New<
+  auto response = hci::EventPacket::New<
       pw::bluetooth::emboss::ReadRemoteVersionInfoCompleteEventWriter>(
       hci_spec::kReadRemoteVersionInfoCompleteEventCode);
   auto view = response.view_t();
@@ -3502,7 +3502,7 @@ TEST_F(LowEnergyConnectionManagerTest,
   RunUntilIdle();
 
   // Complete interrogation so that callback gets called.
-  auto response = hci::EmbossEventPacket::New<
+  auto response = hci::EventPacket::New<
       pw::bluetooth::emboss::ReadRemoteVersionInfoCompleteEventWriter>(
       hci_spec::kReadRemoteVersionInfoCompleteEventCode);
   auto view = response.view_t();
@@ -3731,7 +3731,7 @@ TEST_F(LowEnergyConnectionManagerTest,
   // Complete interrogation with an error that will be received after the
   // disconnect event. Event params other than status will be ignored because
   // status is an error.
-  auto response = hci::EmbossEventPacket::New<
+  auto response = hci::EventPacket::New<
       pw::bluetooth::emboss::ReadRemoteVersionInfoCompleteEventWriter>(
       hci_spec::kReadRemoteVersionInfoCompleteEventCode);
   auto view = response.view_t();
@@ -4122,7 +4122,7 @@ TEST_F(LowEnergyConnectionManagerTest,
 
   size_t hci_update_conn_param_count = 0;
   test_device()->set_le_connection_parameters_callback(
-      [&](auto address, auto parameters) { hci_update_conn_param_count++; });
+      [&](auto, auto) { hci_update_conn_param_count++; });
 
   std::unique_ptr<LowEnergyConnectionHandle> conn_handle;
   auto callback = [&conn_handle](auto result) {
@@ -4408,6 +4408,270 @@ TEST_F(LowEnergyConnectionManagerPendingPacketsTest, ReleaseRef) {
   // have been sent
   EXPECT_EQ(connection_0.queued_packets().size(), 0u);
   EXPECT_EQ(connection_1.queued_packets().size(), 0u);
+}
+
+TEST_F(LowEnergyConnectionManagerTest, ConnectAndOpenL2cap) {
+  constexpr l2cap::Psm kFakePsm = 15;
+  constexpr l2cap::ChannelParameters kChannelParameters{
+      .mode = l2cap::CreditBasedFlowControlMode::kLeCreditBasedFlowControl,
+      .max_rx_sdu_size = std::nullopt,
+      .flush_timeout = std::nullopt,
+  };
+  constexpr l2cap::ChannelId kFakeChannelId = l2cap::kFirstDynamicChannelId;
+  constexpr sm::SecurityLevel kSecurityLevel = sm::SecurityLevel::kEncrypted;
+
+  auto* peer = peer_cache()->NewPeer(kAddress0, /*connectable=*/true);
+  auto fake_peer = std::make_unique<FakePeer>(kAddress0, dispatcher());
+  test_device()->AddPeer(std::move(fake_peer));
+
+  std::unique_ptr<LowEnergyConnectionHandle> conn_handle;
+  auto connection_callback = [&conn_handle](auto result) {
+    ASSERT_EQ(fit::ok(), result);
+    conn_handle = std::move(result).value();
+  };
+
+  EXPECT_TRUE(connected_peers().empty());
+  conn_mgr()->Connect(
+      peer->identifier(), connection_callback, kConnectionOptions);
+  ASSERT_TRUE(peer->le());
+  EXPECT_EQ(Peer::ConnectionState::kInitializing,
+            peer->le()->connection_state());
+
+  RunUntilIdle();
+  EXPECT_EQ(conn_handle->bondable_mode(), sm::BondableMode::Bondable);
+
+  EXPECT_EQ(1u, connected_peers().count(kAddress0));
+  ASSERT_TRUE(conn_handle);
+  EXPECT_TRUE(conn_handle->active());
+
+  std::optional<WeakSelf<l2cap::Channel>::WeakPtr> channel;
+  auto callback = [&channel](auto result) {
+    ASSERT_TRUE(result.is_alive());
+    channel = std::move(result);
+  };
+
+  fake_l2cap()->ExpectOutboundL2capChannel(conn_handle->handle(),
+                                           kFakePsm,
+                                           kFakeChannelId,
+                                           kFakeChannelId,
+                                           kChannelParameters);
+  conn_mgr()->OpenL2capChannel(peer->identifier(),
+                               kFakePsm,
+                               kChannelParameters,
+                               kSecurityLevel,
+                               callback);
+
+  RunUntilIdle();
+  EXPECT_TRUE(channel);
+  EXPECT_TRUE(channel->is_alive());
+  EXPECT_TRUE(conn_handle->security().encrypted());
+  EXPECT_EQ(conn_handle->bondable_mode(), sm::BondableMode::Bondable);
+}
+
+TEST_F(LowEnergyConnectionManagerTest, UnknownPeerFailOpenL2cap) {
+  constexpr PeerId kUnknownId(1);
+  constexpr l2cap::Psm kFakePsm = 15;
+  constexpr l2cap::ChannelParameters kChannelParameters{
+      .mode = l2cap::CreditBasedFlowControlMode::kLeCreditBasedFlowControl,
+      .max_rx_sdu_size = std::nullopt,
+      .flush_timeout = std::nullopt,
+  };
+  constexpr sm::SecurityLevel kSecurityLevel = sm::SecurityLevel::kEncrypted;
+
+  std::optional<WeakSelf<l2cap::Channel>::WeakPtr> channel;
+  auto callback = [&channel](auto result) { channel = std::move(result); };
+
+  conn_mgr()->OpenL2capChannel(
+      kUnknownId, kFakePsm, kChannelParameters, kSecurityLevel, callback);
+
+  RunUntilIdle();
+  EXPECT_TRUE(channel);
+  EXPECT_FALSE(channel->is_alive());
+}
+
+TEST_F(LowEnergyConnectionManagerTest, ConnectAndOpenL2capAuthenticated) {
+  constexpr l2cap::Psm kFakePsm = 15;
+  constexpr l2cap::ChannelParameters kChannelParameters{
+      .mode = l2cap::CreditBasedFlowControlMode::kLeCreditBasedFlowControl,
+      .max_rx_sdu_size = std::nullopt,
+      .flush_timeout = std::nullopt,
+  };
+  constexpr l2cap::ChannelId kFakeChannelId = l2cap::kFirstDynamicChannelId;
+  constexpr sm::SecurityLevel kSecurityLevel =
+      sm::SecurityLevel::kAuthenticated;
+
+  auto* peer = peer_cache()->NewPeer(kAddress0, /*connectable=*/true);
+  auto fake_peer = std::make_unique<FakePeer>(kAddress0, dispatcher());
+  test_device()->AddPeer(std::move(fake_peer));
+
+  std::unique_ptr<LowEnergyConnectionHandle> conn_handle;
+  auto connection_callback = [&conn_handle](auto result) {
+    ASSERT_EQ(fit::ok(), result);
+    conn_handle = std::move(result).value();
+  };
+
+  EXPECT_TRUE(connected_peers().empty());
+  conn_mgr()->Connect(
+      peer->identifier(), connection_callback, kConnectionOptions);
+  ASSERT_TRUE(peer->le());
+  EXPECT_EQ(Peer::ConnectionState::kInitializing,
+            peer->le()->connection_state());
+
+  RunUntilIdle();
+  EXPECT_EQ(conn_handle->bondable_mode(), sm::BondableMode::Bondable);
+
+  EXPECT_EQ(1u, connected_peers().count(kAddress0));
+  ASSERT_TRUE(conn_handle);
+  EXPECT_TRUE(conn_handle->active());
+
+  std::optional<WeakSelf<l2cap::Channel>::WeakPtr> channel;
+  auto callback = [&channel](auto result) {
+    ASSERT_TRUE(result.is_alive());
+    channel = std::move(result);
+  };
+
+  fake_l2cap()->ExpectOutboundL2capChannel(conn_handle->handle(),
+                                           kFakePsm,
+                                           kFakeChannelId,
+                                           kFakeChannelId,
+                                           kChannelParameters);
+  conn_mgr()->OpenL2capChannel(peer->identifier(),
+                               kFakePsm,
+                               kChannelParameters,
+                               kSecurityLevel,
+                               callback);
+
+  RunUntilIdle();
+  EXPECT_TRUE(channel);
+  EXPECT_TRUE(channel->is_alive());
+  EXPECT_TRUE(conn_handle->security().encrypted());
+  EXPECT_TRUE(conn_handle->security().authenticated());
+  EXPECT_EQ(conn_handle->bondable_mode(), sm::BondableMode::Bondable);
+}
+
+TEST_F(LowEnergyConnectionManagerTest, ConnectAndOpenL2capSecureAuthenticated) {
+  constexpr l2cap::Psm kFakePsm = 15;
+  constexpr l2cap::ChannelParameters kChannelParameters{
+      .mode = l2cap::CreditBasedFlowControlMode::kLeCreditBasedFlowControl,
+      .max_rx_sdu_size = std::nullopt,
+      .flush_timeout = std::nullopt,
+  };
+  constexpr l2cap::ChannelId kFakeChannelId = l2cap::kFirstDynamicChannelId;
+  constexpr sm::SecurityLevel kSecurityLevel =
+      sm::SecurityLevel::kSecureAuthenticated;
+
+  auto* peer = peer_cache()->NewPeer(kAddress0, /*connectable=*/true);
+  auto fake_peer = std::make_unique<FakePeer>(kAddress0, dispatcher());
+  test_device()->AddPeer(std::move(fake_peer));
+
+  std::unique_ptr<LowEnergyConnectionHandle> conn_handle;
+  auto connection_callback = [&conn_handle](auto result) {
+    ASSERT_EQ(fit::ok(), result);
+    conn_handle = std::move(result).value();
+  };
+
+  EXPECT_TRUE(connected_peers().empty());
+  conn_mgr()->Connect(
+      peer->identifier(), connection_callback, kConnectionOptions);
+  ASSERT_TRUE(peer->le());
+  EXPECT_EQ(Peer::ConnectionState::kInitializing,
+            peer->le()->connection_state());
+
+  RunUntilIdle();
+  EXPECT_EQ(conn_handle->bondable_mode(), sm::BondableMode::Bondable);
+
+  EXPECT_EQ(1u, connected_peers().count(kAddress0));
+  ASSERT_TRUE(conn_handle);
+  EXPECT_TRUE(conn_handle->active());
+
+  std::optional<WeakSelf<l2cap::Channel>::WeakPtr> channel;
+  auto callback = [&channel](auto result) {
+    ASSERT_TRUE(result.is_alive());
+    channel = std::move(result);
+  };
+
+  fake_l2cap()->ExpectOutboundL2capChannel(conn_handle->handle(),
+                                           kFakePsm,
+                                           kFakeChannelId,
+                                           kFakeChannelId,
+                                           kChannelParameters);
+  conn_mgr()->OpenL2capChannel(peer->identifier(),
+                               kFakePsm,
+                               kChannelParameters,
+                               kSecurityLevel,
+                               callback);
+
+  RunUntilIdle();
+  EXPECT_TRUE(channel);
+  EXPECT_TRUE(channel->is_alive());
+  EXPECT_TRUE(conn_handle->security().encrypted());
+  EXPECT_TRUE(conn_handle->security().authenticated());
+  EXPECT_TRUE(conn_handle->security().secure_connections());
+  EXPECT_EQ(conn_handle->bondable_mode(), sm::BondableMode::Bondable);
+}
+
+TEST_F(LowEnergyConnectionManagerTest, ConnectAndOpenL2capNonBondable) {
+  constexpr l2cap::Psm kFakePsm = 15;
+  constexpr l2cap::ChannelParameters kChannelParameters{
+      .mode = l2cap::CreditBasedFlowControlMode::kLeCreditBasedFlowControl,
+      .max_rx_sdu_size = std::nullopt,
+      .flush_timeout = std::nullopt,
+  };
+  constexpr l2cap::ChannelId kFakeChannelId = l2cap::kFirstDynamicChannelId;
+  constexpr sm::SecurityLevel kSecurityLevel =
+      sm::SecurityLevel::kSecureAuthenticated;
+  constexpr LowEnergyConnectionOptions kConnectionOptionsNonBondable{
+      .bondable_mode = sm::BondableMode::NonBondable,
+  };
+
+  auto* peer = peer_cache()->NewPeer(kAddress0, /*connectable=*/true);
+  auto fake_peer = std::make_unique<FakePeer>(kAddress0, dispatcher());
+  test_device()->AddPeer(std::move(fake_peer));
+
+  std::unique_ptr<LowEnergyConnectionHandle> conn_handle;
+  auto connection_callback = [&conn_handle](auto result) {
+    ASSERT_EQ(fit::ok(), result);
+    conn_handle = std::move(result).value();
+  };
+
+  EXPECT_TRUE(connected_peers().empty());
+  conn_mgr()->Connect(
+      peer->identifier(), connection_callback, kConnectionOptionsNonBondable);
+  ASSERT_TRUE(peer->le());
+  EXPECT_EQ(Peer::ConnectionState::kInitializing,
+            peer->le()->connection_state());
+
+  RunUntilIdle();
+  EXPECT_EQ(conn_handle->bondable_mode(), sm::BondableMode::NonBondable);
+
+  EXPECT_EQ(1u, connected_peers().count(kAddress0));
+  ASSERT_TRUE(conn_handle);
+  EXPECT_TRUE(conn_handle->active());
+
+  std::optional<WeakSelf<l2cap::Channel>::WeakPtr> channel;
+  auto callback = [&channel](auto result) {
+    ASSERT_TRUE(result.is_alive());
+    channel = std::move(result);
+  };
+
+  fake_l2cap()->ExpectOutboundL2capChannel(conn_handle->handle(),
+                                           kFakePsm,
+                                           kFakeChannelId,
+                                           kFakeChannelId,
+                                           kChannelParameters);
+  conn_mgr()->OpenL2capChannel(peer->identifier(),
+                               kFakePsm,
+                               kChannelParameters,
+                               kSecurityLevel,
+                               callback);
+
+  RunUntilIdle();
+  EXPECT_TRUE(channel);
+  EXPECT_TRUE(channel->is_alive());
+  EXPECT_TRUE(conn_handle->security().encrypted());
+  EXPECT_TRUE(conn_handle->security().authenticated());
+  EXPECT_TRUE(conn_handle->security().secure_connections());
+  EXPECT_EQ(conn_handle->bondable_mode(), sm::BondableMode::NonBondable);
 }
 
 }  // namespace

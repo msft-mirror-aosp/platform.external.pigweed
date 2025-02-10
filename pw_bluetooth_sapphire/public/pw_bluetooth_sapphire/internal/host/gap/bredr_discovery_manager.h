@@ -101,15 +101,15 @@ class BrEdrDiscoveryManager final {
 
   // Used to receive Inquiry Results.
   hci::CommandChannel::EventCallbackResult InquiryResult(
-      const hci::EmbossEventPacket& event);
+      const hci::EventPacket& event);
 
   // Used to receive Inquiry Results.
   hci::CommandChannel::EventCallbackResult InquiryResultWithRssi(
-      const hci::EmbossEventPacket& event);
+      const hci::EventPacket& event);
 
   // Used to receive Inquiry Results.
   hci::CommandChannel::EventCallbackResult ExtendedInquiryResult(
-      const hci::EmbossEventPacket& event);
+      const hci::EventPacket& event);
 
   // Creates and stores a new session object and returns it.
   std::unique_ptr<BrEdrDiscoverySession> AddDiscoverySession();
@@ -162,8 +162,8 @@ class BrEdrDiscoveryManager final {
     inspect::UintProperty last_discoverable_length_sec;
 
     inspect::UintProperty discovery_sessions;
-    inspect::UintProperty inquiry_sessions_count;
-    inspect::UintProperty last_inquiry_length_sec;
+    inspect::UintProperty discovery_sessions_count;
+    inspect::UintProperty last_discovery_length_sec;
 
     std::optional<pw::chrono::SystemClock::time_point>
         discoverable_started_time;

@@ -12,10 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -34,7 +31,7 @@ cc_library(
         "public/pw_bytes/suffix.h",
         "public/pw_bytes/units.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":bit",
         "//pw_containers:iterator",
@@ -51,19 +48,30 @@ cc_library(
         "alignment.cc",
     ],
     hdrs = ["public/pw_bytes/alignment.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_assert",
         "//pw_bytes",
         "//pw_preprocessor",
+        "//third_party/fuchsia:stdcompat",
     ],
 )
 
 cc_library(
     name = "bit",
     hdrs = ["public/pw_bytes/bit.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = ["//third_party/fuchsia:stdcompat"],
+)
+
+cc_library(
+    name = "packed_ptr",
+    hdrs = ["public/pw_bytes/packed_ptr.h"],
+    strip_include_prefix = "public",
+    deps = [
+        "//pw_assert",
+        "//third_party/fuchsia:stdcompat",
+    ],
 )
 
 pw_cc_test(
@@ -112,6 +120,16 @@ pw_cc_test(
 )
 
 pw_cc_test(
+    name = "packed_ptr_test",
+    srcs = ["packed_ptr_test.cc"],
+    deps = [
+        ":packed_ptr",
+        "//pw_compilation_testing:negative_compilation_testing",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
     name = "suffix_test",
     srcs = ["suffix_test.cc"],
     deps = [
@@ -127,5 +145,15 @@ pw_cc_test(
     deps = [
         ":pw_bytes",
         "//pw_unit_test",
+    ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_bytes/alignment.h",
+        "public/pw_bytes/bit.h",
+        "public/pw_bytes/byte_builder.h",
+        "public/pw_bytes/packed_ptr.h",
     ],
 )

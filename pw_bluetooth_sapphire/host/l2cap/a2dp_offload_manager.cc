@@ -27,7 +27,6 @@
 #include "pw_bluetooth_sapphire/internal/host/l2cap/channel.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/l2cap_defs.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/control_packets.h"
-#include "pw_bluetooth_sapphire/internal/host/transport/emboss_control_packets.h"
 
 namespace bt::l2cap {
 namespace android_hci = bt::hci_spec::vendor::android;
@@ -40,7 +39,7 @@ void A2dpOffloadManager::StartA2dpOffload(
     hci_spec::ConnectionHandle link_handle,
     uint16_t max_tx_sdu_size,
     hci::ResultCallback<> callback) {
-  BT_DEBUG_ASSERT(cmd_channel_.is_alive());
+  PW_DCHECK(cmd_channel_.is_alive());
 
   switch (a2dp_offload_status_) {
     case A2dpOffloadStatus::kStarted: {
@@ -81,7 +80,7 @@ void A2dpOffloadManager::StartA2dpOffload(
   constexpr size_t kPacketSize =
       android_emb::StartA2dpOffloadCommand::MaxSizeInBytes();
   auto packet =
-      hci::EmbossCommandPacket::New<android_emb::StartA2dpOffloadCommandWriter>(
+      hci::CommandPacket::New<android_emb::StartA2dpOffloadCommandWriter>(
           android_hci::kA2dpOffloadCommand, kPacketSize);
   auto view = packet.view_t();
 
@@ -133,8 +132,7 @@ void A2dpOffloadManager::StartA2dpOffload(
        id = local_id,
        handle = link_handle,
        self = weak_self_.GetWeakPtr(),
-       this](auto /*transaction_id*/,
-             const hci::EmbossEventPacket& event) mutable {
+       this](auto /*transaction_id*/, const hci::EventPacket& event) mutable {
         if (!self.is_alive()) {
           return;
         }
@@ -161,10 +159,12 @@ void A2dpOffloadManager::StartA2dpOffload(
         // If we tried to stop while A2DP was still starting, perform the stop
         // command now
         if (pending_stop_a2dp_offload_request_.has_value()) {
-          auto callback = std::move(pending_stop_a2dp_offload_request_.value());
+          auto pending_request_callback =
+              std::move(pending_stop_a2dp_offload_request_.value());
           pending_stop_a2dp_offload_request_.reset();
 
-          RequestStopA2dpOffload(id, handle, std::move(callback));
+          RequestStopA2dpOffload(
+              id, handle, std::move(pending_request_callback));
         }
       });
 }
@@ -173,7 +173,7 @@ void A2dpOffloadManager::RequestStopA2dpOffload(
     ChannelId local_id,
     hci_spec::ConnectionHandle link_handle,
     hci::ResultCallback<> callback) {
-  BT_DEBUG_ASSERT(cmd_channel_.is_alive());
+  PW_DCHECK(cmd_channel_.is_alive());
 
   switch (a2dp_offload_status_) {
     case A2dpOffloadStatus::kStopped: {
@@ -211,7 +211,7 @@ void A2dpOffloadManager::RequestStopA2dpOffload(
   a2dp_offload_status_ = A2dpOffloadStatus::kStopping;
 
   auto packet =
-      hci::EmbossCommandPacket::New<android_emb::StopA2dpOffloadCommandWriter>(
+      hci::CommandPacket::New<android_emb::StopA2dpOffloadCommandWriter>(
           android_hci::kA2dpOffloadCommand);
   auto packet_view = packet.view_t();
 
@@ -224,8 +224,7 @@ void A2dpOffloadManager::RequestStopA2dpOffload(
        self = weak_self_.GetWeakPtr(),
        id = local_id,
        handle = link_handle,
-       this](auto /*transaction_id*/,
-             const hci::EmbossEventPacket& event) mutable {
+       this](auto /*transaction_id*/, const hci::EventPacket& event) mutable {
         if (!self.is_alive()) {
           return;
         }

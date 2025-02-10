@@ -14,6 +14,8 @@
 #pragma once
 
 #include "pw_unit_test/framework_backend.h"  // IWYU pragma: export
+#include "pw_unit_test/status_macros.h"      // IWYU pragma: export
+
 // Check that the backend defined the following.
 
 #ifndef GTEST_TEST
@@ -176,11 +178,9 @@
 #error "The pw_unit_test framework backend must define SUCCEED()"
 #endif  // SUCCEED
 
-// RUN_ALL_TESTS can be a macro or a function, check for both.
-#ifndef RUN_ALL_TESTS
-static_assert(&RUN_ALL_TESTS != nullptr,
-              "The pw_unit_test framework backend must define RUN_ALL_TESTS()");
-#endif  // RUN_ALL_TESTS
+static_assert(std::is_same_v<decltype(RUN_ALL_TESTS()), int>,
+              "The pw_unit_test framework backend must define the "
+              "int RUN_ALL_TESTS() function");
 
 #ifndef GTEST_HAS_DEATH_TEST
 #error "The pw_unit_test framework backend must define GTEST_HAS_DEATH_TEST"
@@ -197,3 +197,14 @@ static_assert(&RUN_ALL_TESTS != nullptr,
     "The pw_unit_test framework backend must define " \
     "ASSERT_DEATH_IF_SUPPORTED(statement, regex)"
 #endif  // ASSERT_DEATH_IF_SUPPORTED
+
+namespace pw::test {
+
+/// An opaque black-box function to prevent the optimizer from removing values.
+/// See: https://youtu.be/nXaxk27zwlk?t=2441
+template <typename T>
+inline void DoNotOptimize(const T& value) {
+  asm volatile("" : : "r,m"(value) : "memory");
+}
+
+}  // namespace pw::test

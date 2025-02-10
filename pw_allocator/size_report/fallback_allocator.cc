@@ -14,7 +14,7 @@
 
 #include "pw_allocator/fallback_allocator.h"
 
-#include "pw_allocator/first_fit_block_allocator.h"
+#include "pw_allocator/first_fit.h"
 #include "pw_allocator/size_reporter.h"
 
 int main() {
@@ -22,8 +22,8 @@ int main() {
   reporter.SetBaseline();
 
   std::array<std::byte, 0x1000> buffer;
-  pw::allocator::FirstFitBlockAllocator<uint16_t> primary(reporter.buffer());
-  pw::allocator::FirstFitBlockAllocator<uint16_t> secondary(buffer);
+  pw::allocator::FirstFitAllocator<> primary(reporter.buffer());
+  pw::allocator::FirstFitAllocator<> secondary(buffer);
   reporter.Measure(secondary);
   reporter.Measure(primary);
 

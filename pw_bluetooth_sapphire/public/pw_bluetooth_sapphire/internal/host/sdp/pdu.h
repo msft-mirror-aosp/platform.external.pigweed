@@ -226,8 +226,10 @@ class ServiceSearchResponse : public Response {
 
 // Represents a range of attributes, inclusive of |start| and |end|.
 struct AttributeRange {
-  AttributeRange(AttributeId start, AttributeId end) : start(start), end(end) {
-    BT_DEBUG_ASSERT(start <= end);
+  AttributeRange(AttributeId attribute_range_start,
+                 AttributeId attribute_range_end)
+      : start(attribute_range_start), end(attribute_range_end) {
+    PW_DCHECK(start <= end);
   }
 
   AttributeId start;
@@ -256,7 +258,7 @@ class ServiceAttributeRequest : public Request {
   // Set the maximum size allowed in the response in the Attribute list
   // Not allowed to be lower than kMinMaximumAttributeByteCount (7)
   void set_max_attribute_byte_count(uint16_t count) {
-    BT_DEBUG_ASSERT(count >= kMinMaximumAttributeByteCount);
+    PW_DCHECK(count >= kMinMaximumAttributeByteCount);
     max_attribute_byte_count_ = count;
   }
   uint16_t max_attribute_byte_count() const {
@@ -363,7 +365,7 @@ class ServiceSearchAttributeRequest : public Request {
   // Set the maximum size allowed in the response in the Attribute list
   // Not allowed to be lower than kMinMaximumAttributeByteCount (7)
   void set_max_attribute_byte_count(uint16_t count) {
-    BT_DEBUG_ASSERT(count >= kMinMaximumAttributeByteCount);
+    PW_DCHECK(count >= kMinMaximumAttributeByteCount);
     max_attribute_byte_count_ = count;
   }
   uint16_t max_attribute_byte_count() const {

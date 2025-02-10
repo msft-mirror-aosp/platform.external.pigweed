@@ -51,21 +51,21 @@ FakePeer::FakePeer(const DeviceAddress& address,
 }
 
 void FakePeer::set_scan_response(const ByteBuffer& data) {
-  BT_DEBUG_ASSERT(scannable_);
+  PW_DCHECK(scannable_);
   scan_response_ = DynamicByteBuffer(data);
 }
 
 DynamicByteBuffer FakePeer::CreateInquiryResponseEvent(
     pw::bluetooth::emboss::InquiryMode mode) const {
-  BT_DEBUG_ASSERT(address_.type() == DeviceAddress::Type::kBREDR);
+  PW_DCHECK(address_.type() == DeviceAddress::Type::kBREDR);
 
   if (mode == pw::bluetooth::emboss::InquiryMode::STANDARD) {
     size_t packet_size =
         pw::bluetooth::emboss::InquiryResultEvent::MinSizeInBytes() +
         pw::bluetooth::emboss::InquiryResult::IntrinsicSizeInBytes();
-    auto packet = hci::EmbossEventPacket::New<
-        pw::bluetooth::emboss::InquiryResultEventWriter>(
-        hci_spec::kInquiryResultEventCode, packet_size);
+    auto packet =
+        hci::EventPacket::New<pw::bluetooth::emboss::InquiryResultEventWriter>(
+            hci_spec::kInquiryResultEventCode, packet_size);
     auto view = packet.view_t();
     view.num_responses().Write(1);
     view.responses()[0].bd_addr().CopyFrom(address_.value().view());
@@ -79,7 +79,7 @@ DynamicByteBuffer FakePeer::CreateInquiryResponseEvent(
   constexpr size_t packet_size =
       pw::bluetooth::emboss::InquiryResultWithRssiEvent::MinSizeInBytes() +
       pw::bluetooth::emboss::InquiryResultWithRssi::IntrinsicSizeInBytes();
-  auto packet = hci::EmbossEventPacket::New<
+  auto packet = hci::EventPacket::New<
       pw::bluetooth::emboss::InquiryResultWithRssiEventWriter>(
       hci_spec::kInquiryResultEventCode, packet_size);
   auto view = packet.view_t();
@@ -98,7 +98,7 @@ DynamicByteBuffer FakePeer::CreateInquiryResponseEvent(
 }
 
 void FakePeer::AddLink(hci_spec::ConnectionHandle handle) {
-  BT_DEBUG_ASSERT(!HasLink(handle));
+  PW_DCHECK(!HasLink(handle));
   logical_links_.insert(handle);
 
   if (logical_links_.size() == 1u) {
@@ -107,7 +107,7 @@ void FakePeer::AddLink(hci_spec::ConnectionHandle handle) {
 }
 
 void FakePeer::RemoveLink(hci_spec::ConnectionHandle handle) {
-  BT_DEBUG_ASSERT(HasLink(handle));
+  PW_DCHECK(HasLink(handle));
   logical_links_.erase(handle);
   if (logical_links_.empty())
     set_connected(false);
@@ -139,8 +139,8 @@ void FakePeer::SendPacket(hci_spec::ConnectionHandle conn,
 
 void FakePeer::WriteScanResponseReport(
     pw::bluetooth::emboss::LEAdvertisingReportDataWriter report) const {
-  BT_DEBUG_ASSERT(scannable_);
-  BT_DEBUG_ASSERT(scan_response_.size() < 0xFF);
+  PW_DCHECK(scannable_);
+  PW_DCHECK(scan_response_.size() < 0xFF);
   report.data_length().Write(static_cast<uint8_t>(scan_response_.size()));
   report = pw::bluetooth::emboss::MakeLEAdvertisingReportDataView(
       report.BackingStorage().data(),
@@ -164,8 +164,7 @@ void FakePeer::WriteScanResponseReport(
 
 DynamicByteBuffer FakePeer::BuildLegacyAdvertisingReportEvent(
     bool include_scan_rsp) const {
-  BT_DEBUG_ASSERT(advertising_data_.size() <=
-                  hci_spec::kMaxLEAdvertisingDataLength);
+  PW_DCHECK(advertising_data_.size() <= hci_spec::kMaxLEAdvertisingDataLength);
   std::vector<size_t> reports_sizes;
   reports_sizes.push_back(
       pw::bluetooth::emboss::LEAdvertisingReportData::MinSizeInBytes() +
@@ -173,7 +172,7 @@ DynamicByteBuffer FakePeer::BuildLegacyAdvertisingReportEvent(
   size_t reports_size = reports_sizes[0];
 
   if (include_scan_rsp) {
-    BT_DEBUG_ASSERT(scannable_);
+    PW_DCHECK(scannable_);
     reports_sizes.push_back(
         pw::bluetooth::emboss::LEAdvertisingReportData::MinSizeInBytes() +
         scan_response_.size());
@@ -183,7 +182,7 @@ DynamicByteBuffer FakePeer::BuildLegacyAdvertisingReportEvent(
   size_t packet_size =
       reports_size +
       pw::bluetooth::emboss::LEAdvertisingReportSubevent::MinSizeInBytes();
-  auto event = hci::EmbossEventPacket::New<
+  auto event = hci::EventPacket::New<
       pw::bluetooth::emboss::LEAdvertisingReportSubeventWriter>(
       hci_spec::kLEMetaEventCode, packet_size);
 
@@ -191,7 +190,7 @@ DynamicByteBuffer FakePeer::BuildLegacyAdvertisingReportEvent(
   view.le_meta_event().subevent_code().Write(
       hci_spec::kLEAdvertisingReportSubeventCode);
 
-  BT_DEBUG_ASSERT(reports_sizes.size() < 0xFF);
+  PW_DCHECK(reports_sizes.size() < 0xFF);
   view.num_reports().Write(static_cast<uint8_t>(reports_sizes.size()));
 
   // Initially construct an incomplete view to write the |data_length| field.
@@ -242,16 +241,15 @@ DynamicByteBuffer FakePeer::BuildLegacyAdvertisingReportEvent(
 }
 
 DynamicByteBuffer FakePeer::BuildLegacyScanResponseReportEvent() const {
-  BT_DEBUG_ASSERT(scannable_);
-  BT_DEBUG_ASSERT(scan_response_.size() <=
-                  hci_spec::kMaxLEAdvertisingDataLength);
+  PW_DCHECK(scannable_);
+  PW_DCHECK(scan_response_.size() <= hci_spec::kMaxLEAdvertisingDataLength);
   size_t report_size =
       pw::bluetooth::emboss::LEAdvertisingReportData::MinSizeInBytes() +
       scan_response_.size();
   size_t packet_size =
       report_size +
       pw::bluetooth::emboss::LEAdvertisingReportSubevent::MinSizeInBytes();
-  auto event = hci::EmbossEventPacket::New<
+  auto event = hci::EventPacket::New<
       pw::bluetooth::emboss::LEAdvertisingReportSubeventWriter>(
       hci_spec::kLEMetaEventCode, packet_size);
   auto view = event.view_t();
@@ -332,7 +330,7 @@ void FakePeer::FillExtendedAdvertisingReport(
 
   // skip direct_address_type and direct_address for now since we don't use it
 
-  BT_DEBUG_ASSERT(data.size() < 0xFF);
+  PW_DCHECK(data.size() < 0xFF);
   report.data_length().Write(static_cast<uint8_t>(data.size()));
   std::memcpy(report.data().BackingStorage().begin(), data.data(), data.size());
 }
@@ -359,9 +357,8 @@ DynamicByteBuffer FakePeer::BuildExtendedAdvertisingReports(
           MinSizeInBytes() +
       reports_size;
 
-  auto event =
-      hci::EmbossEventPacket::New<LEExtendedAdvertisingReportSubeventWriter>(
-          hci_spec::kLEMetaEventCode, packet_size);
+  auto event = hci::EventPacket::New<LEExtendedAdvertisingReportSubeventWriter>(
+      hci_spec::kLEMetaEventCode, packet_size);
   auto packet = event.view<LEExtendedAdvertisingReportSubeventWriter>(
       static_cast<int32_t>(reports_size));
   packet.le_meta_event().subevent_code().Write(
@@ -394,16 +391,16 @@ DynamicByteBuffer FakePeer::BuildExtendedAdvertisingReports(
 }
 
 DynamicByteBuffer FakePeer::BuildExtendedAdvertisingReportEvent() const {
-  BT_DEBUG_ASSERT(advertising_data_.size() <=
-                  hci_spec::kMaxLEExtendedAdvertisingDataLength);
+  PW_DCHECK(advertising_data_.size() <=
+            hci_spec::kMaxLEExtendedAdvertisingDataLength);
   return BuildExtendedAdvertisingReports(advertising_data_,
                                          /*is_scan_response=*/false);
 }
 
 DynamicByteBuffer FakePeer::BuildExtendedScanResponseEvent() const {
-  BT_DEBUG_ASSERT(scannable_);
-  BT_DEBUG_ASSERT(scan_response_.size() <=
-                  hci_spec::kMaxLEExtendedAdvertisingDataLength);
+  PW_DCHECK(scannable_);
+  PW_DCHECK(scan_response_.size() <=
+            hci_spec::kMaxLEExtendedAdvertisingDataLength);
   return BuildExtendedAdvertisingReports(scan_response_,
                                          /*is_scan_response=*/true);
 }

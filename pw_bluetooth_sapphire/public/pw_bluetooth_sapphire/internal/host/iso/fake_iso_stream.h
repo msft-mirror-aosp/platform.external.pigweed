@@ -25,24 +25,27 @@ class FakeIsoStream : public IsoStream {
  public:
   FakeIsoStream() : weak_self_(this) {}
 
-  bool OnCisEstablished(const hci::EmbossEventPacket& event) override {
-    return true;
-  }
+  bool OnCisEstablished(const hci::EventPacket& event) override { return true; }
 
   void SetupDataPath(
       pw::bluetooth::emboss::DataPathDirection direction,
       const bt::StaticPacket<pw::bluetooth::emboss::CodecIdWriter>& codec_id,
       const std::optional<std::vector<uint8_t>>& codec_configuration,
       uint32_t controller_delay_usecs,
-      fit::function<void(IsoStream::SetupDataPathError)> cb) override {
-    cb(setup_data_path_status_);
+      SetupDataPathCallback&& on_complete_cb,
+      IncomingDataHandler&& on_incoming_data_available_cb) override {
+    on_complete_cb(setup_data_path_status_);
   }
 
-  void ReceiveInboundPacket() override {}
+  void ReceiveInboundPacket(const pw::span<const std::byte> packet) override {}
 
   hci_spec::ConnectionHandle cis_handle() const override { return 0; }
 
   void Close() override {}
+
+  std::unique_ptr<IsoDataPacket> ReadNextQueuedIncomingPacket() override {
+    return nullptr;
+  }
 
   IsoStream::WeakPtr GetWeakPtr() override { return weak_self_.GetWeakPtr(); }
 

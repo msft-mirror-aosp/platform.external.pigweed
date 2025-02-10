@@ -13,10 +13,7 @@
 # the License.
 
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -28,7 +25,7 @@ cc_library(
     hdrs = [
         "public/pw_work_queue/work_queue.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_containers:inline_queue",
         "//pw_function",
@@ -44,7 +41,7 @@ cc_library(
 cc_library(
     name = "test_thread_header",
     hdrs = ["public/pw_work_queue/test_thread.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 cc_library(
@@ -80,5 +77,12 @@ pw_cc_test(
     deps = [
         ":stl_test_thread",
         ":work_queue_test",
+    ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_work_queue/work_queue.h",
     ],
 )

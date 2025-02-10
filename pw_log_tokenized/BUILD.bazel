@@ -12,11 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-    "pw_facade",
-)
+load("//pw_build:pw_facade.bzl", "pw_facade")
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -29,9 +26,7 @@ cc_library(
         "public/pw_log_tokenized/log_tokenized.h",
         "public/pw_log_tokenized/metadata.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":config_override",
         "//pw_log:pw_log.facade",
@@ -90,7 +85,7 @@ pw_facade(
     name = "handler",
     hdrs = ["public/pw_log_tokenized/handler.h"],
     backend = ":handler_backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = ["//pw_preprocessor"],
 )
 
@@ -108,7 +103,7 @@ cc_library(
 cc_library(
     name = "base64",
     hdrs = ["public/pw_log_tokenized/base64.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":headers",  # Only config.h is needed
         "//pw_tokenizer:base64",
@@ -149,5 +144,28 @@ pw_cc_test(
     deps = [
         ":headers",
         "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "tokenized_args_test",
+    srcs = [
+        "tokenized_args_test.cc",
+    ],
+    deps = [
+        ":headers",
+        "//pw_log:args",
+        "//pw_tokenizer",
+        "//pw_unit_test",
+    ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_log_tokenized/base64.h",
+        "public/pw_log_tokenized/config.h",
+        "public/pw_log_tokenized/handler.h",
+        "public/pw_log_tokenized/metadata.h",
     ],
 )

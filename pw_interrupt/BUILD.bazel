@@ -12,10 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_facade",
-)
+load("//pw_build:pw_facade.bzl", "pw_facade")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -31,7 +28,7 @@ pw_facade(
         "public/pw_interrupt/context.h",
     ],
     backend = ":backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 label_flag(
@@ -47,4 +44,11 @@ alias(
         "//conditions:default": "//pw_build:unspecified_backend",
     }),
     visibility = ["//targets:__pkg__"],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_interrupt/context.h",
+    ],
 )

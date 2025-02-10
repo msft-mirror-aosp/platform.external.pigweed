@@ -54,7 +54,7 @@ class EchoService
     auto message =
         ::grpc::examples::echo::pwpb::EchoRequest::FindMessage(request);
     if (!message.ok()) {
-      responder.Finish({}, message.status());
+      responder.Finish({}, message.status()).IgnoreError();
     }
 
     if (message->size() < 100) {
@@ -231,7 +231,7 @@ int main(int argc, char* argv[]) {
         &message_assembly_allocator);
     rpc_egress.set_connection(conn);
 
-    pw::thread::Thread conn_thread(connection_thread_context.options(), conn);
+    pw::Thread conn_thread(connection_thread_context.options(), conn);
     conn_thread.join();
   }
 

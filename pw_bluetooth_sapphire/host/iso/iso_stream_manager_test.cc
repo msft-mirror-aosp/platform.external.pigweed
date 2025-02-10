@@ -58,9 +58,9 @@ class IsoStreamManagerTest : public MockControllerTestBase {
     status = iso_stream_manager_->AcceptCis(
         id,
         [id, cb_invoked, this](
-            pw::bluetooth::emboss::StatusCode status,
+            pw::bluetooth::emboss::StatusCode,
             std::optional<WeakSelf<IsoStream>::WeakPtr> iso_weak_ptr,
-            const std::optional<CisEstablishedParameters>& cis_parameters) {
+            const std::optional<CisEstablishedParameters>&) {
           if (cb_invoked) {
             *cb_invoked = true;
           }
@@ -200,6 +200,62 @@ TEST_F(IsoStreamManagerTest, MultipleCISAcceptRequests) {
   iso_streams_[kId1]->Close();
   EXPECT_EQ(CallAcceptCis(kId1), AcceptCisStatus::kSuccess);
   ASSERT_TRUE(iso_stream_manager()->HandlerRegistered(kId1));
+}
+
+// We should be able to process channel disconnects, and detach the connection
+// from the stream.
+TEST_F(IsoStreamManagerTest, DisconnectCIS) {
+  // A disconnect event outside of any CIS doesn't affect us.
+  auto disconnect_packet = testing::DisconnectionCompletePacket(0x01);
+  test_device()->SendCommandChannelPacket(disconnect_packet);
+  RunUntilIdle();
+
+  const CigCisIdentifier kId1(0x14, 0x04);
+
+  // Set up an existing connection.
+  auto le_accept_cis_complete_packet = testing::CommandCompletePacket(
+      hci_spec::kLEAcceptCISRequest,
+      pw::bluetooth::emboss::StatusCode::SUCCESS);
+  bool cb1_invoked;
+  EXPECT_EQ(CallAcceptCis(kId1, &cb1_invoked), AcceptCisStatus::kSuccess);
+  ASSERT_TRUE(iso_stream_manager()->HandlerRegistered(kId1));
+  // Matching request arrives for kId1, accept it and stop waiting on it
+  const hci_spec::ConnectionHandle kAltCisHandleId = kCisHandleId + 1;
+  auto le_accept_cis_packet =
+      testing::LEAcceptCisRequestCommandPacket(kAltCisHandleId);
+  EXPECT_CMD_PACKET_OUT(
+      test_device(), le_accept_cis_packet, &le_accept_cis_complete_packet);
+  auto request_packet = testing::LECisRequestEventPacket(
+      kAclConnectionHandleId1, kAltCisHandleId, kId1.cig_id(), kId1.cis_id());
+  test_device()->SendCommandChannelPacket(request_packet);
+  RunUntilIdle();
+  ASSERT_FALSE(iso_stream_manager()->HandlerRegistered(kId1));
+  // Establish the stream and make sure the correct callback is invoked
+  auto le_cis_established_packet =
+      LECisEstablishedPacketWithDefaultValues(kAltCisHandleId);
+  test_device()->SendCommandChannelPacket(le_cis_established_packet);
+  RunUntilIdle();
+  EXPECT_TRUE(cb1_invoked);
+
+  // Disconnecting a non-CIS stream at this point is also harmless.
+  test_device()->SendCommandChannelPacket(disconnect_packet);
+  RunUntilIdle();
+
+  // Disconnecting the CIS we have connected should have an effect.
+  auto disconnect_cis_packet =
+      testing::DisconnectionCompletePacket(kAltCisHandleId);
+  test_device()->SendCommandChannelPacket(disconnect_cis_packet);
+  RunUntilIdle();
+
+  // Since we received a disconnect, the stream should not be alive anymore (it
+  // was closed)
+  ASSERT_EQ(iso_streams_.count(kId1), 1u);
+  ASSERT_FALSE(iso_streams_[kId1].is_alive());
+
+  // Disconnecting again is harmless as well, even if it's a repeat of the CIS
+  // handle.
+  test_device()->SendCommandChannelPacket(disconnect_cis_packet);
+  RunUntilIdle();
 }
 
 }  // namespace bt::iso

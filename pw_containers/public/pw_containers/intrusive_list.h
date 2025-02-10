@@ -22,6 +22,7 @@
 #include <type_traits>
 
 #include "pw_containers/config.h"
+#include "pw_containers/internal/intrusive_item.h"
 #include "pw_containers/internal/intrusive_list.h"
 #include "pw_containers/internal/intrusive_list_item.h"
 #include "pw_containers/internal/intrusive_list_iterator.h"
@@ -43,50 +44,40 @@ namespace containers::future {
 ///
 /// This class is modeled on `std::list`, with the following differences:
 ///
-/// * Since items are not allocated by this class, the following methods have
+/// - Since items are not allocated by this class, the following methods have
 ///   no analogue:
-///     std::list<T>::get_allocator
-///     std::list<T>::emplace
-///     std::list<T>::emplace_front
-///     std::list<T>::emplace_back
-///     std::list<T>::resize
+///   - std::list<T>::get_allocator
+///   - std::list<T>::emplace
+///   - std::list<T>::emplace_front
+///   - std::list<T>::emplace_back
+///   - std::list<T>::resize
 ///
-/// * Methods corresponding to the following take initializer lists of pointer
-///   to items rather than the itenms themselves:
-///     std::list<T>::(constructor)
-///     std::list<T>::assign
-///     std::list<T>::insert
+/// - Methods corresponding to the following take initializer lists of pointer
+///   to items rather than the items themselves:
+///   - std::list<T>::(constructor)
+///   - std::list<T>::assign
+///   - std::list<T>::insert
 ///
-/// * There are no overloads corresponding to the following methods that take
+/// - There are no overloads corresponding to the following methods that take
 ///   r-value references.:
-///     std::list<T>::insert
-///     std::list<T>::push_back
-///     std::list<T>::push_front
-///     std::list<T>::splice
+///   - std::list<T>::insert
+///   - std::list<T>::push_back
+///   - std::list<T>::push_front
+///   - std::list<T>::splice
 ///
-/// * Since modifying the list modifies the items themselves, methods
+/// - Since modifying the list modifies the items themselves, methods
 ///   corresponding to those below only take `iterator`s and not
 ///   `const_iterator`s:
-///     std::list<T>::insert
-///     std::list<T>::erase
-///     std::list<T>::splice
+///   - std::list<T>::insert
+///   - std::list<T>::erase
+///   - std::list<T>::splice
 ///
-/// * C++23 methods are not (yet) supported.
+/// - An additional overload of `erase` is provided that takes a direct
+///   reference to an item.
 ///
-/// Example:
-/// @code{.cpp}
-///   class TestItem
-///      : public IntrusiveList<TestItem>::Item {}
+/// - C++23 methods are not (yet) supported.
 ///
-///   IntrusiveList<TestItem> test_items;
-///
-///   auto item = TestItem();
-///   test_items.push_back(item);
-///
-///   for (auto& test_item : test_items) {
-///     // Do a thing.
-///   }
-/// @endcode
+/// @tparam   T           Type of intrusive items stored in the list.
 template <typename T>
 class IntrusiveList {
  private:
@@ -112,12 +103,11 @@ class IntrusiveList {
     constexpr explicit Item() = default;
 
    private:
-    // GetListElementTypeFromItem is used to find the element type from an item.
-    // It is used to ensure list items inherit from the correct Item type.
+    // IntrusiveItem is used to ensure T inherits from this container's Item
+    // type. See also `CheckItemType`.
     template <typename, typename, bool>
-    friend struct ::pw::containers::internal::GetListElementTypeFromItem;
-
-    using PwIntrusiveListElementType = T;
+    friend struct containers::internal::IntrusiveItem;
+    using ItemType = T;
   };
 
   using iterator =
@@ -227,7 +217,11 @@ class IntrusiveList {
     return insert(pos, items.begin(), items.end());
   }
 
-  /// Removes the item following pos from the list. The item is not destructed.
+  /// Removes the given `item` from the list. The item is not destructed.
+  iterator erase(T& item) { return erase(iterator(&item)); }
+
+  /// Removes the item following `pos` from the list. The item is not
+  /// destructed.
   iterator erase(iterator pos) {
     return iterator(list_.erase_after((--pos).item_));
   }
@@ -344,9 +338,10 @@ class IntrusiveList {
   // Check that T is an Item in a function, since the class T will not be fully
   // defined when the IntrusiveList<T> class is instantiated.
   static constexpr void CheckItemType() {
-    using Base = ::pw::containers::internal::ElementTypeFromItem<ItemBase, T>;
+    using IntrusiveItemType =
+        typename containers::internal::IntrusiveItem<ItemBase, T>::Type;
     static_assert(
-        std::is_base_of<Base, T>(),
+        std::is_base_of<IntrusiveItemType, T>(),
         "IntrusiveList items must be derived from IntrusiveList<T>::Item, "
         "where T is the item or one of its bases.");
   }

@@ -16,6 +16,7 @@
 import base64
 import contextlib
 from dataclasses import dataclass
+import io
 import itertools
 import json
 import logging
@@ -38,7 +39,6 @@ from typing import (
     Mapping,
     Sequence,
     Set,
-    TextIO,
 )
 
 import pw_cli.color
@@ -78,7 +78,7 @@ def bazel(
     *args: str,
     strict_module_lockfile: bool = False,
     use_remote_cache: bool = False,
-    stdout: TextIO | None = None,
+    stdout: io.TextIOWrapper | None = None,
     **kwargs,
 ) -> None:
     """Invokes Bazel with some common flags set.
@@ -106,6 +106,11 @@ def bazel(
             # builders will be denied permission if they do so.
             remote_cache.append('--remote_upload_local_results=true')
 
+    symlink_prefix: list[str] = []
+    if cmd != 'query':
+        # bazel query doesn't support the --symlink_prefix flag.
+        symlink_prefix.append(f'--symlink_prefix={ctx.output_dir / "bazel-"}')
+
     ctx.output_dir.mkdir(exist_ok=True, parents=True)
     try:
         with contextlib.ExitStack() as stack:
@@ -128,9 +133,7 @@ def bazel(
             call(
                 BAZEL_EXECUTABLE,
                 cmd,
-                '--verbose_failures',
-                '--worker_verbose',
-                f'--symlink_prefix={ctx.output_dir / "bazel-"}',
+                *symlink_prefix,
                 *num_jobs,
                 *keep_going,
                 *strict_lockfile,
@@ -561,6 +564,42 @@ def check_gn_build_for_files(
     if missing:
         _LOG.warning(
             '%s missing from the GN build:\n%s',
+            plural(missing, 'file', are=True),
+            '\n'.join(str(x) for x in missing),
+        )
+
+    return missing
+
+
+def check_soong_build_for_files(
+    soong_extensions_to_check: Container[str],
+    files: Iterable[Path],
+    soong_build_files: Iterable[Path] = (),
+) -> list[Path]:
+    """Checks that source files are in the Soong build.
+
+    Args:
+        bp_extensions_to_check: which file suffixes to look for in Soong files
+        files: the files that should be checked
+        bp_build_files: paths to Android.bp files to directly search for paths
+
+    Returns:
+        a list of missing files; will be empty if there were no missing files
+    """
+
+    # Collect all paths in Soong builds.
+    soong_builds = set(_search_files_for_paths(soong_build_files))
+
+    missing: list[Path] = []
+
+    if soong_build_files:
+        for path in (p for p in files if p.suffix in soong_extensions_to_check):
+            if path not in soong_builds:
+                missing.append(path)
+
+    if missing:
+        _LOG.warning(
+            '%s missing from the Soong build:\n%s',
             plural(missing, 'file', are=True),
             '\n'.join(str(x) for x in missing),
         )

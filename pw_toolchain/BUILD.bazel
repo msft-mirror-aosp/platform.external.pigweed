@@ -13,10 +13,7 @@
 # the License.
 
 load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -77,7 +74,7 @@ toolchain(
 cc_library(
     name = "no_destructor",
     hdrs = ["public/pw_toolchain/no_destructor.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 pw_cc_test(
@@ -93,7 +90,7 @@ pw_cc_test(
 cc_library(
     name = "sibling_cast",
     hdrs = ["public/pw_toolchain/internal/sibling_cast.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     visibility = ["//:__subpackages__"],  # Restrict to Pigweed
     deps = ["//pw_compilation_testing:negative_compilation_testing"],
 )
@@ -113,4 +110,11 @@ cc_library(
     linkopts = ["-Wl,--wrap=abort"],
     deps = ["//pw_assert"],
     alwayslink = 1,
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_toolchain/no_destructor.h",
+    ],
 )
