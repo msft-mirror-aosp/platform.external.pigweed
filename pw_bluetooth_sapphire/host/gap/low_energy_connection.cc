@@ -407,20 +407,6 @@ bool LowEnergyConnection::OnL2capFixedChannelsOpened(
          "ATT and SMP fixed channels open (peer: %s)",
          bt_str(peer_id()));
 
-  // Obtain existing pairing data, if any.
-  std::optional<sm::LTK> ltk;
-
-  if (peer_->le() && peer_->le()->bond_data()) {
-    // Legacy pairing allows both devices to generate and exchange LTKs. "The
-    // Central must have the security information (LTK, EDIV, and Rand)
-    // distributed by the Peripheral in LE legacy [...] to setup an encrypted
-    // session" (v5.3, Vol. 3 Part H 2.4.4.2). For Secure Connections peer_ltk
-    // and local_ltk will be equal, so this check is unnecessary but correct.
-    ltk = (link()->role() == pw::bluetooth::emboss::ConnectionRole::CENTRAL)
-              ? peer_->le()->bond_data()->peer_ltk
-              : peer_->le()->bond_data()->local_ltk;
-  }
-
   // Obtain the local I/O capabilities from the delegate. Default to
   // NoInputNoOutput if no delegate is available.
   auto io_cap = sm::IOCapability::kNoInputNoOutput;
@@ -436,18 +422,6 @@ bool LowEnergyConnection::OnL2capFixedChannelsOpened(
                                      security_mode,
                                      dispatcher_,
                                      peer_);
-
-  // Provide SMP with the correct LTK from a previous pairing with the peer, if
-  // it exists. This will start encryption if the local device is the link-layer
-  // central.
-  if (ltk) {
-    bt_log(INFO,
-           "gap-le",
-           "assigning existing LTK (peer: %s, handle: %#.4x)",
-           bt_str(peer_id()),
-           handle());
-    sm_->AssignLongTermKey(*ltk);
-  }
 
   return InitializeGatt(std::move(att), connection_options.service_uuid);
 }
@@ -799,45 +773,6 @@ void LowEnergyConnection::CloseRefs() {
   }
 
   refs_.Mutable()->clear();
-}
-
-void LowEnergyConnection::OnNewPairingData(
-    const sm::PairingData& pairing_data) {
-  const std::optional<sm::LTK> ltk =
-      pairing_data.peer_ltk ? pairing_data.peer_ltk : pairing_data.local_ltk;
-  // Consider the pairing temporary if no link key was received. This
-  // means we'll remain encrypted with the STK without creating a bond and
-  // reinitiate pairing when we reconnect in the future.
-  if (!ltk.has_value()) {
-    bt_log(INFO,
-           "gap-le",
-           "temporarily paired with peer (peer: %s)",
-           bt_str(peer_id()));
-    return;
-  }
-
-  bt_log(INFO,
-         "gap-le",
-         "new %s pairing data: [%s%s%s%s%s%s] (peer: %s)",
-         ltk->security().secure_connections() ? "secure connections" : "legacy",
-         pairing_data.peer_ltk ? "peer_ltk " : "",
-         pairing_data.local_ltk ? "local_ltk " : "",
-         pairing_data.irk ? "irk " : "",
-         pairing_data.cross_transport_key ? "ct_key " : "",
-         pairing_data.identity_address
-             ? bt_lib_cpp_string::StringPrintf(
-                   "(identity: %s) ", bt_str(*pairing_data.identity_address))
-                   .c_str()
-             : "",
-         pairing_data.csrk ? "csrk " : "",
-         bt_str(peer_id()));
-
-  if (!peer_->MutLe().StoreBond(pairing_data)) {
-    bt_log(ERROR,
-           "gap-le",
-           "failed to cache bonding data (id: %s)",
-           bt_str(peer_id()));
-  }
 }
 
 void LowEnergyConnection::OnPairingComplete(sm::Result<> status) {

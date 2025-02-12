@@ -61,6 +61,31 @@ constexpr char kTestDatabase[] =
     "$AQAAAA==\0"
     "■msg♦This is $AQAAAA== message■module♦■file♦file.txt";
 
+constexpr const char kCsvDefaultDomain[] =
+    "1,2001-01-01,,Hello World!\n"
+    "2,,,\n"
+    "3,,, Goodbye!\n";
+
+constexpr const char kCsvDifferentDomains[] =
+    "1,          , d o m a i n 1,Hello\n"
+    "2,          , dom  ain2,\n"
+    "3,          ,\t\t\tdomain   3,World!\n";
+
+constexpr const char kCsvBadDates[] =
+    "1,01-01-2001, D1, Hello\n"
+    "2,          , D2, \n"
+    "3,          , D3, Goodbye!\n";
+
+constexpr const char kCsvBadToken[] =
+    ",2001-01-01, D1, Hello\n"
+    "2,          , D2, \n"
+    "3,          , D3, Goodbye!\n";
+
+constexpr const char kCsvBadFormat[] =
+    "1,2001-01-01, D1, Hello\n"
+    "2,, \n"
+    "3,          , D3, Goodbye!\n";
+
 class Detokenize : public ::testing::Test {
  protected:
   Detokenize() : detok_(TokenDatabase::Create<kTestDatabase>()) {}
@@ -81,15 +106,35 @@ TEST_F(Detokenize, FromElfSection) {
   constexpr uint32_t database_offset_ = 0x00000174;
   constexpr size_t database_size_ = 0x000004C2;
 
-  pw::span<const uint8_t> tokenEntries(
+  pw::span<const uint8_t> token_entries(
       reinterpret_cast<const uint8_t*>(::test::ns::kElfSection.data() +
                                        database_offset_),
       database_size_);
   pw::Result<Detokenizer> detok_from_elf_ =
-      Detokenizer::FromElfSection(tokenEntries);
+      Detokenizer::FromElfSection(token_entries);
   ASSERT_TRUE(detok_from_elf_.ok());
   EXPECT_EQ(detok_from_elf_->Detokenize("\xd6\x8c\x66\x2e").BestString(),
             "Jello, world!");
+}
+
+TEST_F(Detokenize, FromElfSectionCountDomain) {
+  // Create a detokenizer from an ELF file with only the pw_tokenizer sections.
+  // See py/detokenize_test.py.
+  // Offset and size of the .pw_tokenizer.entries section in bytes.
+  constexpr uint32_t database_offset_ = 0x00000174;
+  constexpr size_t database_size_ = 0x000004C2;
+
+  pw::span<const uint8_t> token_entries(
+      reinterpret_cast<const uint8_t*>(::test::ns::kElfSection.data() +
+                                       database_offset_),
+      database_size_);
+  pw::Result<Detokenizer> detok_from_elf_ =
+      Detokenizer::FromElfSection(token_entries);
+  ASSERT_TRUE(detok_from_elf_.ok());
+
+  // Two domains exist in the ELF file.
+  // The token 881436a0="The answer is: %s" is in two domains.
+  EXPECT_EQ(detok_from_elf_->database().size(), 2u);
 }
 
 TEST_F(Detokenize, FromElfFile) {
@@ -101,6 +146,51 @@ TEST_F(Detokenize, FromElfFile) {
   PW_TEST_ASSERT_OK(detok);
   EXPECT_EQ(detok->Detokenize("\xd6\x8c\x66\x2e").BestString(),
             "Jello, world!");
+}
+
+TEST_F(Detokenize, FromCsvFile_DefaultDomain) {
+  pw::Result<Detokenizer> detok_csv = Detokenizer::FromCsv(kCsvDefaultDomain);
+  PW_TEST_ASSERT_OK(detok_csv);
+  EXPECT_EQ(detok_csv->Detokenize("\1\0\0\0"sv).BestString(), "Hello World!");
+}
+
+TEST_F(Detokenize, FromCsvFile_DifferentDomains_IgnoreWhitespace) {
+  pw::Result<Detokenizer> detok_csv =
+      Detokenizer::FromCsv(kCsvDifferentDomains);
+  PW_TEST_ASSERT_OK(detok_csv);
+  auto it = detok_csv->database().begin();
+  EXPECT_EQ(it->first, "domain3");
+  it++;
+  EXPECT_EQ(it->first, "domain2");
+  it++;
+  EXPECT_EQ(it->first, "domain1");
+}
+
+TEST_F(Detokenize, FromCsvFile_CountDomains) {
+  pw::Result<Detokenizer> detok_csv1 = Detokenizer::FromCsv(kCsvDefaultDomain);
+  pw::Result<Detokenizer> detok_csv2 =
+      Detokenizer::FromCsv(kCsvDifferentDomains);
+  PW_TEST_ASSERT_OK(detok_csv1);
+  PW_TEST_ASSERT_OK(detok_csv2);
+  EXPECT_EQ(detok_csv1->database().size(), 1u);
+  EXPECT_EQ(detok_csv2->database().size(), 3u);
+}
+
+TEST_F(Detokenize, FromCsvFile_BadCsv_Date) {
+  pw::Result<Detokenizer> detok_csv = Detokenizer::FromCsv(kCsvBadDates);
+  EXPECT_FALSE(detok_csv.ok());
+}
+
+TEST_F(Detokenize, FromCsvFile_BadCsv_Token) {
+  pw::Result<Detokenizer> detok_csv = Detokenizer::FromCsv(kCsvBadToken);
+  EXPECT_FALSE(detok_csv.ok());
+}
+
+TEST_F(Detokenize, FromCsvFile_BadCsv_Format) {
+  pw::Result<Detokenizer> detok_csv = Detokenizer::FromCsv(kCsvBadFormat);
+  // Will give warning but continue as expected:
+  // WRN  Skipped 1 of 3 lines because they did not have 4 columns as expected.
+  EXPECT_TRUE(detok_csv.ok());
 }
 
 TEST_F(Detokenize, BestString_MissingToken_IsEmpty) {

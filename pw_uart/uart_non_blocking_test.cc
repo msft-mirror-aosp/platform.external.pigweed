@@ -12,15 +12,15 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "public/pw_uart/uart_non_blocking.h"
+#include "pw_uart/uart_non_blocking.h"
 
 #include <cstdint>
 
-#include "gtest/gtest.h"
 #include "pw_bytes/span.h"
 #include "pw_function/function.h"
 #include "pw_status/status.h"
 #include "pw_status/status_with_size.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::uart {
 namespace {

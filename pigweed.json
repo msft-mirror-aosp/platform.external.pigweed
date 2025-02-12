@@ -147,12 +147,29 @@
             "//..."
           ],
           [
+            "build",
+            "--@rules_rust//rust/toolchain/channel=nightly",
+            "//..."
+          ],
+          [
+            "test",
+            "--@rules_rust//rust/toolchain/channel=nightly",
+            "//..."
+          ],
+          [
             "test",
             "--config=googletest",
             "//..."
           ],
           [
             "build",
+            "--aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect",
+            "--output_groups=clippy_checks",
+            "//..."
+          ],
+          [
+            "build",
+            "--@rules_rust//rust/toolchain/channel=nightly",
             "--aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect",
             "--output_groups=clippy_checks",
             "//..."
@@ -178,6 +195,38 @@
             "//..."
           ]
         ],
+        "kernel": [
+          [
+            "build",
+            "--config=k_host",
+            "//pw_kernel/..."
+          ],
+          [
+            "build",
+            "--config=k_lint",
+            "//pw_kernel/..."
+          ],
+          [
+            "test",
+            "--config=k_host",
+            "//pw_kernel/..."
+          ],
+          [
+            "build",
+            "--config=k_qemu_lm3s6965evb",
+            "//pw_kernel/..."
+          ],
+          [
+            "test",
+            "--config=k_qemu_lm3s6965evb",
+            "//pw_kernel/..."
+          ],
+          [
+            "build",
+            "--config=k_rp2350",
+            "//pw_kernel/..."
+          ]
+        ],
         "sanitizers": [
           [
             "build",
@@ -191,12 +240,30 @@
           ],
           [
             "test",
+            "--config=asan",
+            "--config=googletest",
+            "//..."
+          ],
+          [
+            "test",
             "--config=tsan",
             "//..."
           ],
           [
             "test",
+            "--config=tsan",
+            "--config=googletest",
+            "//..."
+          ],
+          [
+            "test",
             "--config=ubsan",
+            "//..."
+          ],
+          [
+            "test",
+            "--config=ubsan",
+            "--config=googletest",
             "//..."
           ]
         ]

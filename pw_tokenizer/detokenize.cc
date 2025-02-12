@@ -23,11 +23,14 @@
 #include "pw_bytes/bit.h"
 #include "pw_bytes/endian.h"
 #include "pw_elf/reader.h"
+#include "pw_log/log.h"
 #include "pw_result/result.h"
 #include "pw_status/try.h"
 #include "pw_tokenizer/base64.h"
 #include "pw_tokenizer/internal/decode.h"
 #include "pw_tokenizer/nested_tokenization.h"
+#include "pw_tokenizer/tokenize.h"
+#include "pw_tokenizer_private/csv.h"
 
 namespace pw::tokenizer {
 namespace {
@@ -202,14 +205,15 @@ std::string DetokenizedString::BestStringWithErrors() const {
 
 Detokenizer::Detokenizer(const TokenDatabase& database) {
   for (const auto& entry : database) {
-    database_[entry.token].emplace_back(entry.string, entry.date_removed);
+    database_[kDefaultDomain][entry.token].emplace_back(entry.string,
+                                                        entry.date_removed);
   }
 }
 
 Result<Detokenizer> Detokenizer::FromElfSection(
     span<const std::byte> elf_section) {
   size_t index = 0;
-  std::unordered_map<uint32_t, std::vector<TokenizedStringEntry>> database;
+  DomainTokenEntriesMap database;
 
   while (index + sizeof(_pw_tokenizer_EntryHeader) < elf_section.size()) {
     _pw_tokenizer_EntryHeader header;
@@ -221,16 +225,20 @@ Result<Detokenizer> Detokenizer::FromElfSection(
       return Status::DataLoss();
     }
 
-    index += header.domain_length;
-    if (index + header.string_length <= elf_section.size()) {
+    if (index + header.domain_length + header.string_length <=
+        elf_section.size()) {
+      std::string domain(
+          reinterpret_cast<const char*>(elf_section.data() + index),
+          header.domain_length - 1);
+      index += header.domain_length;
       // TODO(b/326365218): Construct FormatString with string_view to avoid
       // creating a copy here.
       std::string entry(
           reinterpret_cast<const char*>(elf_section.data() + index),
-          header.string_length);
+          header.string_length - 1);
       index += header.string_length;
-      database[header.token].emplace_back(entry.c_str(),
-                                          TokenDatabase::kDateRemovedNever);
+      database[std::move(domain)][header.token].emplace_back(
+          entry.c_str(), TokenDatabase::kDateRemovedNever);
     }
   }
   return Detokenizer(std::move(database));
@@ -246,6 +254,99 @@ Result<Detokenizer> Detokenizer::FromElfFile(stream::SeekableReader& stream) {
   return Detokenizer::FromElfSection(section_data);
 }
 
+Result<Detokenizer> Detokenizer::FromCsv(std::string_view csv) {
+  std::vector<std::vector<std::string>> parsed_csv = ParseCsv(csv);
+  DomainTokenEntriesMap database;
+
+  // CSV databases are in the format -> token, date, domain, string.
+  int invalid_row_count = 0;
+  for (const auto& row : parsed_csv) {
+    if (row.size() != 4) {
+      invalid_row_count++;
+      continue;
+    }
+    // Ignore whitespace in the domain.
+    std::string domain = "";
+    for (char c : row[2]) {
+      if (!std::isspace(c)) {
+        domain += c;
+      }
+    }
+
+    const std::string& token = row[0];
+    const std::string& date_removed = row[1];
+
+    // Validate length of token.
+    if (token.empty()) {
+      PW_LOG_ERROR("Corrupt database due to missing token");
+      return Status::DataLoss();
+    }
+
+    // Validate token contents.
+    for (char c : token) {
+      if (!std::isxdigit(c)) {
+        PW_LOG_ERROR("Corrupt database due to token format");
+        return Status::DataLoss();
+      }
+    }
+
+    // Validate date contents.
+    uint32_t date = TokenDatabase::kDateRemovedNever;
+    if (!date_removed.empty() &&
+        date_removed.find_first_not_of(' ') != std::string::npos) {
+      size_t first_dash = date_removed.find('-');
+      if (first_dash == std::string::npos || first_dash != 4) {
+        PW_LOG_ERROR("Wrong date format in database");
+        return Status::DataLoss();
+      }
+
+      size_t second_dash = date_removed.find('-', first_dash + 1);
+      if (second_dash == std::string::npos || second_dash != 7) {
+        PW_LOG_ERROR("Wrong date format in database");
+        return Status::DataLoss();
+      }
+
+      size_t pos;
+      int year = std::stoi(date_removed.substr(0, first_dash), &pos);
+      if (pos != first_dash) {
+        PW_LOG_ERROR("Wrong date format in database");
+        return Status::DataLoss();
+      }
+
+      int month = std::stoi(
+          date_removed.substr(first_dash + 1, second_dash - first_dash - 1),
+          &pos);
+      if (pos != second_dash - first_dash - 1) {
+        PW_LOG_ERROR("Wrong date format in database");
+        return Status::DataLoss();
+      }
+
+      int day = std::stoi(date_removed.substr(second_dash + 1), &pos);
+      if (pos != date_removed.size() - second_dash - 1) {
+        PW_LOG_ERROR("Wrong date format in database");
+        return Status::DataLoss();
+      }
+
+      date = (year << 16) | (month << 8) | day;
+    }
+
+    // Add to database.
+    database[std::move(domain)][std::stoul(token, nullptr, 16)].emplace_back(
+        row[3].c_str(), date);
+  }
+
+  // Log warning if any data lines were skipped.
+  if (invalid_row_count > 0) {
+    PW_LOG_WARN(
+        "Skipped %d of %zu lines because they did not have 4 columns as "
+        "expected.",
+        invalid_row_count,
+        parsed_csv.size());
+  }
+
+  return Detokenizer(std::move(database));
+}
+
 DetokenizedString Detokenizer::Detokenize(
     const span<const std::byte>& encoded) const {
   // The token is missing from the encoded data; there is nothing to do.
@@ -256,12 +357,17 @@ DetokenizedString Detokenizer::Detokenize(
   uint32_t token = bytes::ReadInOrder<uint32_t>(
       endian::little, encoded.data(), encoded.size());
 
-  const auto result = database_.find(token);
+  const auto domain_it = database_.find(kDefaultDomain);
+  if (domain_it == database_.end()) {
+    return DetokenizedString();
+  }
+
+  const auto result = domain_it->second.find(token);
 
   return DetokenizedString(
       token,
-      result == database_.end() ? span<TokenizedStringEntry>()
-                                : span(result->second),
+      result == domain_it->second.end() ? span<TokenizedStringEntry>()
+                                        : span(result->second),
       encoded.size() < sizeof(token) ? span<const std::byte>()
                                      : encoded.subspan(sizeof(token)));
 }

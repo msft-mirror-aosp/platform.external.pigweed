@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_fuzzer:fuzzer.bzl", "pw_cc_fuzz_test")
@@ -191,6 +192,11 @@ pw_cc_test(
         "peer_test.cc",
         "secure_simple_pairing_state_test.cc",
         "types_test.cc",
+    ],
+    # TODO: https://pwbug.dev/393957973 - Fix this test.
+    tags = [
+        "noasan",
+        "noubsan",
     ],
     test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [

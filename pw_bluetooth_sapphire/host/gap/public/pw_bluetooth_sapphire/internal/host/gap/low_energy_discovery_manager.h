@@ -17,11 +17,8 @@
 #include <pw_async/heap_dispatcher.h>
 
 #include <memory>
-#include <queue>
 #include <unordered_set>
 
-#include "pw_bluetooth_sapphire/internal/host/common/byte_buffer.h"
-#include "pw_bluetooth_sapphire/internal/host/common/device_address.h"
 #include "pw_bluetooth_sapphire/internal/host/common/inspectable.h"
 #include "pw_bluetooth_sapphire/internal/host/common/weak_self.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/discovery_filter.h"
@@ -120,9 +117,11 @@ class LowEnergyDiscoveryManager final
       public WeakSelf<LowEnergyDiscoveryManager> {
  public:
   // |peer_cache| and |scanner| MUST out-live this LowEnergyDiscoveryManager.
-  LowEnergyDiscoveryManager(hci::LowEnergyScanner* scanner,
-                            PeerCache* peer_cache,
-                            pw::async::Dispatcher& dispatcher);
+  LowEnergyDiscoveryManager(
+      hci::LowEnergyScanner* scanner,
+      PeerCache* peer_cache,
+      const hci::LowEnergyScanner::PacketFilterConfig& packet_filter_config,
+      pw::async::Dispatcher& dispatcher);
   ~LowEnergyDiscoveryManager() override;
 
   // Starts a new discovery session and reports the result via |callback|. If a
@@ -245,6 +244,9 @@ class LowEnergyDiscoveryManager final
   // hold a raw pointer as we expect this to out-live us.
   PeerCache* const peer_cache_;
 
+  uint16_t next_scan_id_ = 0;
+  hci::LowEnergyScanner::PacketFilterConfig packet_filter_config_;
+
   // Called when a directed connectable advertisement is received during an
   // active or passive scan.
   PeerConnectableCallback connectable_cb_;
@@ -291,6 +293,7 @@ class LowEnergyDiscoverySession final
     : public WeakSelf<LowEnergyDiscoverySession> {
  public:
   explicit LowEnergyDiscoverySession(
+      uint16_t scan_id,
       bool active,
       PeerCache& peer_cache,
       pw::async::Dispatcher& dispatcher,
@@ -342,12 +345,15 @@ class LowEnergyDiscoverySession final
   // Returns true if this session has not been stopped and has not errored.
   bool alive() const { return alive_; }
 
+  uint16_t scan_id() const { return scan_id_; }
+
   // Returns true if this is an active discovery session, or false if this is a
   // passive discovery session.
   bool active() const { return active_; }
 
  private:
-  bool alive_{true};
+  uint16_t scan_id_;
+  bool alive_ = true;
   bool active_;
   PeerCache& peer_cache_;
   pw::async::HeapDispatcher heap_dispatcher_;

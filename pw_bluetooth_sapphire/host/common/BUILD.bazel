@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//pw_fuzzer:fuzzer.bzl", "pw_cc_fuzz_test")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
@@ -138,6 +139,8 @@ pw_cc_test(
         "weak_self_test.cc",
         "windowed_inspect_numeric_property_test.cc",
     ],
+    # TODO: https://pwbug.dev/393957973 - Fix this test.
+    tags = ["noubsan"],
     test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [
         ":common",

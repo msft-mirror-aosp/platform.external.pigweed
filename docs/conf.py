@@ -167,7 +167,10 @@ html_css_files = [
 ]
 
 html_js_files = [
-    "js/pigweed.js",
+    # Do not list pigweed.js here. This will cause it to get loaded in <head>.
+    # To improve load performance we modified //docs/layout/layout.html
+    # to load pigweed.js at the end of <body> instead.
+    # "js/pigweed.js",
 ]
 
 html_extra_path = [
@@ -180,6 +183,8 @@ if is_bazel_build:
     # site's sources directory. Specifying the rustdoc directory here instructs
     # Sphinx to copy over the entire directory to its output.
     html_extra_path.append('rustdoc')
+    # Also copy over the Doxygen-generated HTML subsite.
+    html_extra_path.append('doxygen')
 
 html_theme_options = {
     # https://pydata-sphinx-theme.readthedocs.io/en/stable/user_guide/header-links.html#navigation-bar-dropdown-links
@@ -214,6 +219,14 @@ html_theme_options = {
     'pygments_light_style': 'pigweed_code_light_style',
     'pygments_dark_style': 'pigweed_code_style',
 }
+
+if 'LUCI_IS_TRY' in os.environ and os.environ['LUCI_IS_TRY'] == '1':
+    html_theme_options['announcement'] = (
+        "You are viewing Pigweed's docs on an automatically generated staging "
+        'site. <b>The content on this staging site may be incorrect or '
+        "unapproved.</b> Pigweed's official, approved docs are only published "
+        'at <a href="https://pigweed.dev">pigweed.dev</a>.'
+    )
 
 # sphinx-sitemap needs this:
 # https://sphinx-sitemap.readthedocs.io/en/latest/getting-started.html#usage
@@ -322,7 +335,7 @@ templates_path = ['docs/layout']
 exclude_patterns = ['docs/templates/**']
 
 doxygen_xml_path = (
-    './doxygen/xml/' if is_bazel_build else './../../../doxygen/xml/'
+    './_doxygen/xml/' if is_bazel_build else './../../../doxygen/xml/'
 )
 breathe_projects = {
     # Assuming doxygen output is at out/docs/doxygen/

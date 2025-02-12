@@ -82,7 +82,7 @@ struct KFrameWithStorage {
 };
 
 // Size of sdu_length field in first K-frames.
-constexpr uint8_t kSduLengthFieldSize = 2;
+inline constexpr uint8_t kSduLengthFieldSize = 2;
 
 // Populate a KFrame that encodes a particular segment of `payload` based on the
 // `mps`, or maximum PDU payload size of a segment. `segment_no` is the nth
@@ -103,7 +103,6 @@ template <typename EmbossT>
 Result<EmbossT> CreateAndPopulateToControllerView(H4PacketWithH4& h4_packet,
                                                   emboss::OpCode opcode,
                                                   size_t parameter_total_size) {
-  std::iota(h4_packet.GetHciSpan().begin(), h4_packet.GetHciSpan().end(), 100);
   h4_packet.SetH4Type(emboss::H4PacketType::COMMAND);
   PW_TRY_ASSIGN(auto view, MakeEmbossWriter<EmbossT>(h4_packet.GetHciSpan()));
   view.header().opcode().Write(opcode);
@@ -111,17 +110,21 @@ Result<EmbossT> CreateAndPopulateToControllerView(H4PacketWithH4& h4_packet,
   return view;
 }
 
-// Populate passed H4 event buffer and return Emboss view on it.
+// Populate passed H4 event buffer and return Emboss writer on it. Suitable for
+// use with EmbossT types whose `SizeInBytes()` accurately represents
+// the `parameter_total_size` that should be written (minus `EventHeader` size).
 template <typename EmbossT>
-Result<EmbossT> CreateAndPopulateToHostEventView(H4PacketWithHci& h4_packet,
-                                                 emboss::EventCode event_code) {
-  std::iota(h4_packet.GetHciSpan().begin(), h4_packet.GetHciSpan().end(), 0x10);
+Result<EmbossT> CreateAndPopulateToHostEventWriter(
+    H4PacketWithHci& h4_packet,
+    emboss::EventCode event_code,
+    size_t parameter_total_size = EmbossT::SizeInBytes() -
+                                  emboss::EventHeader::IntrinsicSizeInBytes()) {
   h4_packet.SetH4Type(emboss::H4PacketType::EVENT);
-
   PW_TRY_ASSIGN(auto view, MakeEmbossWriter<EmbossT>(h4_packet.GetHciSpan()));
   view.header().event_code().Write(event_code);
+  view.header().parameter_total_size().Write(parameter_total_size);
   view.status().Write(emboss::StatusCode::SUCCESS);
-  EXPECT_TRUE(view.Ok());
+  EXPECT_TRUE(view.IsComplete());
   return view;
 }
 
@@ -155,6 +158,9 @@ Status SendNumberOfCompletedPackets(
                     nocp_event.GetHciSpan()));
   view.header().event_code().Write(
       emboss::EventCode::NUMBER_OF_COMPLETED_PACKETS);
+  view.header().parameter_total_size().Write(
+      nocp_event.GetHciSpan().size() -
+      emboss::EventHeader::IntrinsicSizeInBytes());
   view.num_handles().Write(kNumConnections);
 
   size_t i = 0;
@@ -206,6 +212,23 @@ Status SendL2capDisconnectRsp(ProxyHost& proxy,
                               uint16_t destination_cid,
                               Direction direction = Direction::kFromHost);
 
+/// Sends an L2CAP B-Frame.
+///
+/// This can be either a complete PDU (pdu_length == payload.size()) or an
+/// initial fragment (pdu_length > payload.size()).
+void SendL2capBFrame(ProxyHost& proxy,
+                     uint16_t handle,
+                     pw::span<const uint8_t> payload,
+                     size_t pdu_length,
+                     uint16_t channel_id);
+
+/// Sends an ACL frame with CONTINUING_FRAGMENT boundary flag.
+///
+/// No L2CAP header is included.
+void SendAclContinuingFrag(ProxyHost& proxy,
+                           uint16_t handle,
+                           pw::span<const uint8_t> payload);
+
 // TODO: https://pwbug.dev/382783733 - Migrate to L2capChannelEvent callback.
 struct CocParameters {
   uint16_t handle = 123;
@@ -228,6 +251,12 @@ struct BasicL2capParameters {
   AclTransportType transport = AclTransportType::kLe;
   OptionalPayloadReceiveCallback&& payload_from_controller_fn = nullptr;
   OptionalPayloadReceiveCallback&& payload_from_host_fn = nullptr;
+  Function<void(L2capChannelEvent event)>&& event_fn = nullptr;
+};
+
+struct GattNotifyChannelParameters {
+  uint16_t handle = 0xAB;
+  uint16_t attribute_handle = 0xBC;
   Function<void(L2capChannelEvent event)>&& event_fn = nullptr;
 };
 
@@ -254,6 +283,12 @@ class ProxyHostTest : public testing::Test {
 
   BasicL2capChannel BuildBasicL2capChannel(ProxyHost& proxy,
                                            BasicL2capParameters params);
+
+  Result<GattNotifyChannel> BuildGattNotifyChannelWithResult(
+      ProxyHost& proxy, GattNotifyChannelParameters params);
+
+  GattNotifyChannel BuildGattNotifyChannel(ProxyHost& proxy,
+                                           GattNotifyChannelParameters params);
 
   RfcommChannel BuildRfcomm(
       ProxyHost& proxy,

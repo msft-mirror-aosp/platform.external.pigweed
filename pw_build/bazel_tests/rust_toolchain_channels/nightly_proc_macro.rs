@@ -1,4 +1,4 @@
-// Copyright 2024 The Pigweed Authors
+// Copyright 2025 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -11,13 +11,14 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
-#pragma once
+use proc_macro::TokenStream;
+use quote::quote;
 
-namespace pw {
-
-struct ConstexprTag {
-  explicit constexpr ConstexprTag() = default;
-};
-inline constexpr ConstexprTag kConstexpr{};
-
-}  // namespace pw
+#[proc_macro]
+pub fn panic_if_not_nightly(_tokens: TokenStream) -> TokenStream {
+    if cfg!(not(feature = "nightly")) {
+        quote! {panic!("not being build with nightly toolchain!");}.into()
+    } else {
+        quote! {}.into()
+    }
+}

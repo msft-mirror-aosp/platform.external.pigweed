@@ -139,9 +139,11 @@ class SecurityManagerTest : public l2cap::testing::FakeChannelTest,
     l2cap::testing::FakeChannelTest::TearDown();
   }
 
-  void NewSecurityManager(Role role,
-                          IOCapability ioc,
-                          BondableMode bondable_mode) {
+  void NewSecurityManager(
+      Role role,
+      IOCapability ioc,
+      BondableMode bondable_mode,
+      gap::LESecurityMode security_mode = gap::LESecurityMode::Mode1) {
     // Setup fake SMP channel.
     ChannelOptions options(l2cap::kLESMPChannelId);
     fake_chan_ = CreateFakeChannel(options);
@@ -173,14 +175,16 @@ class SecurityManagerTest : public l2cap::testing::FakeChannelTest,
         link_role,
         transport_->GetWeakPtr());
 
-    InitializePeer();
+    if (!peer_) {
+      InitializePeer();
+    }
 
     pairing_ = SecurityManager::CreateLE(fake_le_link_->GetWeakPtr(),
                                          fake_chan_->GetWeakPtr(),
                                          ioc,
                                          weak_delegate_.GetWeakPtr(),
                                          bondable_mode,
-                                         gap::LESecurityMode::Mode1,
+                                         security_mode,
                                          dispatcher(),
                                          peer_->GetWeakPtr());
   }
@@ -218,17 +222,25 @@ class SecurityManagerTest : public l2cap::testing::FakeChannelTest,
   }
 
   void InitializePeer(bool is_bredr = false) {
+    InitializePeer(is_bredr ? kPeerBrEdrAddr : kPeerAddr);
+  }
+
+  void InitializePeer(DeviceAddress address) {
     auto listeners_cb = [](const gap::Peer&, gap::Peer::NotifyListenersChange) {
     };
     auto expiry_cb = [](const gap::Peer&) {};
     auto dual_mode_cb = [](const gap::Peer&) {};
-    auto store_le_bond_cb = [](const sm::PairingData&) { return true; };
+    auto store_le_bond_cb = [this](const sm::PairingData& data) {
+      pairing_data_callback_count_++;
+      pairing_data_ = data;
+      return true;
+    };
     peer_.emplace(std::move(listeners_cb),
                   std::move(expiry_cb),
                   std::move(dual_mode_cb),
                   std::move(store_le_bond_cb),
                   kPeerId,
-                  is_bredr ? kPeerBrEdrAddr : kPeerAddr,
+                  address,
                   /*connectable=*/true,
                   &peer_metrics_,
                   dispatcher_);
@@ -276,12 +288,6 @@ class SecurityManagerTest : public l2cap::testing::FakeChannelTest,
   void OnPairingComplete(Result<> status) override {
     pairing_complete_count_++;
     pairing_complete_status_ = status;
-  }
-
-  // Called by |pairing_| when a new LTK is obtained.
-  void OnNewPairingData(const PairingData& pairing_data) override {
-    pairing_data_callback_count_++;
-    pairing_data_ = pairing_data;
   }
 
   // Called by |pairing_| when any encryption procedure fails.
@@ -862,6 +868,16 @@ class InitiatorPairingTest : public SecurityManagerTest {
                           KeyDistGenField local_keys = 0,
                           BondableMode bondable = BondableMode::Bondable) {
     UpgradeSecurity(level);
+    FastForwardToScLtkAfterUpgradeSecurity(
+        out_ltk, level, peer_keys, local_keys, bondable);
+  }
+
+  void FastForwardToScLtkAfterUpgradeSecurity(
+      UInt128* out_ltk,
+      SecurityLevel level = SecurityLevel::kEncrypted,
+      KeyDistGenField peer_keys = 0,
+      KeyDistGenField local_keys = 0,
+      BondableMode bondable = BondableMode::Bondable) {
     EXPECT_TRUE(peer().MutLe().is_pairing());
     RunUntilIdle();
 
@@ -1361,17 +1377,23 @@ TEST_F(InitiatorPairingTest,
 
 TEST_F(InitiatorPairingTest,
        RejectUnauthenticatedEncryptionInSecureConnectionsOnlyMode) {
-  pairing()->set_security_mode(gap::LESecurityMode::SecureConnectionsOnly);
   const LTK kUnauthenticatedLtk(SecurityProperties(/*encrypted=*/true,
                                                    /*authenticated=*/false,
                                                    /*secure_connections=*/true,
                                                    kMaxEncryptionKeySize),
                                 hci_spec::LinkKey());
-  pairing()->AssignLongTermKey(kUnauthenticatedLtk);
+  sm::PairingData bond_data;
+  bond_data.peer_ltk = kUnauthenticatedLtk;
+  bond_data.local_ltk = kUnauthenticatedLtk;
+  peer().MutLe().SetBondData(bond_data);
+
+  NewSecurityManager(Role::kInitiator,
+                     IOCapability::kDisplayOnly,
+                     BondableMode::Bondable,
+                     gap::LESecurityMode::SecureConnectionsOnly);
   RunUntilIdle();
-  // After setting SC Only mode, assigning and encrypting with an
-  // unauthenticated LTK should cause the channel to be disconnected with an
-  // authentication failure.
+  // In SC Only mode, encrypting with an unauthenticated LTK should
+  // cause the channel to be disconnected with an authentication failure.
   fake_link()->TriggerEncryptionChangeCallback(fit::ok(/*enabled=*/true));
   RunUntilIdle();
 
@@ -2154,7 +2176,7 @@ TEST_F(InitiatorPairingTest, LegacyPhase3CompleteWithoutKeyExchange) {
   RunUntilIdle();
 
   // Pairing should succeed without any pairing data.
-  EXPECT_EQ(1, pairing_data_callback_count());
+  EXPECT_EQ(0, pairing_data_callback_count());
   EXPECT_FALSE(peer_ltk());
   EXPECT_FALSE(irk());
   EXPECT_FALSE(identity());
@@ -2874,15 +2896,8 @@ TEST_F(InitiatorPairingTest, Phase3CompleteWithIdKey) {
   EXPECT_EQ(16u, sec_props().enc_key_size());
   EXPECT_FALSE(sec_props().secure_connections());
 
-  EXPECT_EQ(1, pairing_data_callback_count());
-  ASSERT_FALSE(peer_ltk());
-  ASSERT_TRUE(irk());
-  ASSERT_TRUE(identity());
-  ASSERT_FALSE(csrk());
-
-  EXPECT_EQ(sec_props(), irk()->security());
-  EXPECT_EQ(kIRK, irk()->value());
-  EXPECT_EQ(kPeerAddr, *identity());
+  // No LTK was exchanged, so the pairing data callback should not be called.
+  EXPECT_EQ(0, pairing_data_callback_count());
 }
 
 TEST_F(InitiatorPairingTest, Phase3CompleteWithAllKeys) {
@@ -2974,22 +2989,19 @@ TEST_F(InitiatorPairingTest, GenerateCrossTransportLinkKey) {
   EXPECT_TRUE(pairing_data().cross_transport_key.has_value());
 }
 
-TEST_F(InitiatorPairingTest, AssignLongTermKeyFailsDuringPairing) {
-  UpgradeSecurity(SecurityLevel::kEncrypted);  // Initiate pairing.
-  SecurityProperties sec_props(
-      SecurityLevel::kAuthenticated, 16, /*secure_connections=*/false);
-  EXPECT_FALSE(
-      pairing()->AssignLongTermKey(LTK(sec_props, hci_spec::LinkKey())));
-  EXPECT_EQ(0, fake_link()->start_encryption_count());
-  EXPECT_EQ(SecurityLevel::kNoSecurity, pairing()->security().level());
-}
-
 TEST_F(InitiatorPairingTest, AssignLongTermKey) {
   SecurityProperties sec_props(
       SecurityLevel::kAuthenticated, 16, /*secure_connections=*/false);
   LTK ltk(sec_props, hci_spec::LinkKey());
+  sm::PairingData bond_data;
+  bond_data.peer_ltk = ltk;
+  bond_data.local_ltk = ltk;
+  peer().MutLe().SetBondData(bond_data);
 
-  EXPECT_TRUE(pairing()->AssignLongTermKey(ltk));
+  NewSecurityManager(
+      Role::kInitiator, IOCapability::kDisplayOnly, BondableMode::Bondable);
+  RunUntilIdle();
+
   EXPECT_EQ(1, fake_link()->start_encryption_count());
   ASSERT_TRUE(fake_link()->ltk());
   EXPECT_EQ(ltk.key(), *fake_link()->ltk());
@@ -3199,13 +3211,21 @@ TEST_F(InitiatorPairingTest,
   SecurityProperties sec_props(
       SecurityLevel::kAuthenticated, 16, /*secure_connections=*/false);
   const LTK kOriginalLtk(sec_props, hci_spec::LinkKey({1}, 2, 3));
-  const hci_spec::LinkKey kModifiedLtk(hci_spec::LinkKey({4}, 5, 6));
+  sm::PairingData bond_data;
+  bond_data.peer_ltk = kOriginalLtk;
+  bond_data.local_ltk = kOriginalLtk;
+  peer().MutLe().SetBondData(bond_data);
 
-  EXPECT_TRUE(pairing()->AssignLongTermKey(kOriginalLtk));
+  NewSecurityManager(
+      Role::kInitiator, IOCapability::kDisplayOnly, BondableMode::Bondable);
+  RunUntilIdle();
+  EXPECT_EQ(1, fake_link()->start_encryption_count());
+
+  const hci_spec::LinkKey kModifiedLtk(hci_spec::LinkKey({4}, 5, 6));
   fake_link()->set_ltk(kModifiedLtk);
-  // When we receive the Security Request on a bonded (i.e. AssignLongTermKey
-  // has been called) connection, we will refresh the encryption key. This
-  // checks that the link LTK = the SMP LTK which is not the case.
+  // When we receive the Security Request on a bonded connection, we will
+  // refresh the encryption key. This checks that the link LTK = the SMP LTK
+  // which is not the case.
   ReceiveSecurityRequest(AuthReqField{0});
   RunUntilIdle();
   ASSERT_TRUE(fake_chan()->link_error());
@@ -3271,8 +3291,14 @@ TEST_F(ResponderPairingTest, SecurityRequestWithExistingLtk) {
                                   kMaxEncryptionKeySize,
                                   /*secure_connections=*/true);
   const LTK kLtk(kProps, hci_spec::LinkKey({1, 2, 3}, 0, 0));
-  // This pretends that we have an already-bonded LTK.
-  pairing()->AssignLongTermKey(kLtk);
+  sm::PairingData bond_data;
+  bond_data.peer_ltk = kLtk;
+  bond_data.local_ltk = kLtk;
+  peer().MutLe().SetBondData(bond_data);
+
+  NewSecurityManager(
+      Role::kResponder, IOCapability::kDisplayOnly, BondableMode::Bondable);
+
   // LTK should have been assigned to the link.
   ASSERT_TRUE(fake_link()->ltk());
   EXPECT_EQ(kLtk.key(), fake_link()->ltk());
@@ -3304,9 +3330,14 @@ TEST_F(ResponderPairingTest,
                                   kMaxEncryptionKeySize,
                                   /*secure_connections=*/true);
   const LTK kLtk(kProps, hci_spec::LinkKey({1, 2, 3}, 0, 0));
-  // This pretends that we have an already-bonded LTK with kEncrypted security
-  // level.
-  pairing()->AssignLongTermKey(kLtk);
+  sm::PairingData bond_data;
+  bond_data.peer_ltk = kLtk;
+  bond_data.local_ltk = kLtk;
+  peer().MutLe().SetBondData(bond_data);
+
+  NewSecurityManager(
+      Role::kResponder, IOCapability::kDisplayOnly, BondableMode::Bondable);
+
   // LTK should have been assigned to the link.
   ASSERT_TRUE(fake_link()->ltk());
   EXPECT_EQ(kLtk.key(), fake_link()->ltk());
@@ -3792,33 +3823,26 @@ TEST_F(ResponderPairingTest, LegacyPhase3LocalIdKeyDistributionWithRemoteKeys) {
   // Pairing is considered complete when all keys have been distributed even if
   // we're still encrypted with the STK. This is because the initiator may not
   // always re-encrypt the link with the LTK until a reconnection.
-  EXPECT_EQ(1, pairing_data_callback_count());
+  EXPECT_EQ(0, pairing_failed_count());
+  EXPECT_EQ(1, pairing_complete_count());
+  EXPECT_EQ(fit::ok(), security_status());
+  EXPECT_EQ(security_status(), pairing_complete_status());
   EXPECT_FALSE(peer().MutLe().is_pairing());
-
-  // The peer should have sent us its identity information.
-  ASSERT_TRUE(pairing_data().irk);
-  EXPECT_EQ(kIrk, pairing_data().irk->value());
-  ASSERT_TRUE(pairing_data().identity_address);
-  EXPECT_EQ(kPeerAddr, *pairing_data().identity_address);
-}
-
-TEST_F(ResponderPairingTest, AssignLongTermKeyFailsDuringPairing) {
-  ReceivePairingRequest();
-  RunUntilIdle();
-  SecurityProperties sec_props(
-      SecurityLevel::kAuthenticated, 16, /*secure_connections=*/false);
-  EXPECT_FALSE(
-      pairing()->AssignLongTermKey(LTK(sec_props, hci_spec::LinkKey())));
-  EXPECT_EQ(0, fake_link()->start_encryption_count());
-  EXPECT_EQ(SecurityLevel::kNoSecurity, pairing()->security().level());
+  EXPECT_EQ(0, pairing_data_callback_count());
 }
 
 TEST_F(ResponderPairingTest, AssignLongTermKey) {
   SecurityProperties sec_props(
       SecurityLevel::kAuthenticated, 16, /*secure_connections=*/false);
   LTK ltk(sec_props, hci_spec::LinkKey());
+  sm::PairingData bond_data;
+  bond_data.peer_ltk = ltk;
+  bond_data.local_ltk = ltk;
+  peer().MutLe().SetBondData(bond_data);
 
-  EXPECT_TRUE(pairing()->AssignLongTermKey(ltk));
+  NewSecurityManager(
+      Role::kResponder, IOCapability::kDisplayOnly, BondableMode::Bondable);
+
   ASSERT_TRUE(fake_link()->ltk());
   EXPECT_EQ(ltk.key(), *fake_link()->ltk());
 
@@ -3840,9 +3864,15 @@ TEST_F(ResponderPairingTest, EncryptWithLinkKeyModifiedOutsideSmDisconnects) {
   SecurityProperties sec_props(
       SecurityLevel::kAuthenticated, 16, /*secure_connections=*/false);
   const LTK kOriginalLtk(sec_props, hci_spec::LinkKey({1}, 2, 3));
-  const hci_spec::LinkKey kModifiedLtk(hci_spec::LinkKey({4}, 5, 6));
+  sm::PairingData bond_data;
+  bond_data.peer_ltk = kOriginalLtk;
+  bond_data.local_ltk = kOriginalLtk;
+  peer().MutLe().SetBondData(bond_data);
 
-  EXPECT_TRUE(pairing()->AssignLongTermKey(kOriginalLtk));
+  NewSecurityManager(
+      Role::kResponder, IOCapability::kDisplayOnly, BondableMode::Bondable);
+
+  const hci_spec::LinkKey kModifiedLtk(hci_spec::LinkKey({4}, 5, 6));
   fake_link()->set_ltk(kModifiedLtk);
   fake_link()->TriggerEncryptionChangeCallback(fit::ok(/*enabled=*/true));
   RunUntilIdle();
@@ -4529,6 +4559,170 @@ TEST_F(SecurityManagerTest, BrEdrInitiatorPeerDoesNotWantToDoCtkd) {
   ASSERT_TRUE(received_error_code().has_value());
   EXPECT_EQ(received_error_code().value(),
             ErrorCode::kCrossTransportKeyDerivationNotAllowed);
+}
+
+TEST_F(ResponderPairingTest,
+       BrEdrPairingInProgressErrorInResponseToPairingRequest) {
+  InitializePeer(kPeerPublicAddr);
+  NewSecurityManager(
+      Role::kResponder, IOCapability::kDisplayOnly, BondableMode::Bondable);
+  gap::Peer::PairingToken token = peer().MutBrEdr().RegisterPairing();
+  ReceivePairingRequest(IOCapability::kDisplayOnly, kSC);
+  RunUntilIdle();
+  EXPECT_EQ(0, pairing_response_count());
+  EXPECT_EQ(1, pairing_failed_count());
+  ASSERT_TRUE(received_error_code().has_value());
+  EXPECT_EQ(received_error_code().value(), ErrorCode::kBREDRPairingInProgress);
+}
+
+TEST_F(ResponderPairingTest, BrEdrPairingInProgressDuringSecurityRequestPhase) {
+  InitializePeer(kPeerPublicAddr);
+  NewSecurityManager(
+      Role::kResponder, IOCapability::kDisplayOnly, BondableMode::Bondable);
+  UpgradeSecurity(SecurityLevel::kEncrypted);
+  RunUntilIdle();
+  EXPECT_EQ(1, security_request_count());
+
+  gap::Peer::PairingToken token = peer().MutBrEdr().RegisterPairing();
+
+  ReceivePairingRequest(IOCapability::kDisplayOnly, kSC);
+  RunUntilIdle();
+  EXPECT_EQ(0, pairing_response_count());
+  EXPECT_EQ(0, pairing_response_count());
+  EXPECT_EQ(1, pairing_failed_count());
+  ASSERT_TRUE(received_error_code().has_value());
+  EXPECT_EQ(received_error_code().value(), ErrorCode::kBREDRPairingInProgress);
+}
+
+TEST_F(InitiatorPairingTest,
+       BrEdrPairingInProgressErrorInResponseToSecurityRequest) {
+  InitializePeer(kPeerPublicAddr);
+  NewSecurityManager(
+      Role::kInitiator, IOCapability::kDisplayOnly, BondableMode::Bondable);
+  gap::Peer::PairingToken token = peer().MutBrEdr().RegisterPairing();
+  ReceiveSecurityRequest(AuthReq::kSC);
+  RunUntilIdle();
+  EXPECT_EQ(0, pairing_request_count());
+  EXPECT_EQ(1, pairing_failed_count());
+  ASSERT_TRUE(received_error_code().has_value());
+  EXPECT_EQ(received_error_code().value(), ErrorCode::kBREDRPairingInProgress);
+}
+
+TEST_F(InitiatorPairingTest,
+       ReceiveSecurityRequestWhenScPairedDuringBrEdrPairingFails) {
+  InitializePeer(kPeerPublicAddr);
+  NewSecurityManager(
+      Role::kInitiator, IOCapability::kDisplayOnly, BondableMode::Bondable);
+
+  UInt128 stk;
+  FastForwardToPhase3(&stk,
+                      /*secure_connections=*/true,
+                      SecurityLevel::kEncrypted,
+                      KeyDistGen::kEncKey);
+  EXPECT_EQ(stk, fake_link()->ltk()->value());
+  EXPECT_EQ(1, pairing_request_count());
+
+  // Receive EncKey and wait until the link is encrypted with the LTK.
+  UInt128 kLTK{{1, 2, 3, 4, 5, 6, 7, 8, 7, 6, 5, 4, 3, 2, 1, 0}};
+  uint64_t kRand = 5;
+  uint16_t kEDiv = 20;
+  ReceiveEncryptionInformation(kLTK);
+  ReceiveCentralIdentification(kRand, kEDiv);
+  RunUntilIdle();
+  fake_link()->TriggerEncryptionChangeCallback(fit::ok(true));
+  RunUntilIdle();
+  ASSERT_EQ(1, pairing_complete_count());
+  ASSERT_EQ(fit::ok(), security_status());
+  EXPECT_EQ(1, pairing_request_count());
+  ASSERT_EQ(1, fake_link()->start_encryption_count());
+
+  gap::Peer::PairingToken token = peer().MutBrEdr().RegisterPairing();
+
+  ReceiveSecurityRequest(AuthReq::kSC);
+  RunUntilIdle();
+  EXPECT_EQ(1, pairing_failed_count());
+  ASSERT_TRUE(received_error_code().has_value());
+  EXPECT_EQ(received_error_code().value(), ErrorCode::kBREDRPairingInProgress);
+}
+
+TEST_F(InitiatorPairingTest,
+       LegacySecurityRequestWhileWaitingForBrEdrPairingToComplete) {
+  InitializePeer(kPeerPublicAddr);
+  NewSecurityManager(
+      Role::kInitiator, IOCapability::kDisplayOnly, BondableMode::Bondable);
+
+  std::optional<gap::Peer::PairingToken> bredr_pairing_token =
+      peer().MutBrEdr().RegisterPairing();
+
+  UpgradeSecurity(SecurityLevel::kEncrypted);
+  EXPECT_FALSE(peer().MutLe().is_pairing());
+  RunUntilIdle();
+  EXPECT_EQ(0, pairing_request_count());
+
+  // Non-SC!
+  ReceiveSecurityRequest(/*auth_req=*/0u);
+
+  UInt128 stk;
+  FastForwardToSTK(&stk);
+  ASSERT_TRUE(fake_link()->ltk());
+  EXPECT_EQ(1, fake_link()->start_encryption_count());
+
+  fake_link()->TriggerEncryptionChangeCallback(fit::ok(/*enabled=*/true));
+  RunUntilIdle();
+  EXPECT_EQ(0, pairing_failed_count());
+  EXPECT_EQ(1, new_sec_props_count());
+  EXPECT_EQ(security_callback_count(), 2);
+
+  bredr_pairing_token.reset();
+  RunUntilIdle();
+  EXPECT_EQ(security_callback_count(), 2);
+}
+
+TEST_F(ResponderPairingTest,
+       EncryptionChangeForBondedPeerWhileWaitingForBrEdrPairing) {
+  InitializePeer(kPeerPublicAddr);
+  sm::PairingData pairing_data;
+  pairing_data.local_ltk = kAuthenticatedSecureKey;
+  pairing_data.peer_ltk = kAuthenticatedSecureKey;
+  peer().MutLe().SetBondData(pairing_data);
+  NewSecurityManager(
+      Role::kResponder, IOCapability::kDisplayOnly, BondableMode::Bondable);
+  std::optional<gap::Peer::PairingToken> bredr_pairing_token =
+      peer().MutBrEdr().RegisterPairing();
+
+  UpgradeSecurity(SecurityLevel::kEncrypted);
+  RunUntilIdle();
+  fake_link()->TriggerEncryptionChangeCallback(fit::ok(/*enabled=*/true));
+  RunUntilIdle();
+  EXPECT_EQ(1, new_sec_props_count());
+  EXPECT_EQ(security_callback_count(), 1);
+}
+
+TEST_F(InitiatorPairingTest, UpgradeSecurityWaitsForBrEdrPairingToComplete) {
+  InitializePeer(kPeerPublicAddr);
+  NewSecurityManager(
+      Role::kInitiator, IOCapability::kDisplayOnly, BondableMode::Bondable);
+
+  std::optional<gap::Peer::PairingToken> bredr_pairing_token =
+      peer().MutBrEdr().RegisterPairing();
+
+  // Queue 2 security upgrade requests to ensure the implementation handles them
+  // correctly.
+  UpgradeSecurity(SecurityLevel::kEncrypted);
+  UpgradeSecurity(SecurityLevel::kEncrypted);
+  EXPECT_FALSE(peer().MutLe().is_pairing());
+  RunUntilIdle();
+  EXPECT_EQ(0, pairing_request_count());
+
+  bredr_pairing_token.reset();
+  EXPECT_TRUE(peer().MutLe().is_pairing());
+  UInt128 ltk;
+  FastForwardToScLtkAfterUpgradeSecurity(&ltk);
+  EXPECT_EQ(1, fake_link()->start_encryption_count());
+  fake_link()->TriggerEncryptionChangeCallback(fit::ok(/*enabled=*/true));
+  RunUntilIdle();
+  EXPECT_EQ(1, new_sec_props_count());
+  EXPECT_EQ(security_callback_count(), 2);
 }
 
 }  // namespace
