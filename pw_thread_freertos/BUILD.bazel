@@ -13,6 +13,7 @@
 # the License.
 
 load("@bazel_skylib//rules:run_binary.bzl", "run_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
@@ -97,7 +98,20 @@ cc_library(
         "//pw_string",
         "//pw_sync:binary_semaphore",
         "//pw_thread:thread.facade",
+        "//pw_toolchain:constexpr_tag",
     ],
+)
+
+cc_library(
+    name = "creation",
+    hdrs = [
+        "thread_creation_public_overrides/pw_thread_backend/context.h",
+        "thread_creation_public_overrides/pw_thread_backend/options.h",
+        "thread_creation_public_overrides/pw_thread_backend/priority.h",
+        "thread_creation_public_overrides/pw_thread_backend/stack.h",
+    ],
+    strip_include_prefix = "thread_creation_public_overrides",
+    deps = ["@freertos"],
 )
 
 label_flag(
@@ -277,7 +291,7 @@ cc_library(
         "public",
         "thread_public_overrides",
     ],
-    tags = ["noclangtidy"],
+    deps = ["@freertos"],
 )
 
 run_binary(

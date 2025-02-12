@@ -12,13 +12,13 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
-    features = ["-layering_check"],
 )
 
 licenses(["notice"])
@@ -51,7 +51,9 @@ pw_cc_test(
     deps = [
         ":pw_channel",
         "//pw_allocator:testing",
+        "//pw_assert:check",
         "//pw_compilation_testing:negative_compilation_testing",
+        "//pw_multibuf:allocator",
         "//pw_multibuf:allocator_async",
         "//pw_multibuf:simple_allocator",
         "//pw_preprocessor",
@@ -66,8 +68,11 @@ cc_library(
     strip_include_prefix = "public",
     deps = [
         ":pw_channel",
+        "//pw_async2:dispatcher",
+        "//pw_async2:poll",
         "//pw_multibuf:allocator",
         "//pw_multibuf:allocator_async",
+        "//pw_sync:lock_annotations",
         "//pw_sync:mutex",
     ],
 )
@@ -80,6 +85,7 @@ pw_cc_test(
         "//pw_allocator:testing",
         "//pw_multibuf:header_chunk_region_tracker",
         "//pw_multibuf:simple_allocator",
+        "//pw_string:string",
         "//pw_unit_test",
     ],
 )
@@ -91,6 +97,9 @@ cc_library(
     strip_include_prefix = "public",
     deps = [
         ":pw_channel",
+        "//pw_async2:dispatcher",
+        "//pw_async2:poll",
+        "//pw_multibuf",
         "//pw_multibuf:allocator",
         "//pw_multibuf:allocator_async",
     ],
@@ -101,8 +110,14 @@ pw_cc_test(
     srcs = ["loopback_channel_test.cc"],
     deps = [
         ":loopback_channel",
+        ":pw_channel",
+        "//pw_allocator:testing",
+        "//pw_assert:check",
+        "//pw_async2:dispatcher",
+        "//pw_bytes",
         "//pw_multibuf:allocator_async",
         "//pw_multibuf:testing",
+        "//pw_status",
         "//pw_unit_test",
     ],
 )
@@ -115,8 +130,13 @@ cc_library(
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":pw_channel",
+        "//pw_async2:dispatcher",
+        "//pw_async2:poll",
+        "//pw_log",
+        "//pw_multibuf",
         "//pw_multibuf:allocator",
         "//pw_multibuf:allocator_async",
+        "//pw_status",
     ],
 )
 
@@ -126,10 +146,16 @@ pw_cc_test(
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":epoll_channel",
+        ":pw_channel",
+        "//pw_assert:check",
+        "//pw_async2:dispatcher",
+        "//pw_bytes",
         "//pw_multibuf:allocator_async",
         "//pw_multibuf:testing",
+        "//pw_status",
         "//pw_thread:sleep",
         "//pw_thread:thread",
+        "//pw_thread_stl:options",
         "//pw_unit_test",
     ],
 )
@@ -158,9 +184,12 @@ cc_library(
     strip_include_prefix = "public",
     deps = [
         ":pw_channel",
+        "//pw_async2:dispatcher_base",
         "//pw_log",
+        "//pw_multibuf",
         "//pw_multibuf:allocator",
         "//pw_multibuf:allocator_async",
+        "//pw_status",
         "//pw_stream",
         "//pw_sync:interrupt_spin_lock",
         "//pw_sync:thread_notification",
@@ -174,12 +203,16 @@ pw_cc_test(
     deps = [
         ":stream_channel",
         "//pw_async2:pend_func_task",
+        "//pw_bytes",
         "//pw_multibuf:allocator_async",
         "//pw_multibuf:testing",
+        "//pw_status",
         "//pw_stream",
         "//pw_stream:mpsc_stream",
         "//pw_thread:test_thread_context",
         "//pw_thread:thread",
+        "//pw_toolchain:globals",
+        "//pw_toolchain:no_destructor",
         "//pw_unit_test",
     ],
 )

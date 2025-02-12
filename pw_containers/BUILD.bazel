@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
@@ -170,11 +171,11 @@ cc_library(
     ],
     strip_include_prefix = "public",
     deps = [
-        ":constexpr_tag",
         ":raw_storage",
         "//pw_assert",
         "//pw_preprocessor",
         "//pw_span",
+        "//pw_toolchain:constexpr_tag",
     ],
 )
 
@@ -196,10 +197,10 @@ cc_library(
     strip_include_prefix = "public",
     tags = ["noclangtidy"],
     deps = [
-        ":constexpr_tag",
         ":raw_storage",
         "//pw_assert",
         "//pw_preprocessor",
+        "//pw_toolchain:constexpr_tag",
         "//pw_varint",
     ],
 )
@@ -213,6 +214,7 @@ cc_library(
     deps = [
         "//pw_assert",
         "//pw_preprocessor",
+        "//pw_toolchain:constexpr_tag",
     ],
 )
 
@@ -243,19 +245,11 @@ cc_library(
 )
 
 cc_library(
-    name = "constexpr_tag",
-    hdrs = [
-        "public/pw_containers/internal/constexpr_tag.h",
-    ],
-    strip_include_prefix = "public",
-    visibility = [":__subpackages__"],
-)
-
-cc_library(
     name = "test_helpers",
     srcs = ["test_helpers.cc"],
     hdrs = ["pw_containers_private/test_helpers.h"],
     visibility = [":__subpackages__"],
+    deps = ["//pw_assert"],
 )
 
 cc_library(
@@ -473,6 +467,7 @@ pw_cc_test(
 filegroup(
     name = "doxygen",
     srcs = [
+        "public/pw_containers/algorithm.h",
         "public/pw_containers/filtered_view.h",
         "public/pw_containers/inline_deque.h",
         "public/pw_containers/inline_queue.h",
@@ -485,6 +480,7 @@ filegroup(
         "public/pw_containers/intrusive_multimap.h",
         "public/pw_containers/intrusive_multiset.h",
         "public/pw_containers/intrusive_set.h",
+        "public/pw_containers/vector.h",
     ],
 )
 
@@ -493,6 +489,13 @@ sphinx_docs_library(
     srcs = [
         "Kconfig",
         "docs.rst",
+        "lists.rst",
+        "maps.rst",
+        "multiple_containers.rst",
+        "queues.rst",
+        "sets.rst",
+        "utilities.rst",
+        "vectors.rst",
         "//pw_containers/examples:docs",
     ],
     prefix = "pw_containers/",

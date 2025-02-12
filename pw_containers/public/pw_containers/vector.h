@@ -26,6 +26,7 @@
 
 #include "pw_assert/assert.h"
 #include "pw_preprocessor/compiler.h"
+#include "pw_toolchain/constexpr_tag.h"
 
 namespace pw {
 namespace vector_impl {
@@ -61,6 +62,9 @@ struct VectorStorage;
 template <typename T, size_t kMaxSize = vector_impl::kGeneric>
 class Vector
     : public VectorStorage<T, kMaxSize, std::is_trivially_destructible_v<T>> {
+ private:
+  using Base = VectorStorage<T, kMaxSize, std::is_trivially_destructible_v<T>>;
+
  public:
   using typename Vector<T, vector_impl::kGeneric>::value_type;
   using typename Vector<T, vector_impl::kGeneric>::size_type;
@@ -77,6 +81,11 @@ class Vector
   // Construct
   Vector() noexcept = default;
 
+  // Explicit constexpr constructor. Using this constructor will place the
+  // entire object in .data by default, which will increase ROM size. Use with
+  // caution if working with large capacity sizes.
+  constexpr Vector(ConstexprTag constexpr_tag) noexcept : Base(constexpr_tag) {}
+
   Vector(size_type count, const T& value) { this->Append(count, value); }
 
   explicit Vector(size_type count) { this->Append(count, T()); }
@@ -89,7 +98,9 @@ class Vector
     this->CopyFrom(first, last);
   }
 
-  Vector(const Vector& other) { this->CopyFrom(other.begin(), other.end()); }
+  Vector(const Vector& other) : Base() {
+    this->CopyFrom(other.begin(), other.end());
+  }
 
   template <size_t kOtherMaxSize>
   Vector(const Vector<T, kOtherMaxSize>& other) {
@@ -154,8 +165,15 @@ class Vector
 template <typename T, size_t kMaxSize>
 struct VectorStorage<T, kMaxSize, true>
     : public Vector<T, vector_impl::kGeneric> {
+ private:
+  using Base = Vector<T, vector_impl::kGeneric>;
+
  protected:
-  VectorStorage() : Vector<T, vector_impl::kGeneric>(kMaxSize) {}
+  VectorStorage() : Base(kMaxSize) {}
+
+  constexpr VectorStorage(ConstexprTag /*constexpr_tag*/)
+      : Base(kMaxSize), array_{} {}
+
   // NOTE: no destructor is added, as ``T`` is trivially destructible.
  private:
   friend class Vector<T, kMaxSize>;
@@ -195,13 +213,19 @@ struct VectorStorage<T, kMaxSize, true>
 template <typename T, size_t kMaxSize>
 struct VectorStorage<T, kMaxSize, false>
     : public Vector<T, vector_impl::kGeneric> {
+ private:
+  using Base = Vector<T, vector_impl::kGeneric>;
+
  public:
   ~VectorStorage() {
     static_cast<Vector<T, vector_impl::kGeneric>*>(this)->clear();
   }
 
  protected:
-  VectorStorage() : Vector<T, vector_impl::kGeneric>(kMaxSize) {}
+  VectorStorage() : Base(kMaxSize) {}
+
+  constexpr VectorStorage(ConstexprTag /*constexpr_tag*/)
+      : Base(kMaxSize), array_{} {}
 
  private:
   friend class Vector<T, kMaxSize>;
@@ -384,32 +408,34 @@ class Vector<T, vector_impl::kGeneric> {
 
   void clear() noexcept;
 
-  iterator insert(const_iterator index, size_type count, const T& value);
+  iterator insert(const_iterator position, size_type count, const T& value);
 
-  iterator insert(const_iterator index, const T& value) {
-    return insert(index, 1, value);
+  iterator insert(const_iterator position, const T& value) {
+    return insert(position, 1, value);
   }
 
-  iterator insert(const_iterator index, T&& value);
+  iterator insert(const_iterator position, T&& value);
 
   template <
       typename Iterator,
       int&... ExplicitArgumentBarrier,
       typename = std::enable_if_t<vector_impl::IsIterator<Iterator>::value>>
-  iterator insert(const_iterator index, Iterator first, Iterator last) {
-    return InsertFrom(index, first, last);
+  iterator insert(const_iterator position, Iterator first, Iterator last) {
+    return InsertFrom(position, first, last);
   }
 
-  iterator insert(const_iterator index, std::initializer_list<T> list) {
-    return insert(index, list.begin(), list.end());
+  iterator insert(const_iterator position, std::initializer_list<T> list) {
+    return insert(position, list.begin(), list.end());
   }
 
   template <typename... Args>
-  iterator emplace(const_iterator index, Args&&... args);
+  iterator emplace(const_iterator position, Args&&... args);
 
   iterator erase(const_iterator first, const_iterator last);
 
-  iterator erase(const_iterator index) { return erase(index, index + 1); }
+  iterator erase(const_iterator position) {
+    return erase(position, position + 1);
+  }
 
   void push_back(const T& value) { emplace_back(value); }
 
@@ -442,7 +468,12 @@ class Vector<T, vector_impl::kGeneric> {
   void Append(size_type count, const T& value);
 
   template <typename Iterator>
-  iterator InsertFrom(const_iterator index, Iterator first, Iterator last);
+  iterator InsertFrom(const_iterator position, Iterator first, Iterator last);
+
+  // Shifts entries to make room for an insert operation. Entries shifted past
+  // the end are move constructed with placement new; entries shifted into
+  // existing positions are moved with std::move_backward.
+  void ShiftEntriesForInsert(T* first, size_type to_insert);
 
  private:
   const size_type max_size_;
@@ -532,64 +563,63 @@ void Vector<T, vector_impl::kGeneric>::resize(size_t new_size, const T& value) {
 }
 
 template <typename T>
-typename Vector<T>::iterator Vector<T>::insert(Vector<T>::const_iterator index,
-                                               T&& value) {
-  PW_DASSERT(index >= cbegin());
-  PW_DASSERT(index <= cend());
+typename Vector<T>::iterator Vector<T>::insert(
+    Vector<T>::const_iterator position, T&& value) {
+  PW_DASSERT(position >= cbegin());
+  PW_DASSERT(position <= cend());
   PW_DASSERT(!full());
 
-  iterator insertion_point = begin() + std::distance(cbegin(), index);
+  const iterator insertion_point = const_cast<iterator>(position);
   if (insertion_point == end()) {
     emplace_back(std::move(value));
     return insertion_point;
   }
 
-  std::move_backward(insertion_point, end(), end() + 1);
-  *insertion_point = std::move(value);
-  ++size_;
+  ShiftEntriesForInsert(insertion_point, 1);
 
-  // Return an iterator pointing to the inserted value.
+  *insertion_point = std::move(value);
+  size_ += 1;
+
   return insertion_point;
 }
 
 template <typename T>
-typename Vector<T>::iterator Vector<T>::insert(Vector<T>::const_iterator index,
-                                               size_type count,
-                                               const T& value) {
-  PW_DASSERT(index >= cbegin());
-  PW_DASSERT(index <= cend());
+typename Vector<T>::iterator Vector<T>::insert(
+    Vector<T>::const_iterator position, size_type count, const T& value) {
+  PW_DASSERT(position >= cbegin());
+  PW_DASSERT(position <= cend());
   PW_DASSERT(size() + count <= max_size());
 
-  iterator insertion_point = begin() + std::distance(cbegin(), index);
+  const iterator insertion_point = const_cast<iterator>(position);
   if (count == size_type{}) {
     return insertion_point;
   }
 
-  if (insertion_point != end()) {
-    std::move_backward(insertion_point, end(), end() + count);
+  ShiftEntriesForInsert(insertion_point, count);
+
+  size_type inserted = 0;
+  while (insertion_point < end() && inserted < count) {
+    *(insertion_point + inserted) = value;
+    inserted += 1;
+  }
+  for (; inserted < count; ++inserted) {
+    new (&*(insertion_point + inserted)) T(value);
   }
 
-  iterator return_value = insertion_point;
-
-  for (size_type final_count = size_ + count; size_ != final_count; ++size_) {
-    *insertion_point = value;
-    ++insertion_point;
-  }
-
-  // Return an iterator pointing to the first element inserted.
-  return return_value;
+  size_ += count;
+  return insertion_point;
 }
 
 template <typename T>
 typename Vector<T>::iterator Vector<T>::erase(Vector<T>::const_iterator first,
                                               Vector<T>::const_iterator last) {
-  iterator source = begin() + std::distance(cbegin(), last);
+  iterator source = const_cast<iterator>(last);
   if (first == last) {
     return source;
   }
 
   // Move subsequent entries over the to-be-erased range.
-  iterator destination = begin() + std::distance(cbegin(), first);
+  iterator destination = const_cast<iterator>(first);
   iterator new_end = std::move(source, end(), destination);
 
   // Destroy any leftover moved entries.
@@ -600,7 +630,7 @@ typename Vector<T>::iterator Vector<T>::erase(Vector<T>::const_iterator first,
   size_ = static_cast<size_type>(std::distance(begin(), new_end));
 
   // Return an iterator following the last removed element.
-  return new_end;
+  return const_cast<iterator>(first);
 }
 
 template <typename T>
@@ -629,22 +659,48 @@ void Vector<T, vector_impl::kGeneric>::Append(size_type count, const T& value) {
 template <typename T>
 template <typename Iterator>
 typename Vector<T>::iterator Vector<T, vector_impl::kGeneric>::InsertFrom(
-    Vector<T>::const_iterator index, Iterator first, Iterator last) {
-  PW_DASSERT(index >= cbegin());
-  PW_DASSERT(index <= cend());
+    Vector<T>::const_iterator position, Iterator first, Iterator last) {
+  PW_DASSERT(position >= cbegin());
+  PW_DASSERT(position <= cend());
 
-  // Return an iterator pointing to the first element inserted.
-  iterator retval = begin() + std::distance(cbegin(), index);
-  size_t count = static_cast<size_t>(std::distance(first, last));
+  const iterator insertion_point = const_cast<iterator>(position);
+  const size_t count = static_cast<size_t>(std::distance(first, last));
   PW_DASSERT(count <= max_size() - size());
 
-  if (retval != end()) {
-    std::move_backward(retval, end(), end() + count);
+  ShiftEntriesForInsert(insertion_point, static_cast<size_type>(count));
+
+  size_type i = 0;
+  iterator dest = insertion_point;
+  while (dest != end() && i < count) {
+    *dest++ = std::move(*first++);
+    i += 1;
   }
-  std::move(first, last, retval);
+  for (; i < count; ++i) {
+    new (&(*dest++)) T(std::move(*first++));
+  }
 
   size_ += static_cast<size_type>(count);
-  return retval;
+  return insertion_point;
+}
+
+template <typename T>
+void Vector<T, vector_impl::kGeneric>::ShiftEntriesForInsert(
+    T* first, const size_type to_insert) {
+  ptrdiff_t to_shift = std::distance(first, end());
+
+  // Move construct elements after the end of the vector.
+  T* last = end();
+  T* dest = end() + to_insert;
+  while (dest != end()) {
+    if (to_shift-- == 0) {
+      // All items placed in unallocated slots; no moves needed.
+      return;
+    }
+    new (&(*--dest)) T(std::move(*--last));
+  }
+
+  // Move the remaining items to existing slots.
+  std::move_backward(first, last, end());
 }
 
 }  // namespace pw

@@ -56,7 +56,7 @@ bazel_dep(name = "emboss", version = "2024.1017.203246", repo_name = "com_google
 # LINT.ThenChange(/pw_package/py/pw_package/packages/emboss.py:emboss)
 
 bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
-bazel_dep(name = "rules_doxygen", version = "2.0.0", dev_dependency = True)
+bazel_dep(name = "rules_doxygen", version = "2.2.0", dev_dependency = True)
 
 # Repository overrides
 # ====================
@@ -109,6 +109,10 @@ single_version_override(
         # gets the path to those files wrong.
         # TODO: https://pwbug.dev/3392708481 - Upstream below patch
         "//pw_rust/bazel_patches:0004-Add-rust_srcs_subdir-to-rust_analyzer_toolchain.patch",
+
+        # rust_analyzer: Support passing a --config option to Bazel
+        # https://github.com/bazelbuild/rules_rust/pull/3254
+        "//pw_rust/bazel_patches:0005-rust_analyzer-Support-passing-a-config-option-to-Baz.patch",
     ],
 )
 
@@ -165,7 +169,7 @@ cipd_repository(
     name = "llvm_toolchain",
     build_file = "//pw_toolchain/build_external:llvm_clang.BUILD",
     path = "fuchsia/third_party/clang/${os}-${arch}",
-    tag = "git_revision:9d3f9f47e6e630b8308562297757e0911be03a18",
+    tag = "git_revision:083686daf9feb5b5acadaef22e60b10a8b781f8a",
 )
 
 # TODO: https://pwbug.dev/388593877 - macOS toolchain is behind because of a
@@ -179,13 +183,11 @@ cipd_repository(
     tag = "git_revision:8280651ad57cb9fb24a404cec2401040c28dec98",
 )
 
-# TODO: b/366374135 - This is behind, most recent version
-# is in pw_env_setup/py/pw_env_setup/cipd_setup/pigweed.json
 cipd_repository(
     name = "llvm_toolchain_device",
     build_file = "//pw_toolchain/build_external:llvm_clang.BUILD",
     path = "fuchsia/third_party/clang/${os}-${arch}",
-    tag = "git_revision:9d3f9f47e6e630b8308562297757e0911be03a18",
+    tag = "git_revision:083686daf9feb5b5acadaef22e60b10a8b781f8a",
 )
 
 # Fetch linux sysroot for host builds.
@@ -202,6 +204,14 @@ cipd_repository(
     build_file = "//pw_toolchain/build_external:arm_none_eabi_gcc.BUILD",
     path = "fuchsia/third_party/armgcc/${os}-${arch}",
     tag = "version:2@12.2.MPACBTI-Rel1.1",
+)
+
+# Fetch the Zephyr toolchain
+cipd_repository(
+    name = "zephyr_toolchain",
+    build_file = "//pw_toolchain/build_external:zephyr.BUILD",
+    path = "infra/3pp/tools/zephyr_sdk/${os}-${arch}",
+    tag = "version:3@0.17.0",
 )
 
 register_toolchains(
@@ -230,12 +240,41 @@ register_toolchains(
     dev_dependency = True,
 )
 
-# Vendored third party rust crates.
-pw_rust_crates = use_extension("@pigweed//pw_build:pw_rust_crates_extension.bzl", "pw_rust_crates_extension")
-pw_rust_crates.default_git_repository(
-    commit = "ed1ec1bd240b9446b30af5331b960871a0503a6c",
-    remote = "https://pigweed.googlesource.com/third_party/rust_crates",
+crate = use_extension("@rules_rust//crate_universe:extension.bzl", "crate")
+crate.from_cargo(
+    name = "crates_no_std",
+    cargo_lockfile = "//third_party/crates_io/crates_no_std:Cargo.lock",
+    manifests = ["//third_party/crates_io/crates_no_std:Cargo.toml"],
+    # crate_universe's defaults do not include some embedded triples so the
+    # triples are listed explicitly.
+    supported_platform_triples = [
+        # Host platforms
+        "aarch64-unknown-linux-gnu",
+        "x86_64-unknown-linux-gnu",
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+
+        # Target platforms
+        "thumbv6m-none-eabi",
+        "thumbv7m-none-eabi",
+        "thumbv8m.main-none-eabihf",
+    ],
 )
+use_repo(crate, "crates_no_std")
+
+# Enable necessary features for `compiler_builtins` to build.
+crate.annotation(
+    crate = "compiler_builtins",
+    rustc_flags = ["-Zallow-features=abi_unadjusted,asm_experimental_arch,naked_functions,repr_simd,cfg_target_has_atomic,compiler_builtins,core_intrinsics,linkage"],
+)
+crate.from_cargo(
+    name = "crates_std",
+    cargo_lockfile = "//third_party/crates_io/crates_std:Cargo.lock",
+    manifests = ["//third_party/crates_io/crates_std:Cargo.toml"],
+)
+use_repo(crate, "crates_std")
+
+pw_rust_crates = use_extension("@pigweed//pw_build:pw_rust_crates_extension.bzl", "pw_rust_crates_extension")
 use_repo(pw_rust_crates, "rust_crates")
 
 # Get probe-rs
@@ -319,6 +358,15 @@ use_repo(
     "maven",
 )
 
+# QEMU prebuilts
+# ==============
+cipd_repository(
+    name = "qemu",
+    build_file = "//third_party/qemu:qemu.BUILD",
+    path = "fuchsia/third_party/qemu/${os}-${arch}",
+    tag = "git_revision:d922088eb4ba6bc31a99f17b32cf75e59dd306cd",
+)
+
 # Vendored libraries
 # ==================
 
@@ -361,11 +409,19 @@ http_archive(
     urls = ["https://github.com/STMicroelectronics/cmsis-core/archive/refs/tags/v5.4.0_cm4.tar.gz"],
 )
 
+git_repository(
+    name = "mcuxpresso",
+    commit = "0cc0caa0c44fc9ceae1ad4c0a9e3b79e8b38d751",
+    # temporary point to antmicro github fork until SDK generated files
+    # will be pushed to: https://pigweed.googlesource.com/pigweed/mcuxpresso-sdk
+    remote = "https://github.com/antmicro/mcuxpresso-sdk.git",
+)
+
 # Other Pigweed-specific dependencies
 # ===================================
 cipd_repository(
     name = "bloaty",
-    path = "fuchsia/third_party/bloaty/${os}-amd64",
+    path = "fuchsia/third_party/bloaty/${os=linux,mac}-amd64",
     tag = "git_revision:c057ba4f43db0506d4ba8c096925b054b02a8bd3",
 )
 
@@ -477,8 +533,11 @@ fuchsia_products_repository(
     metadata_file = "@fuchsia_products_metadata//:product_bundles.json",
 )
 
-register_toolchains("//pw_toolchain/fuchsia:fuchsia_sdk_toolchain")
+register_toolchains(
+    "//pw_toolchain/fuchsia:fuchsia_sdk_toolchain",
+    dev_dependency = True,
+)
 
-fake_fuchsia_sdk_extension = use_extension("@com_google_googletest//:fake_fuchsia_sdk.bzl", "fuchsia_sdk")
+fake_fuchsia_sdk_extension = use_extension("@com_google_googletest//:fake_fuchsia_sdk.bzl", "fuchsia_sdk", dev_dependency = True)
 
 override_repo(fake_fuchsia_sdk_extension, "fuchsia_sdk")

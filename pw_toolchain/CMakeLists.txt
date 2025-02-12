@@ -16,6 +16,13 @@ include("$ENV{PW_ROOT}/pw_build/pigweed.cmake")
 
 add_subdirectory(arm_gcc EXCLUDE_FROM_ALL)
 
+pw_add_library(pw_toolchain.constexpr_tag INTERFACE
+  HEADERS
+    public/pw_toolchain/constexpr_tag.h
+  PUBLIC_INCLUDES
+    public
+)
+
 pw_add_library(pw_toolchain.no_destructor INTERFACE
   HEADERS
     public/pw_toolchain/no_destructor.h
@@ -28,7 +35,27 @@ pw_add_test(pw_toolchain.no_destructor_test
     no_destructor_test.cc
   PRIVATE_DEPS
     pw_assert.check
+    pw_polyfill
     pw_toolchain.no_destructor
+  GROUPS
+    modules
+    pw_toolchain
+)
+
+pw_add_library(pw_toolchain.globals INTERFACE
+  HEADERS
+    public/pw_toolchain/globals.h
+  PUBLIC_INCLUDES
+    public
+)
+
+pw_add_test(pw_toolchain.globals_test
+  SOURCES
+    globals_test.cc
+  PRIVATE_DEPS
+    pw_assert.check
+    pw_polyfill
+    pw_toolchain.globals
   GROUPS
     modules
     pw_toolchain

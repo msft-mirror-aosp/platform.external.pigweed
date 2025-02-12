@@ -12,13 +12,13 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
-    features = ["-layering_check"],
 )
 
 licenses(["notice"])
@@ -104,6 +104,7 @@ pw_cc_test(
     ],
     deps = [
         ":uart",
+        "//pw_status",
         "//pw_unit_test",
     ],
 )
@@ -115,6 +116,9 @@ pw_cc_test(
     ],
     deps = [
         ":uart_non_blocking",
+        "//pw_bytes",
+        "//pw_function",
+        "//pw_status",
         "//pw_unit_test",
     ],
 )

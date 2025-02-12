@@ -19,7 +19,7 @@
 
 #include "pw_bluetooth_sapphire/internal/host/gap/peer.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/peer_cache.h"
-#include "pw_bluetooth_sapphire/internal/host/transport/transport.h"
+#include "pw_bluetooth_sapphire/internal/host/hci/low_energy_scanner.h"
 
 namespace bt::gap {
 
@@ -35,12 +35,14 @@ const char* kInspectScanIntervalPropertyName = "scan_interval_ms";
 const char* kInspectScanWindowPropertyName = "scan_window_ms";
 
 LowEnergyDiscoverySession::LowEnergyDiscoverySession(
+    uint16_t scan_id,
     bool active,
     PeerCache& peer_cache,
     pw::async::Dispatcher& dispatcher,
     fit::function<void(LowEnergyDiscoverySession*)> on_stop_cb,
     fit::function<const std::unordered_set<PeerId>&()> cached_scan_results_fn)
     : WeakSelf(this),
+      scan_id_(scan_id),
       active_(active),
       peer_cache_(peer_cache),
       heap_dispatcher_(dispatcher),
@@ -113,11 +115,13 @@ void LowEnergyDiscoverySession::Stop() {
 LowEnergyDiscoveryManager::LowEnergyDiscoveryManager(
     hci::LowEnergyScanner* scanner,
     PeerCache* peer_cache,
+    const hci::LowEnergyScanner::PacketFilterConfig& packet_filter_config,
     pw::async::Dispatcher& dispatcher)
     : WeakSelf(this),
       dispatcher_(dispatcher),
       state_(State::kIdle, StateToString),
       peer_cache_(peer_cache),
+      packet_filter_config_(packet_filter_config),
       paused_count_(0),
       scanner_(scanner) {
   PW_DCHECK(peer_cache_);
@@ -254,10 +258,11 @@ LowEnergyDiscoveryManager::AddSession(bool active) {
     RemoveSession(session_to_remove);
   };
   auto cached_scan_results_fn =
-      [this]() -> const decltype(cached_scan_results_) & {
+      [this]() -> const decltype(cached_scan_results_)& {
     return this->cached_scan_results_;
   };
   auto session = std::make_unique<LowEnergyDiscoverySession>(
+      next_scan_id_++,
       active,
       *peer_cache_,
       dispatcher_,

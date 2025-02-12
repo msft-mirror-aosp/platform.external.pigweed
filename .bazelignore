@@ -23,3 +23,4 @@ bazel-out
 bazel-pigweed
 bazel-testlogs
 outbazel
+third_party/crates_io/rust_crates
