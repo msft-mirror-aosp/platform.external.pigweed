@@ -10,7 +10,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:feafd1012a32c05ec6095f69ddc3850afb621f3a"
+        "git_revision:ab638bd7cbb9ac8468bf2fbe60c74ed4706a14a7"
       ],
       "version_file": ".versions/gn.cipd_version"
     },
@@ -24,7 +24,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:4d9df71730a08c643583ec18db002b17dee823d7"
+        "git_revision:a06e6b35bdd507066f2b03e924464c8ca453860c"
       ]
     },
     {
@@ -71,7 +71,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:9d3f9f47e6e630b8308562297757e0911be03a18"
+        "git_revision:083686daf9feb5b5acadaef22e60b10a8b781f8a"
       ],
       "version_file": ".versions/clang.cipd_version"
     },
@@ -183,7 +183,7 @@
         "mac-arm64"
       ],
       "tags": [
-        "git_revision:1600b9f46b1bd08b00fe86c46ef6dbb48cbe10d6"
+        "git_revision:ae35f033b874c627d81d51070187fbf55f0bf1a7"
       ],
       "version_file": ".versions/qemu.cipd_version"
     },

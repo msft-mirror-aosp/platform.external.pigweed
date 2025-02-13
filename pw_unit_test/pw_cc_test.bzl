@@ -13,6 +13,9 @@
 # the License.
 """Rules for declaring unit tests."""
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
 def pw_cc_test(**kwargs):
     """Wrapper for cc_test providing some defaults.
 
@@ -31,10 +34,10 @@ def pw_cc_test(**kwargs):
     Args:
       **kwargs: Passed to cc_test.
     """
-    kwargs["deps"] = kwargs.get("deps", []) + [str(Label("//pw_build:default_link_extra_lib"))]
-
-    # Depend on the backend. E.g. to pull in gtest.h include paths.
-    kwargs["deps"] = kwargs["deps"] + [str(Label("//pw_unit_test:backend"))]
+    kwargs["deps"] = kwargs.get("deps", []) + [
+        str(Label("//pw_build:default_link_extra_lib")),
+        str(Label("//pw_unit_test:pw_unit_test_alias_for_migration_only")),
+    ]
 
     # Save the base set of deps minus pw_unit_test:main for the .lib target.
     original_deps = kwargs["deps"]
@@ -42,8 +45,7 @@ def pw_cc_test(**kwargs):
     # Add the unit test main label flag dep.
     test_main = kwargs.pop("test_main", str(Label("//pw_unit_test:main")))
     kwargs["deps"] = original_deps + [test_main]
-
-    native.cc_test(**kwargs)
+    cc_test(**kwargs)
 
     kwargs["alwayslink"] = 1
 
@@ -68,4 +70,4 @@ def pw_cc_test(**kwargs):
 
     # Reset the deps for the .lib target.
     kwargs["deps"] = original_deps
-    native.cc_library(name = kwargs.pop("name") + ".lib", **kwargs)
+    cc_library(name = kwargs.pop("name") + ".lib", **kwargs)

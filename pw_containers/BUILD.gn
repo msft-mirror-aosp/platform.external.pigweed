@@ -80,8 +80,8 @@ pw_source_set("flat_map") {
 pw_source_set("inline_deque") {
   public_configs = [ ":public_include_path" ]
   public_deps = [
-    ":constexpr_tag",
     ":raw_storage",
+    "$dir_pw_toolchain:constexpr_tag",
     dir_pw_assert,
     dir_pw_preprocessor,
     dir_pw_span,
@@ -107,15 +107,10 @@ pw_source_set("raw_storage") {
   visibility = [ ":*" ]
 }
 
-pw_source_set("constexpr_tag") {
-  public_configs = [ ":public_include_path" ]
-  public = [ "public/pw_containers/internal/constexpr_tag.h" ]
-  visibility = [ ":*" ]
-}
-
 pw_source_set("test_helpers") {
   public = [ "pw_containers_private/test_helpers.h" ]
   sources = [ "test_helpers.cc" ]
+  deps = [ dir_pw_assert ]
   visibility = [ ":*" ]
 }
 
@@ -126,11 +121,11 @@ pw_source_set("to_array") {
 
 pw_source_set("inline_var_len_entry_queue") {
   public_configs = [ ":public_include_path" ]
-  public_deps = [ dir_pw_varint ]
-  deps = [
-    ":constexpr_tag",
-    dir_pw_assert,
+  public_deps = [
+    "$dir_pw_toolchain:constexpr_tag",
+    dir_pw_varint,
   ]
+  deps = [ dir_pw_assert ]
   public = [ "public/pw_containers/inline_var_len_entry_queue.h" ]
   sources = [ "inline_var_len_entry_queue.c" ]
 
@@ -141,6 +136,7 @@ pw_source_set("inline_var_len_entry_queue") {
 pw_source_set("vector") {
   public_configs = [ ":public_include_path" ]
   public_deps = [
+    "$dir_pw_toolchain:constexpr_tag",
     dir_pw_assert,
     dir_pw_preprocessor,
   ]
@@ -470,10 +466,29 @@ pw_doc_group("docs") {
     "examples/intrusive_multiset.cc",
     "examples/intrusive_set.cc",
     "examples/multiple_containers.cc",
+    "examples/vector.cc",
     "examples/wrapped_iterator.cc",
   ]
-  sources = [ "docs.rst" ]
-  report_deps = [ ":intrusive_list_size_report" ]
+  sources = [
+    "docs.rst",
+    "lists.rst",
+    "maps.rst",
+    "multiple_containers.rst",
+    "queues.rst",
+    "sets.rst",
+    "utilities.rst",
+    "vectors.rst",
+  ]
+
+  # TODO: b/388905812 - Re-enable the size reports.
+  # report_deps = [
+  #   ":lists_size_report",
+  #   ":maps_size_report",
+  #   ":queues_size_report",
+  #   ":sets_size_report",
+  #   ":utilities_size_report",
+  #   ":vectors_size_report",
+  # ]
 }
 
 pw_size_diff("intrusive_list_size_report") {

@@ -83,12 +83,17 @@ pw_add_library(pw_transfer.core STATIC
     pw_transfer.config
     pw_transfer.proto.pwpb
   HEADERS
+    public/pw_transfer/handler.h
     public/pw_transfer/internal/chunk.h
     public/pw_transfer/internal/client_context.h
     public/pw_transfer/internal/context.h
     public/pw_transfer/internal/event.h
     public/pw_transfer/internal/protocol.h
     public/pw_transfer/internal/server_context.h
+    public/pw_transfer/rate_estimate.h
+    public/pw_transfer/transfer_thread.h
+  PUBLIC_INCLUDES
+    public
   SOURCES
     chunk.cc
     client_context.cc

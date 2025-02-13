@@ -44,6 +44,9 @@ namespace pw::tokenizer {
 
 /// Token database entry.
 using TokenizedStringEntry = std::pair<FormatString, uint32_t /*date removed*/>;
+using DomainTokenEntriesMap = std::unordered_map<
+    std::string,
+    std::unordered_map<uint32_t, std::vector<TokenizedStringEntry>>>;
 
 /// A string that has been detokenized. This class tracks all possible results
 /// if there are token collisions.
@@ -89,7 +92,9 @@ class Detokenizer {
 
   /// Constructs a detokenizer by directly passing the parsed database.
   explicit Detokenizer(
-      std::unordered_map<uint32_t, std::vector<TokenizedStringEntry>>&&
+      std::unordered_map<
+          std::string,
+          std::unordered_map<uint32_t, std::vector<TokenizedStringEntry>>>&&
           database)
       : database_(std::move(database)) {}
 
@@ -105,6 +110,9 @@ class Detokenizer {
   /// Constructs a detokenizer from the `.pw_tokenizer.entries` section of an
   /// ELF binary.
   static Result<Detokenizer> FromElfFile(stream::SeekableReader& stream);
+
+  /// Constructs a detokenizer from a parsed CSV database.
+  static Result<Detokenizer> FromCsv(std::string_view csv);
 
   /// Decodes and detokenizes the binary encoded message. Returns a
   /// `DetokenizedString` that stores all possible detokenized string results.
@@ -168,8 +176,10 @@ class Detokenizer {
   std::string DecodeOptionallyTokenizedData(
       const span<const std::byte>& optionally_tokenized_data);
 
+  const DomainTokenEntriesMap& database() const { return database_; }
+
  private:
-  std::unordered_map<uint32_t, std::vector<TokenizedStringEntry>> database_;
+  DomainTokenEntriesMap database_;
 };
 
 /// @}

@@ -53,6 +53,7 @@ struct ProtocolErrorTraits {
 
 // Marker used to indicate that an Error holds only HostError.
 class NoProtocolError {
+ public:
   constexpr NoProtocolError() = delete;
 };
 
@@ -81,7 +82,7 @@ struct IsError<T<U>,
                    std::declval<T<U>>()))>> : std::true_type {};
 
 template <typename T>
-constexpr bool IsErrorV = IsError<T>::value;
+inline constexpr bool IsErrorV = IsError<T>::value;
 
 // Detects whether ProtocolErrorTraits<ProtocolErrorCode>::is_success has been
 // declared.
@@ -95,7 +96,7 @@ struct CanRepresentSuccess<
         std::declval<ProtocolErrorCode>()))>> : std::true_type {};
 
 template <typename ProtocolErrorCode>
-constexpr bool CanRepresentSuccessV =
+inline constexpr bool CanRepresentSuccessV =
     CanRepresentSuccess<ProtocolErrorCode>::value;
 
 }  // namespace detail
@@ -439,7 +440,7 @@ struct IsStreamable<
                             << std::declval<const Rhs&>())> {};
 
 template <typename Lhs, typename Rhs>
-constexpr bool IsStreamableV = IsStreamable<Lhs, Rhs>::value;
+inline constexpr bool IsStreamableV = IsStreamable<Lhs, Rhs>::value;
 
 }  // namespace detail
 }  // namespace bt

@@ -14,6 +14,7 @@
 
 load("@com_google_protobuf//bazel:java_lite_proto_library.bzl", "java_lite_proto_library")
 load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "host_backend_alias", "incompatible_with_mcu")
@@ -28,7 +29,6 @@ load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
-    features = ["-layering_check"],
 )
 
 licenses(["notice"])
@@ -149,6 +149,8 @@ cc_library(
         "//pw_log_tokenized:headers",
         "//pw_protobuf",
         "//pw_result",
+        "//pw_span",
+        "//pw_status",
     ],
 )
 
@@ -232,7 +234,8 @@ pw_cc_test(
         ":log_proto_pwpb",
         ":proto_utils",
         ":pw_log.facade",
-        "//pw_containers",
+        "//pw_bytes",
+        "//pw_containers:algorithm",
         "//pw_preprocessor",
         "//pw_protobuf",
         "//pw_protobuf:bytes_utils",
@@ -250,6 +253,7 @@ pw_cc_test(
         "//pw_log",
         "//pw_tokenizer",
         "//pw_unit_test",
+        "//pw_unit_test:constexpr",
     ],
 )
 

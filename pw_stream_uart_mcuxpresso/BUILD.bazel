@@ -12,13 +12,18 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
-load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
+load("//pw_build:compatibility.bzl", "boolean_constraint_value", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
+
+boolean_constraint_value(
+    name = "compatible",
+)
 
 cc_library(
     name = "pw_stream_uart_mcuxpresso",
@@ -26,7 +31,7 @@ cc_library(
     hdrs = ["public/pw_stream_uart_mcuxpresso/stream.h"],
     strip_include_prefix = "public",
     target_compatible_with = [
-        "//pw_build/constraints/board:mimxrt595_evk",
+        ":compatible",
     ],
     deps = [
         "//pw_clock_tree",
@@ -42,7 +47,7 @@ cc_library(
     hdrs = ["public/pw_stream_uart_mcuxpresso/interrupt_safe_writer.h"],
     strip_include_prefix = "public",
     target_compatible_with = [
-        "//pw_build/constraints/board:mimxrt595_evk",
+        ":compatible",
     ],
     deps = [
         "//pw_clock_tree",
@@ -56,7 +61,7 @@ pw_cc_test(
     name = "stream_test",
     srcs = ["stream_test.cc"],
     target_compatible_with = [
-        "//pw_build/constraints/board:mimxrt595_evk",
+        ":compatible",
     ],
     deps = [":pw_stream_uart_mcuxpresso"],
 )
@@ -65,7 +70,7 @@ pw_cc_test(
     name = "stream_example",
     srcs = ["stream_example.cc"],
     target_compatible_with = [
-        "//pw_build/constraints/board:mimxrt595_evk",
+        ":compatible",
     ],
     deps = [":pw_stream_uart_mcuxpresso"],
 )
@@ -74,7 +79,7 @@ pw_cc_test(
     name = "interrupt_safe_writer_example",
     srcs = ["interrupt_safe_writer_example.cc"],
     target_compatible_with = [
-        "//pw_build/constraints/board:mimxrt595_evk",
+        ":compatible",
     ],
     deps = [":pw_stream_uart_interrupt_safe_writer_mcuxpresso"],
 )

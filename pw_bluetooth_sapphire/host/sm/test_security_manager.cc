@@ -47,18 +47,26 @@ TestSecurityManager::TestSecurityManager(
     IOCapability,
     Delegate::WeakPtr delegate,
     BondableMode bondable_mode,
-    gap::LESecurityMode security_mode)
+    gap::LESecurityMode security_mode,
+    gap::Peer::WeakPtr peer)
     : SecurityManager(bondable_mode, security_mode),
       role_(RoleFromLinks(link, bredr_link)),
       delegate_(std::move(delegate)),
-      weak_self_(this) {}
-
-bool TestSecurityManager::AssignLongTermKey(const LTK& ltk) {
-  current_ltk_ = ltk;
-  if (role_ == Role::kInitiator) {
-    set_security(ltk.security());
+      peer_(std::move(peer)),
+      weak_self_(this) {
+  if (link.is_alive()) {
+    if (peer_->le() && peer_->le()->bond_data()) {
+      current_ltk_ =
+          (link->role() == pw::bluetooth::emboss::ConnectionRole::CENTRAL)
+              ? peer_->le()->bond_data()->peer_ltk
+              : peer_->le()->bond_data()->local_ltk;
+    }
+    if (current_ltk_) {
+      if (role_ == Role::kInitiator) {
+        set_security(current_ltk_->security());
+      }
+    }
   }
-  return true;
 }
 
 void TestSecurityManager::UpgradeSecurity(SecurityLevel level,
@@ -77,14 +85,14 @@ void TestSecurityManager::InitiateBrEdrCrossTransportKeyDerivation(
   }
   last_identity_info_ = delegate_->OnIdentityInformationRequest();
   delegate_->OnPairingComplete(fit::ok());
-  delegate_->OnNewPairingData(pairing_data_.value());
+  peer_->MutLe().StoreBond(pairing_data_.value());
   callback(fit::ok());
 }
 
 void TestSecurityManager::TriggerPairingComplete(sm::PairingData data) {
   last_identity_info_ = delegate_->OnIdentityInformationRequest();
   delegate_->OnPairingComplete(fit::ok());
-  delegate_->OnNewPairingData(data);
+  peer_->MutLe().StoreBond(data);
 }
 
 void TestSecurityManager::Reset(IOCapability) {}
@@ -98,7 +106,7 @@ std::unique_ptr<SecurityManager> TestSecurityManagerFactory::CreateSm(
     BondableMode bondable_mode,
     gap::LESecurityMode security_mode,
     pw::async::Dispatcher&,
-    gap::Peer::WeakPtr) {
+    gap::Peer::WeakPtr peer) {
   hci_spec::ConnectionHandle conn = link->handle();
   auto test_sm = std::unique_ptr<TestSecurityManager>(
       new TestSecurityManager(std::move(link),
@@ -107,7 +115,8 @@ std::unique_ptr<SecurityManager> TestSecurityManagerFactory::CreateSm(
                               io_capability,
                               std::move(delegate),
                               bondable_mode,
-                              security_mode));
+                              security_mode,
+                              std::move(peer)));
   test_sms_[conn] = test_sm->GetWeakPtr();
   return test_sm;
 }
@@ -118,7 +127,8 @@ std::unique_ptr<SecurityManager> TestSecurityManagerFactory::CreateBrEdr(
     Delegate::WeakPtr delegate,
     bool /*is_controller_remote_public_key_validation_supported*/,
     pw::async::Dispatcher&,
-    bt::gap::Peer::WeakPtr /*peer*/) {
+    bt::gap::Peer::WeakPtr peer) {
+  PW_CHECK(smp.is_alive());
   hci_spec::ConnectionHandle conn = link->handle();
   auto test_sm = std::unique_ptr<TestSecurityManager>(
       new TestSecurityManager(hci::LowEnergyConnection::WeakPtr(),
@@ -127,7 +137,8 @@ std::unique_ptr<SecurityManager> TestSecurityManagerFactory::CreateBrEdr(
                               IOCapability::kNoInputNoOutput,
                               std::move(delegate),
                               BondableMode::Bondable,
-                              gap::LESecurityMode::SecureConnectionsOnly));
+                              gap::LESecurityMode::SecureConnectionsOnly,
+                              std::move(peer)));
   test_sms_[conn] = test_sm->GetWeakPtr();
   return test_sm;
 }

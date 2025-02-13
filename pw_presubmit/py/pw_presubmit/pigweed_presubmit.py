@@ -378,9 +378,10 @@ gn_mimxrt595_build = PigweedGnGenNinja(
         'dir_pw_third_party_mcuxpresso': lambda ctx: '"{}"'.format(
             str(ctx.package_root / 'mcuxpresso')
         ),
-        'pw_target_mimxrt595_evk_MANIFEST': '$dir_pw_third_party_mcuxpresso'
-        + '/EVK-MIMXRT595_manifest_v3_13.xml',
-        'pw_third_party_mcuxpresso_SDK': '//targets/mimxrt595_evk:sample_sdk',
+        # pylint: disable=line-too-long
+        'pw_third_party_mcuxpresso_CONFIG': '//targets/mimxrt595_evk:mcuxpresso_sdk_config',
+        'pw_third_party_mcuxpresso_SDK': '//targets/mimxrt595_evk:mcuxpresso_sdk',
+        # pylint: enable=line-too-long
         'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
     },
     ninja_targets=('mimxrt595'),
@@ -397,10 +398,10 @@ gn_mimxrt595_freertos_build = PigweedGnGenNinja(
         'dir_pw_third_party_mcuxpresso': lambda ctx: '"{}"'.format(
             str(ctx.package_root / 'mcuxpresso')
         ),
-        'pw_target_mimxrt595_evk_freertos_MANIFEST': '{}/{}'.format(
-            "$dir_pw_third_party_mcuxpresso", "EVK-MIMXRT595_manifest_v3_13.xml"
-        ),
-        'pw_third_party_mcuxpresso_SDK': '//targets/mimxrt595_evk_freertos:sdk',
+        # pylint: disable=line-too-long
+        'pw_third_party_mcuxpresso_CONFIG': '//targets/mimxrt595_evk_freertos:mcuxpresso_sdk_config',
+        'pw_third_party_mcuxpresso_SDK': '//targets/mimxrt595_evk_freertos:mcuxpresso_sdk',
+        # pylint: enable=line-too-long
         'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
     },
     ninja_targets=('mimxrt595_freertos'),
@@ -962,29 +963,31 @@ def bazel_build(ctx: PresubmitContext) -> None:
         '//pw_build:module_config_test',
     )
 
-    # Build upstream Pigweed for the rp2040.
-    # First using the config.
-    build_bazel(
-        ctx,
-        'build',
-        '--config=rp2040',
-        '//...',
-        # Bazel will silently skip any incompatible targets in wildcard builds;
-        # but we know that some end-to-end targets definitely should remain
-        # compatible with this platform. So we list them explicitly. (If an
-        # explicitly listed target is incompatible with the platform, Bazel
-        # will return an error instead of skipping it.)
-        '//pw_bloat:bloat_base',
-    )
-    # Then using the transition.
-    #
-    # This ensures that the rp2040_binary rule transition includes all required
-    # backends.
-    build_bazel(
-        ctx,
-        'build',
-        '//pw_system:rp2040_system_example',
-    )
+    for rp2xxx in ('rp2040', 'rp2350'):
+        # Build upstream Pigweed for the rp2040 and rp2350.
+        # First using the config.
+        build_bazel(
+            ctx,
+            'build',
+            f'--config={rp2xxx}',
+            '//...',
+            # Bazel will silently skip any incompatible targets in wildcard
+            # builds; but we know that some end-to-end targets definitely should
+            # remain compatible with this platform. So we list them explicitly.
+            # (If an explicitly listed target is incompatible with the platform,
+            # Bazel will return an error instead of skipping it.)
+            '//pw_bloat:bloat_base',
+            '//pw_status:status_test',
+        )
+        # Then using the transition.
+        #
+        # This ensures that the rp2040_binary rule transition includes all
+        # required backends.
+        build_bazel(
+            ctx,
+            'build',
+            f'//pw_system:{rp2xxx}_system_example',
+        )
 
     # Build upstream Pigweed for the Discovery board using STM32Cube.
     build_bazel(
@@ -1103,6 +1106,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     # keep-sorted: start
     r'MODULE.bazel.lock',
     r'\b49-pico.rules$',
+    r'\bCargo.lock$',
     r'\bDoxyfile$',
     r'\bPW_PLUGINS$',
     r'\bconstraint.list$',
@@ -1467,6 +1471,7 @@ _EXCLUDE_FROM_TODO_CHECK = (
     r'\bpw_fuzzer/fuzzer.gni',
     r'\bpw_i2c/BUILD.gn',
     r'\bpw_i2c/public/pw_i2c/register_device.h',
+    r'\bpw_kernel/.*',
     r'\bpw_kvs/flash_memory.cc',
     r'\bpw_kvs/key_value_store.cc',
     r'\bpw_log_basic/log_basic.cc',
@@ -1531,6 +1536,7 @@ INCLUDE_CHECK_EXCEPTIONS = (
     "//pw_async_fuchsia:task",
     "//pw_async_fuchsia:util",
     "//pw_bluetooth:emboss_att",
+    "//pw_bluetooth:emboss_avdtp",
     "//pw_bluetooth:emboss_hci_android",
     "//pw_bluetooth:emboss_hci_commands",
     "//pw_bluetooth:emboss_hci_common",
@@ -1540,9 +1546,12 @@ INCLUDE_CHECK_EXCEPTIONS = (
     "//pw_bluetooth:emboss_hci_test",
     "//pw_bluetooth:emboss_l2cap_frames",
     "//pw_bluetooth:emboss_rfcomm_frames",
+    "//pw_bluetooth:emboss_snoop",
     "//pw_bluetooth:emboss_util",
     "//pw_bluetooth:pw_bluetooth",
     "//pw_bluetooth:pw_bluetooth2",
+    "//pw_bluetooth:snoop",
+    "//pw_bluetooth_sapphire:peripheral",
     "//pw_build/bazel_internal:header_test",
     "//pw_chrono_embos:system_clock",
     "//pw_chrono_embos:system_timer",
@@ -1554,6 +1563,10 @@ INCLUDE_CHECK_EXCEPTIONS = (
     "//pw_chrono_threadx:system_clock",
     "//pw_cpu_exception_cortex_m:cpu_exception",
     "//pw_cpu_exception_cortex_m:crash_test.lib",
+    "//pw_crypto:aes",
+    "//pw_crypto:aes.facade",
+    "//pw_crypto:aes_boringssl",
+    "//pw_crypto:aes_mbedtls",
     "//pw_crypto:sha256_mbedtls",
     "//pw_crypto:sha256_mock",
     "//pw_fuzzer/examples/fuzztest:metrics_lib",
@@ -1563,7 +1576,6 @@ INCLUDE_CHECK_EXCEPTIONS = (
     "//pw_log_basic:headers",
     "//pw_log_fuchsia:pw_log_fuchsia",
     "//pw_log_null:headers",
-    "//pw_log_string:pw_log_string",
     "//pw_log_tokenized:gcc_partially_tokenized",
     "//pw_log_tokenized:pw_log_tokenized",
     "//pw_metric:metric_service_pwpb",
@@ -1602,6 +1614,7 @@ INCLUDE_CHECK_EXCEPTIONS = (
     "//pw_sync_threadx:interrupt_spin_lock",
     "//pw_sync_threadx:mutex",
     "//pw_sync_threadx:timed_mutex",
+    "//pw_system:freertos_target_hooks",
     "//pw_thread_embos:id",
     "//pw_thread_embos:sleep",
     "//pw_thread_embos:thread",
@@ -1626,6 +1639,7 @@ INCLUDE_CHECK_EXCEPTIONS = (
     "//pw_trace_tokenized:pw_trace_host_trace_time",
     "//pw_trace_tokenized:pw_trace_tokenized",
     "//pw_trace_tokenized:trace_tokenized_test.lib",
+    "//pw_unit_test:constexpr",
     "//pw_unit_test:googletest",
     "//pw_unit_test:light",
     "//pw_unit_test:rpc_service",

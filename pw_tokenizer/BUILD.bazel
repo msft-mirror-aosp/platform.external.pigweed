@@ -13,6 +13,7 @@
 # the License.
 
 load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
@@ -117,9 +118,11 @@ cc_library(
     strip_include_prefix = "public",
     deps = [
         ":base64",
+        ":csv",
         ":pw_tokenizer",
         "//pw_bytes",
         "//pw_bytes:bit",
+        "//pw_log",
         "//pw_preprocessor",
         "//pw_result",
         "//pw_span",
