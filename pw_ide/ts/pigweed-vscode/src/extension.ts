@@ -20,6 +20,7 @@ import {
   configureBazelSettings,
   interactivelySetBazeliskPath,
   setBazelRecommendedSettings,
+  shouldSupportBazel,
 } from './bazel';
 
 import {
@@ -51,8 +52,11 @@ import {
   isBootstrapProject,
 } from './project';
 import { RefreshManager } from './refreshManager';
-import { settings, workingDir } from './settings';
-import { ClangdFileWatcher, SettingsFileWatcher } from './settingsWatcher';
+import { settings, workingDir } from './settings/vscode';
+import {
+  ClangdFileWatcher,
+  SettingsFileWatcher,
+} from './settings/settingsWatcher';
 
 import {
   InactiveVisibilityStatusBarItem,
@@ -66,6 +70,9 @@ import {
 } from './terminal';
 
 import { commandRegisterer, VscCommandCallback } from './utils';
+import { shouldSupportGn } from './gn';
+import { shouldSupportCmake } from './cmake';
+import { processCompDbs } from './clangd/parser';
 
 interface CommandEntry {
   name: string;
@@ -85,13 +92,17 @@ const disposer = new Disposer();
 
 type ProjectType = 'bazel' | 'bootstrap' | 'both';
 
-function registerCommands(
+async function registerCommands(
   projectType: ProjectType,
   context: ExtensionContext,
   refreshManager: RefreshManager<any>,
   clangdActiveFilesCache: ClangdActiveFilesCache,
   bazelCompileCommandsWatcher?: BazelRefreshCompileCommandsWatcher | undefined,
-): void {
+): Promise<void> {
+  const useBazel = await shouldSupportBazel();
+  const useCmake = await shouldSupportCmake();
+  const useGn = await shouldSupportGn();
+
   const commands: CommandEntry[] = [
     {
       name: 'pigweed.open-output-panel',
@@ -200,9 +211,16 @@ function registerCommands(
     },
     {
       name: 'pigweed.refresh-compile-commands',
-      callback: () => {
-        bazelCompileCommandsWatcher!.refresh();
-        showProgressDuringRefresh(refreshManager);
+      callback: async () => {
+        if (useGn || useCmake) {
+          const { processedCompDbs } = await processCompDbs();
+          await processedCompDbs.writeAll();
+        }
+
+        if (useBazel) {
+          bazelCompileCommandsWatcher!.refresh();
+          showProgressDuringRefresh(refreshManager);
+        }
       },
       projectType: ['bazel', 'both'],
     },
@@ -402,8 +420,51 @@ async function configureProject(
       : undefined;
 }
 
+function buildSystemStatusReason(
+  settingsValue: boolean | 'auto',
+  activeState: boolean,
+): string {
+  switch (settingsValue) {
+    case true:
+      return 'Enabled in settings.';
+    case false:
+      return 'Disabled in settings.';
+    case 'auto':
+      return `Build files ${activeState ? '' : "don't "}exist in project.`;
+  }
+}
+
 export async function activate(context: vscode.ExtensionContext) {
   logger.info('Extension loaded');
+  logger.info('');
+
+  const useBazel = await shouldSupportBazel();
+  const useCmake = await shouldSupportCmake();
+  const useGn = await shouldSupportGn();
+
+  logger.info(`Bazel support is ${useBazel ? 'ACTIVE' : 'DISABLED'}`);
+  logger.info(
+    `↳ Reason: ${buildSystemStatusReason(
+      settings.supportBazelTargets(),
+      useBazel,
+    )}`,
+  );
+  logger.info('');
+
+  logger.info(`CMake support is ${useCmake ? 'ACTIVE' : 'DISABLED'}`);
+  logger.info(
+    `↳ Reason: ${buildSystemStatusReason(
+      settings.supportCmakeTargets(),
+      useCmake,
+    )}`,
+  );
+  logger.info('');
+
+  logger.info(`GN support is ${useGn ? 'ACTIVE' : 'DISABLED'}`);
+  logger.info(
+    `↳ Reason: ${buildSystemStatusReason(settings.supportGnTargets(), useGn)}`,
+  );
+  logger.info('');
 
   // Marshall all of our components and dependencies.
   const refreshManager = disposer.add(RefreshManager.create({ logger }));
@@ -447,7 +508,10 @@ export async function activate(context: vscode.ExtensionContext) {
       settings.disableCompileCommandsFileWatcher(),
     );
 
-    await initAsBazelProject(refreshManager, compileCommandsWatcher);
+    // Don't do Bazel init if the user has explicitly disabled Bazel support.
+    if (useBazel) {
+      await initAsBazelProject(refreshManager, compileCommandsWatcher);
+    }
 
     registerCommands(
       projectType,
