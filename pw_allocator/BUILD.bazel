@@ -38,9 +38,24 @@ label_flag(
 )
 
 cc_library(
+    name = "hardening_basic",
+    defines = ["PW_ALLOCATOR_HARDENING=PW_ALLOCATOR_HARDENING_BASIC"],
+)
+
+cc_library(
+    name = "hardening_robust",
+    defines = ["PW_ALLOCATOR_HARDENING=PW_ALLOCATOR_HARDENING_ROBUST"],
+)
+
+cc_library(
+    name = "hardening_debug",
+    defines = ["PW_ALLOCATOR_HARDENING=PW_ALLOCATOR_HARDENING_DEBUG"],
+)
+
+cc_library(
     name = "test_config",
     defines = [
-        "PW_ALLOCATOR_STRICT_VALIDATION=1",
+        "PW_ALLOCATOR_HARDENING=PW_ALLOCATOR_HARDENING_DEBUG",
         "PW_ALLOCATOR_BLOCK_POISON_INTERVAL=4",
     ],
 )
@@ -105,6 +120,7 @@ cc_library(
         ":config",
         ":deallocator",
         ":fragmentation",
+        ":hardening",
         "//pw_allocator/block:allocatable",
         "//pw_allocator/block:basic",
         "//pw_allocator/block:iterable",
@@ -150,6 +166,7 @@ cc_library(
     strip_include_prefix = "public",
     deps = [
         ":allocator",
+        ":hardening",
         "//pw_allocator/block:basic",
         "//pw_allocator/bucket:unordered",
         "//pw_bytes",
@@ -215,7 +232,7 @@ cc_library(
     ],
     strip_include_prefix = "public",
     deps = [
-        "//pw_assert",
+        ":hardening",
         "//pw_preprocessor",
         "//pw_result",
         "//pw_status",
@@ -277,8 +294,18 @@ cc_library(
     strip_include_prefix = "public",
     deps = [
         ":bucket_allocator",
-        "//pw_assert",
+        ":hardening",
         "//pw_bytes",
+    ],
+)
+
+cc_library(
+    name = "hardening",
+    hdrs = ["public/pw_allocator/hardening.h"],
+    strip_include_prefix = "public",
+    deps = [
+        ":config",
+        "//pw_assert",
         "//pw_preprocessor",
     ],
 )
@@ -390,10 +417,9 @@ cc_library(
     hdrs = ["public/pw_allocator/typed_pool.h"],
     strip_include_prefix = "public",
     deps = [
-        ":allocator",
         ":chunk_pool",
+        ":hardening",
         "//pw_bytes",
-        "//pw_result",
     ],
 )
 
@@ -431,6 +457,7 @@ cc_library(
         ":allocator",
         ":buffer",
         ":first_fit",
+        ":hardening",
         ":test_config",
         ":tracking_allocator",
         "//pw_assert",
@@ -503,7 +530,6 @@ pw_cc_test(
         ":allocator_as_pool",
         ":deallocator",
         ":testing",
-        "//pw_unit_test",
     ],
 )
 
@@ -514,7 +540,6 @@ pw_cc_test(
         ":allocator",
         ":deallocator",
         ":testing",
-        "//pw_unit_test",
     ],
 )
 
@@ -526,7 +551,6 @@ pw_cc_test(
         ":best_fit_block_allocator",
         ":block_allocator_testing",
         ":buffer",
-        "//pw_unit_test",
     ],
 )
 
@@ -538,7 +562,6 @@ pw_cc_test(
         ":block_allocator_testing",
         ":bucket_allocator",
         ":bucket_block_allocator",
-        "//pw_unit_test",
     ],
 )
 
@@ -549,7 +572,6 @@ pw_cc_test(
         ":buddy_allocator",
         ":fuzzing",
         ":testing",
-        "//pw_unit_test",
     ],
 )
 
@@ -571,7 +593,6 @@ pw_cc_test(
     deps = [
         ":bump_allocator",
         ":testing",
-        "//pw_unit_test",
         "//third_party/fuchsia:stdcompat",
     ],
 )
@@ -592,7 +613,6 @@ pw_cc_test(
         ":fallback_allocator",
         ":testing",
         "//pw_status",
-        "//pw_unit_test",
     ],
 )
 
@@ -607,7 +627,6 @@ pw_cc_test(
         ":first_fit_block_allocator",
         ":last_fit_block_allocator",
         "//pw_allocator/block:detailed_block",
-        "//pw_unit_test",
         "//third_party/fuchsia:stdcompat",
     ],
 )
@@ -618,7 +637,6 @@ pw_cc_test(
     deps = [
         ":fragmentation",
         ":testing",
-        "//pw_unit_test",
     ],
 )
 
@@ -642,7 +660,6 @@ pw_cc_test(
         ":testing",
         "//pw_result",
         "//pw_status",
-        "//pw_unit_test",
     ],
 )
 
@@ -652,17 +669,13 @@ pw_cc_test(
     deps = [
         ":libc_allocator",
         ":testing",
-        "//pw_unit_test",
     ],
 )
 
 pw_cc_test(
     name = "metrics_test",
     srcs = ["metrics_test.cc"],
-    deps = [
-        ":metrics",
-        "//pw_unit_test",
-    ],
+    deps = [":metrics"],
 )
 
 pw_cc_test(
@@ -671,7 +684,6 @@ pw_cc_test(
     deps = [
         ":null_allocator",
         ":testing",
-        "//pw_unit_test",
     ],
 )
 
@@ -681,7 +693,6 @@ pw_cc_test(
     deps = [
         ":pmr_allocator",
         ":testing",
-        "//pw_unit_test",
     ],
 )
 
@@ -709,7 +720,6 @@ pw_cc_test(
         "//pw_thread:thread",
         "//pw_thread:thread_core",
         "//pw_thread:yield",
-        "//pw_unit_test",
     ],
 )
 
@@ -719,7 +729,6 @@ pw_cc_test(
     deps = [
         ":block_allocator_testing",
         ":tlsf_allocator",
-        "//pw_unit_test",
     ],
 )
 
@@ -734,7 +743,6 @@ pw_cc_test(
         ":tracking_allocator",
         "//pw_log",
         "//pw_metric:metric",
-        "//pw_unit_test",
     ],
 )
 
@@ -746,7 +754,6 @@ pw_cc_test(
         ":testing",
         ":typed_pool",
         "//pw_bytes:alignment",
-        "//pw_unit_test",
     ],
 )
 
@@ -756,7 +763,6 @@ pw_cc_test(
     deps = [
         ":allocator",
         ":testing",
-        "//pw_unit_test",
     ],
 )
 
@@ -767,7 +773,6 @@ pw_cc_test(
         ":block_allocator_testing",
         ":worst_fit",
         ":worst_fit_block_allocator",
-        "//pw_unit_test",
     ],
 )
 
