@@ -67,6 +67,8 @@ cc_library(
     deps = [
         "//pw_allocator:hardening",
         "//pw_bytes:alignment",
+        "//pw_result",
+        "//pw_status",
         "//third_party/fuchsia:stdcompat",
     ],
 )
@@ -81,8 +83,6 @@ cc_library(
         ":basic",
         "//pw_allocator:hardening",
         "//pw_bytes",
-        "//pw_result",
-        "//pw_status",
         "//third_party/fuchsia:stdcompat",
     ],
 )
@@ -144,9 +144,14 @@ cc_library(
 cc_library(
     name = "testing",
     testonly = True,
-    hdrs = ["public/pw_allocator/block/testing.h"],
+    hdrs = [
+        "public/pw_allocator/block/testing.h",
+        "public/pw_allocator/block/unit_tests.h",
+    ],
     strip_include_prefix = "public",
     deps = [
+        ":allocatable",
+        ":result",
         "//pw_allocator:testing",
         "//pw_assert",
         "//pw_bytes:alignment",
