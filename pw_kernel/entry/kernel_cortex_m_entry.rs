@@ -11,28 +11,22 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
+
+#![no_main]
 #![no_std]
 
-pub trait BareSpinLockApi {
-    type Guard<'a>
-    where
-        Self: 'a;
+// TODO: move this entry point into the arch module, possibly.
 
-    // Rust does not support const function in traits.  However it should be
-    // considered that the BareSpinlockApi includes:
-    //
-    // `const fn new() -> Self`
+// Panic handler that halts the CPU on panic.
+use console_backend as _;
+use target as _;
 
-    fn try_lock(&self) -> Option<Self::Guard<'_>>;
+// Cortex M runtime entry macro.
+use cortex_m_rt::entry;
 
-    fn lock(&self) -> Self::Guard<'_> {
-        loop {
-            if let Some(sentinel) = self.try_lock() {
-                return sentinel;
-            }
-        }
-    }
+use kernel::Kernel;
 
-    // TODO - konkers: Add optimized path for functions that know they are in
-    // atomic context (i.e. interrupt handlers).
+#[entry]
+fn main() -> ! {
+    Kernel::main();
 }

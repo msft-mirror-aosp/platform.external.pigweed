@@ -12,16 +12,19 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@rules_rust//rust:defs.bzl", "rust_library")
+load("@pigweed//pw_build:pw_py_importable_runfile.bzl", "pw_py_importable_runfile")
+load("@rules_python//python/entry_points:py_console_script_binary.bzl", "py_console_script_binary")
 
-package(default_visibility = ["//visibility:public"])
+py_console_script_binary(
+    name = "black_entry_point",
+    script = "black",
+    pkg = "@python_packages//black",
+)
 
-rust_library(
-    name = "spinlock_backend_cortex_m",
-    srcs = ["spinlock_backend_cortex_m.rs"],
-    crate_name = "spinlock_backend",
-    deps = [
-        "//pw_kernel/kernel/sync:spinlock_core",
-        "@rust_crates//:cortex-m",
-    ],
+pw_py_importable_runfile(
+    name = "black",
+    src = ":black_entry_point",
+    executable = True,
+    import_location = "pw_build_external_runfile_resource.black",
+    visibility = ["@pigweed//:__subpackages__"],
 )

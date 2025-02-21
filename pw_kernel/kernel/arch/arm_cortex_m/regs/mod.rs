@@ -11,10 +11,28 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
+#![allow(dead_code)]
 
-use console_backend as _;
-use kernel::Kernel;
+pub mod mpu;
+pub mod nvic;
+pub mod systick;
 
-fn main() -> ! {
-    Kernel::main();
+pub use mpu::Mpu;
+pub use nvic::Nvic;
+pub use systick::SysTick;
+
+pub struct Regs {
+    pub mpu: Mpu,
+    pub nvic: Nvic,
+    pub systick: SysTick,
+}
+
+impl Regs {
+    pub const fn get() -> Self {
+        Regs {
+            mpu: Mpu::new(),
+            nvic: Nvic::new(),
+            systick: SysTick::new(),
+        }
+    }
 }
