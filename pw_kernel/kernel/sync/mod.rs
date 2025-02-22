@@ -12,21 +12,4 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#![no_main]
-#![no_std]
-
-// TODO: move this entry point into the arch module, possibly.
-
-// Panic handler that halts the CPU on panic.
-use console_backend as _;
-use panic_halt as _;
-
-// Cortex M runtime entry macro.
-use cortex_m_rt::entry;
-
-use kernel::Kernel;
-
-#[entry]
-fn main() -> ! {
-    Kernel::main();
-}
+pub mod spinlock;
