@@ -22,9 +22,11 @@ namespace pw::allocator::internal {
 // operation caused the corruption in the methods below.
 
 void CheckMisaligned(const void* block, bool is_aligned) {
-  PW_CHECK(is_aligned,
-           "A block (%p) is invalid: it is not properly aligned.",
-           block);
+  if constexpr (Hardening::kIncludesDebugChecks) {
+    PW_CHECK(is_aligned,
+             "A block (%p) is invalid: it is not properly aligned.",
+             block);
+  }
 }
 
 }  // namespace pw::allocator::internal
