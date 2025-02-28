@@ -15,7 +15,7 @@
 use pw_log::info;
 
 use crate::arch::ArchInterface;
-use crate::scheduler::{SchedulerState, Stack, Thread};
+use crate::scheduler::{SchedulerState, Stack};
 use crate::sync::spinlock::SpinLockGuard;
 
 mod spinlock;
@@ -26,11 +26,12 @@ impl super::ThreadState for ThreadState {
     fn new() -> Self {
         Self {}
     }
-    fn context_switch<'a>(
-        mut _sched_state: SpinLockGuard<'a, SchedulerState>,
-        _old_thread: &mut Thread,
-        _new_thread: &mut Thread,
-    ) -> SpinLockGuard<'a, SchedulerState> {
+
+    unsafe fn context_switch(
+        mut _sched_state: SpinLockGuard<'_, SchedulerState>,
+        _old_thread_state: *mut ThreadState,
+        _new_thread_state: *mut ThreadState,
+    ) -> SpinLockGuard<'_, SchedulerState> {
         panic!("unimplemented");
     }
     fn initialize_frame(&mut self, _stack: Stack, _initial_function: fn(usize), _arg0: usize) {
