@@ -335,7 +335,7 @@ pw::Result<L2capCoc> ProxyHost::AcquireL2capCoc(
     L2capCoc::CocConfig rx_config,
     L2capCoc::CocConfig tx_config,
     Function<void(multibuf::MultiBuf&& payload)>&& receive_fn,
-    Function<void(L2capChannelEvent event)>&& event_fn) {
+    ChannelEventCallback&& event_fn) {
   Status status = acl_data_channel_.CreateAclConnection(connection_handle,
                                                         AclTransportType::kLe);
   if (status.IsResourceExhausted()) {
@@ -361,11 +361,12 @@ pw::Result<L2capCoc> ProxyHost::AcquireL2capCoc(
 pw::Status ProxyHost::SendAdditionalRxCredits(uint16_t connection_handle,
                                               uint16_t local_cid,
                                               uint16_t additional_rx_credits) {
-  L2capChannel* channel = l2cap_channel_manager_.FindChannelByLocalCid(
-      connection_handle, local_cid);
-  PW_CHECK(channel);
-  return static_cast<L2capCoc*>(channel)->SendAdditionalRxCredits(
-      additional_rx_credits);
+  std::optional<L2capChannelManager::LockedL2capChannel> channel =
+      l2cap_channel_manager_.FindChannelByLocalCid(connection_handle,
+                                                   local_cid);
+  PW_CHECK(channel.has_value());
+  return static_cast<L2capCoc&>(channel->channel())
+      .SendAdditionalRxCredits(additional_rx_credits);
 }
 
 pw::Result<BasicL2capChannel> ProxyHost::AcquireBasicL2capChannel(
@@ -376,7 +377,7 @@ pw::Result<BasicL2capChannel> ProxyHost::AcquireBasicL2capChannel(
     AclTransportType transport,
     OptionalPayloadReceiveCallback&& payload_from_controller_fn,
     OptionalPayloadReceiveCallback&& payload_from_host_fn,
-    Function<void(L2capChannelEvent event)>&& event_fn) {
+    ChannelEventCallback&& event_fn) {
   Status status =
       acl_data_channel_.CreateAclConnection(connection_handle, transport);
   if (status.IsResourceExhausted()) {
@@ -399,14 +400,16 @@ pw::Result<BasicL2capChannel> ProxyHost::AcquireBasicL2capChannel(
 pw::Result<GattNotifyChannel> ProxyHost::AcquireGattNotifyChannel(
     int16_t connection_handle,
     uint16_t attribute_handle,
-    [[maybe_unused]] Function<void(L2capChannelEvent event)>&& event_fn) {
+    ChannelEventCallback&& event_fn) {
   Status status = acl_data_channel_.CreateAclConnection(connection_handle,
                                                         AclTransportType::kLe);
   if (status != OkStatus() && status != Status::AlreadyExists()) {
     return pw::Status::Unavailable();
   }
-  return GattNotifyChannelInternal::Create(
-      l2cap_channel_manager_, connection_handle, attribute_handle);
+  return GattNotifyChannelInternal::Create(l2cap_channel_manager_,
+                                           connection_handle,
+                                           attribute_handle,
+                                           std::move(event_fn));
 }
 
 StatusWithMultiBuf ProxyHost::SendGattNotify(uint16_t connection_handle,
@@ -414,7 +417,7 @@ StatusWithMultiBuf ProxyHost::SendGattNotify(uint16_t connection_handle,
                                              pw::multibuf::MultiBuf&& payload) {
   // TODO: https://pwbug.dev/369709521 - Migrate clients to channel API.
   pw::Result<GattNotifyChannel> channel_result =
-      AcquireGattNotifyChannel(connection_handle, attribute_handle);
+      AcquireGattNotifyChannel(connection_handle, attribute_handle, nullptr);
   if (!channel_result.ok()) {
     return {channel_result.status(), std::move(payload)};
   }
@@ -426,7 +429,7 @@ pw::Status ProxyHost::SendGattNotify(uint16_t connection_handle,
                                      pw::span<const uint8_t> attribute_value) {
   // TODO: https://pwbug.dev/369709521 - Migrate clients to channel API.
   pw::Result<GattNotifyChannel> channel_result =
-      AcquireGattNotifyChannel(connection_handle, attribute_handle);
+      AcquireGattNotifyChannel(connection_handle, attribute_handle, nullptr);
   if (!channel_result.ok()) {
     return channel_result.status();
   }
@@ -440,7 +443,7 @@ pw::Result<RfcommChannel> ProxyHost::AcquireRfcommChannel(
     RfcommChannel::Config tx_config,
     uint8_t channel_number,
     Function<void(multibuf::MultiBuf&& payload)>&& payload_from_controller_fn,
-    Function<void(L2capChannelEvent event)>&& event_fn) {
+    ChannelEventCallback&& event_fn) {
   Status status = acl_data_channel_.CreateAclConnection(
       connection_handle, AclTransportType::kBrEdr);
   if (status != OkStatus() && status != Status::AlreadyExists()) {

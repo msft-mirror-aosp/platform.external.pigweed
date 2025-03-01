@@ -14,6 +14,8 @@
 
 #include "pw_bluetooth_sapphire/central.h"
 
+#include <array>
+
 #include "pw_async/fake_dispatcher.h"
 #include "pw_async2/pend_func_task.h"
 #include "pw_async2/poll.h"
@@ -34,6 +36,8 @@ using pw::async2::PendFuncTask;
 using pw::async2::Poll;
 using pw::chrono::SystemClock;
 using ScanFilter = Central::ScanFilter;
+using DisconnectReason =
+    pw::bluetooth::low_energy::Connection2::DisconnectReason;
 
 const bt::DeviceAddress kAddress0(bt::DeviceAddress::Type::kLEPublic, {0});
 const bt::StaticByteBuffer kAdvDataWithName(0x05,  // length
@@ -105,6 +109,8 @@ class CentralTest : public ::testing::Test {
   }
 
   void DestroyCentral() { central_.reset(); }
+
+  auto connections() { return adapter().fake_le()->connections(); }
 
   bt::gap::testing::FakeAdapter& adapter() { return adapter_; }
   bt::gap::PeerCache& peer_cache() { return *adapter_.peer_cache(); }
@@ -260,6 +266,51 @@ TEST_F(CentralTest, ScanResultMatchesSecondFilterOnly) {
               kAdvDataWithUuid1.subspan()[i]);
   }
   EXPECT_FALSE(scan_result.name.has_value());
+}
+
+TEST_F(CentralTest, ScanResultMatchesSolicitationUUID) {
+  Central::ScanOptions options;
+  options.scan_type = Central::ScanType::kActiveUsePublicAddress;
+
+  ScanFilter filter;
+  filter.solicitation_uuid = kUuid1;
+  std::array<Central::ScanFilter, 1> filters{filter};
+  options.filters = filters;
+
+  ScanHandle::Ptr scan_handle = Scan(options);
+  ASSERT_TRUE(scan_handle);
+
+  std::optional<pw::Result<ScanResult>> scan_result_result;
+  PendFuncTask scan_handle_task =
+      MakePendResultTask(scan_handle, scan_result_result);
+  async2_dispatcher().Post(scan_handle_task);
+
+  const bool connectable = false;
+  bt::gap::Peer* peer = peer_cache().NewPeer(kAddress0, connectable);
+  SystemClock::time_point timestamp(SystemClock::duration(6));
+
+  const int rssi = 6;
+  bt::StaticByteBuffer adv_data(
+      0x05, bt::DataType::kSolicitationUuid16Bit, 0x01, 0x00, 0x00, 0x00);
+  peer->MutLe().SetAdvertisingData(rssi, adv_data, timestamp);
+
+  adapter().fake_le()->NotifyScanResult(*peer);
+  EXPECT_TRUE(async2_dispatcher().RunUntilStalled().IsReady());
+
+  ASSERT_TRUE(scan_result_result.has_value());
+  ASSERT_TRUE(scan_result_result.value().ok());
+
+  ScanResult scan_result = std::move(scan_result_result.value().value());
+  scan_result_result.reset();
+  EXPECT_EQ(scan_result.peer_id, peer->identifier().value());
+  EXPECT_EQ(scan_result.connectable, connectable);
+  EXPECT_EQ(scan_result.rssi, rssi);
+
+  ASSERT_TRUE(scan_result.data.IsContiguous());
+  for (size_t i = 0; i < adv_data.size(); i++) {
+    EXPECT_EQ(scan_result.data.ContiguousSpan().value()[i],
+              adv_data.subspan()[i]);
+  }
 }
 
 TEST_F(CentralTest, CachedScanResult) {
@@ -431,6 +482,89 @@ TEST_F(CentralTest, CentralDestroyedBeforeScanHandle) {
   EXPECT_TRUE(scan_result_result.value().status().IsCancelled());
 
   scan_handle.reset();
+}
+
+TEST_F(CentralTest, ConnectAndDisconnectSuccess) {
+  bt::gap::Peer* peer = peer_cache().NewPeer(kAddress0, /*connectable=*/true);
+  pw::bluetooth::low_energy::Connection2::ConnectionOptions options;
+  std::optional<pw::Result<Central::ConnectResult>> connect_result;
+  pw::async2::OnceReceiver<Central::ConnectResult> receiver =
+      central().Connect(peer->identifier().value(), options);
+  PendFuncTask connect_task =
+      PendFuncTask([&connect_result, &receiver](Context& cx) -> Poll<> {
+        Poll<pw::Result<Central::ConnectResult>> poll = receiver.Pend(cx);
+        if (poll.IsPending()) {
+          return Pending();
+        }
+        connect_result = std::move(poll->value());
+        return Ready();
+      });
+  async2_dispatcher().Post(connect_task);
+  EXPECT_TRUE(async2_dispatcher().RunUntilStalled().IsPending());
+  async_dispatcher().RunUntilIdle();
+  EXPECT_TRUE(async2_dispatcher().RunUntilStalled().IsReady());
+  ASSERT_TRUE(connect_result.has_value());
+  ASSERT_TRUE(connect_result->ok());
+  ASSERT_TRUE(connect_result->value());
+  ASSERT_EQ(adapter().fake_le()->connections().count(peer->identifier()), 1u);
+  pw::bluetooth::low_energy::Connection2::Ptr connection =
+      std::move(connect_result->value().value());
+
+  // Disconnect
+  connection.reset();
+  ASSERT_EQ(connections().count(peer->identifier()), 1u);
+  async_dispatcher().RunUntilIdle();
+  ASSERT_EQ(connections().count(peer->identifier()), 0u);
+}
+
+TEST_F(CentralTest, PendDisconnect) {
+  bt::gap::Peer* peer = peer_cache().NewPeer(kAddress0, /*connectable=*/true);
+  pw::bluetooth::low_energy::Connection2::ConnectionOptions options;
+  std::optional<pw::Result<Central::ConnectResult>> connect_result;
+  pw::async2::OnceReceiver<Central::ConnectResult> receiver =
+      central().Connect(peer->identifier().value(), options);
+  PendFuncTask connect_task =
+      PendFuncTask([&connect_result, &receiver](Context& cx) -> Poll<> {
+        Poll<pw::Result<Central::ConnectResult>> poll = receiver.Pend(cx);
+        if (poll.IsPending()) {
+          return Pending();
+        }
+        connect_result = std::move(poll->value());
+        return Ready();
+      });
+  async2_dispatcher().Post(connect_task);
+  EXPECT_TRUE(async2_dispatcher().RunUntilStalled().IsPending());
+  async_dispatcher().RunUntilIdle();
+  EXPECT_TRUE(async2_dispatcher().RunUntilStalled().IsReady());
+  ASSERT_TRUE(connect_result.has_value());
+  ASSERT_TRUE(connect_result->ok());
+  ASSERT_TRUE(connect_result->value());
+  ASSERT_EQ(adapter().fake_le()->connections().count(peer->identifier()), 1u);
+  pw::bluetooth::low_energy::Connection2::Ptr connection =
+      std::move(connect_result->value().value());
+
+  std::optional<DisconnectReason> disconnect_reason;
+  PendFuncTask disconnect_task =
+      PendFuncTask([&connection, &disconnect_reason](Context& cx) -> Poll<> {
+        Poll<DisconnectReason> poll = connection->PendDisconnect(cx);
+        if (poll.IsPending()) {
+          return Pending();
+        }
+        disconnect_reason = poll.value();
+        return Ready();
+      });
+  async2_dispatcher().Post(disconnect_task);
+  EXPECT_TRUE(async2_dispatcher().RunUntilStalled().IsPending());
+  ASSERT_FALSE(disconnect_reason.has_value());
+
+  ASSERT_TRUE(adapter().fake_le()->Disconnect(peer->identifier()));
+  ASSERT_EQ(adapter().fake_le()->connections().count(peer->identifier()), 0u);
+  EXPECT_TRUE(async2_dispatcher().RunUntilStalled().IsReady());
+  ASSERT_TRUE(disconnect_reason.has_value());
+  EXPECT_EQ(disconnect_reason.value(), DisconnectReason::kFailure);
+
+  connection.reset();
+  async_dispatcher().RunUntilIdle();
 }
 
 }  // namespace

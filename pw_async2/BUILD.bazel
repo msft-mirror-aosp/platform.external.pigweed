@@ -121,6 +121,33 @@ pw_cc_test(
 )
 
 cc_library(
+    name = "pend_func_awaitable",
+    hdrs = [
+        "public/pw_async2/pend_func_awaitable.h",
+    ],
+    strip_include_prefix = "public",
+    deps = [
+        ":dispatcher",
+        ":poll",
+        "//pw_function",
+    ],
+)
+
+pw_cc_test(
+    name = "pend_func_awaitable_test",
+    srcs = ["pend_func_awaitable_test.cc"],
+    deps = [
+        ":coro",
+        ":coro_or_else_task",
+        ":dispatcher",
+        ":pend_func_awaitable",
+        ":poll",
+        "//pw_allocator:testing",
+        "//pw_function",
+    ],
+)
+
+cc_library(
     name = "pend_func_task",
     hdrs = [
         "public/pw_async2/pend_func_task.h",
@@ -297,10 +324,7 @@ pw_cc_test(
     srcs = [
         "system_time_provider_test.cc",
     ],
-    deps = [
-        ":system_time_provider",
-        "//pw_unit_test",
-    ],
+    deps = [":system_time_provider"],
 )
 
 cc_library(
@@ -323,7 +347,6 @@ pw_cc_test(
     deps = [
         ":simulated_time_provider",
         "//pw_chrono:system_clock",
-        "//pw_unit_test",
     ],
 )
 
@@ -346,7 +369,6 @@ pw_cc_test(
     deps = [
         ":dispatcher",
         ":enqueue_heap_func",
-        "//pw_unit_test",
     ],
 )
 
@@ -397,6 +419,7 @@ filegroup(
         "public/pw_async2/enqueue_heap_func.h",
         "public/pw_async2/join.h",
         "public/pw_async2/once_sender.h",
+        "public/pw_async2/pend_func_awaitable.h",
         "public/pw_async2/pend_func_task.h",
         "public/pw_async2/pendable_as_task.h",
         "public/pw_async2/poll.h",
