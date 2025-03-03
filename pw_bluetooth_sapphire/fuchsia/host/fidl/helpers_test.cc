@@ -2038,9 +2038,10 @@ TEST_F(HelpersTestFakeAdapter, HostInfoWithLEAddressToFidl) {
 }
 
 TEST(HelpersTest, DiscoveryFilterFromEmptyFidlFilter) {
-  bt::gap::DiscoveryFilter filter = DiscoveryFilterFromFidl(fble::Filter());
+  bt::hci::DiscoveryFilter filter = DiscoveryFilterFromFidl(fble::Filter());
   EXPECT_TRUE(filter.service_uuids().empty());
   EXPECT_TRUE(filter.service_data_uuids().empty());
+  EXPECT_TRUE(filter.solicitation_uuids().empty());
   EXPECT_FALSE(filter.manufacturer_code().has_value());
   EXPECT_FALSE(filter.connectable().has_value());
   EXPECT_TRUE(filter.name_substring().empty());
@@ -2052,18 +2053,23 @@ TEST(HelpersTest, DiscoveryFilterFromFidlFilter) {
   fuchsia::bluetooth::Uuid service_uuid;
   service_uuid.value[0] = 1;
   fuchsia::bluetooth::Uuid service_data_uuid;
-  service_uuid.value[0] = 2;
+  service_data_uuid.value[0] = 2;
+  fuchsia::bluetooth::Uuid solicitation_uuid;
+  solicitation_uuid.value[0] = 3;
   fidl_filter.set_service_uuid(service_uuid);
   fidl_filter.set_service_data_uuid(service_data_uuid);
+  fidl_filter.set_solicitation_uuid(solicitation_uuid);
   fidl_filter.set_manufacturer_id(2);
   fidl_filter.set_connectable(true);
   fidl_filter.set_name("name");
   fidl_filter.set_max_path_loss(3);
-  bt::gap::DiscoveryFilter filter = DiscoveryFilterFromFidl(fidl_filter);
+  bt::hci::DiscoveryFilter filter = DiscoveryFilterFromFidl(fidl_filter);
   EXPECT_THAT(filter.service_uuids(),
               ::testing::ElementsAre(service_uuid.value));
   EXPECT_THAT(filter.service_data_uuids(),
               ::testing::ElementsAre(service_data_uuid.value));
+  EXPECT_THAT(filter.solicitation_uuids(),
+              ::testing::ElementsAre(solicitation_uuid.value));
   ASSERT_TRUE(filter.manufacturer_code().has_value());
   EXPECT_EQ(filter.manufacturer_code().value(), 2u);
   ASSERT_TRUE(filter.connectable().has_value());

@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include "pw_allocator/best_fit.h"
-#include "pw_allocator/synchronized_allocator.h"
 #include "pw_bluetooth_proxy/gatt_notify_channel.h"
 #include "pw_bluetooth_proxy/internal/acl_data_channel.h"
 #include "pw_bluetooth_proxy/internal/h4_storage.h"
@@ -25,7 +23,6 @@
 #include "pw_bluetooth_proxy/l2cap_coc.h"
 #include "pw_bluetooth_proxy/l2cap_status_delegate.h"
 #include "pw_bluetooth_proxy/rfcomm_channel.h"
-#include "pw_multibuf/simple_allocator.h"
 #include "pw_status/status.h"
 
 namespace pw::bluetooth::proxy {
@@ -163,7 +160,7 @@ class ProxyHost {
       L2capCoc::CocConfig rx_config,
       L2capCoc::CocConfig tx_config,
       Function<void(multibuf::MultiBuf&& payload)>&& receive_fn,
-      Function<void(L2capChannelEvent event)>&& event_fn);
+      ChannelEventCallback&& event_fn);
 
   /// TODO: https://pwbug.dev/380076024 - Delete after downstream client uses
   /// this method on `L2capCoc`.
@@ -220,7 +217,7 @@ class ProxyHost {
       AclTransportType transport,
       OptionalPayloadReceiveCallback&& payload_from_controller_fn,
       OptionalPayloadReceiveCallback&& payload_from_host_fn,
-      Function<void(L2capChannelEvent event)>&& event_fn);
+      ChannelEventCallback&& event_fn);
 
   /// Returns a GATT Notify channel channel that supports sending notifications
   /// to a particular connection handle and attribute.
@@ -245,8 +242,7 @@ class ProxyHost {
   pw::Result<GattNotifyChannel> AcquireGattNotifyChannel(
       int16_t connection_handle,
       uint16_t attribute_handle,
-      // TODO: https://pwbug.dev/369709521 - Add event_fn support.
-      Function<void(L2capChannelEvent event)>&& event_fn = nullptr);
+      ChannelEventCallback&& event_fn);
 
   /// Send a GATT Notify to the indicated connection.
   ///
@@ -342,7 +338,7 @@ class ProxyHost {
       RfcommChannel::Config tx_config,
       uint8_t channel_number,
       Function<void(multibuf::MultiBuf&& payload)>&& payload_from_controller_fn,
-      Function<void(L2capChannelEvent event)>&& event_fn);
+      ChannelEventCallback&& event_fn);
 
   /// Indicates whether the proxy has the capability of sending LE ACL packets.
   /// Note that this indicates intention, so it can be true even if the proxy

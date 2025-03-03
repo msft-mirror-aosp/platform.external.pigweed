@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "pw_bluetooth_proxy/internal/l2cap_channel.h"
 
 namespace pw::bluetooth::proxy {
@@ -22,6 +24,16 @@ namespace pw::bluetooth::proxy {
 /// remote peer.
 class GattNotifyChannel : public L2capChannel {
  public:
+  GattNotifyChannel(const GattNotifyChannel& other) = delete;
+  GattNotifyChannel& operator=(const GattNotifyChannel& other) = delete;
+  GattNotifyChannel(GattNotifyChannel&&) = default;
+  // Move assignment operator allows channels to be erased from pw_containers.
+  GattNotifyChannel& operator=(GattNotifyChannel&& other) = default;
+  ~GattNotifyChannel() override;
+
+  /// Return the attribute handle of this GattNotify channel.
+  uint16_t attribute_handle() const { return attribute_handle_; }
+
   // @deprecated
   // TODO: https://pwbug.dev/379337272 - Delete this once all downstreams
   // have transitioned to Write(MultiBuf) for this channel type.
@@ -35,7 +47,8 @@ class GattNotifyChannel : public L2capChannel {
   static pw::Result<GattNotifyChannel> Create(
       L2capChannelManager& l2cap_channel_manager,
       uint16_t connection_handle,
-      uint16_t attribute_handle);
+      uint16_t attribute_handle,
+      ChannelEventCallback&& event_fn);
 
   bool DoHandlePduFromController(pw::span<uint8_t>) override {
     // Forward all packets to host.
@@ -46,6 +59,8 @@ class GattNotifyChannel : public L2capChannel {
     // Forward all packets to controller.
     return false;
   }
+
+  void DoClose() override {}
 
  private:
   // TODO: https://pwbug.dev/379337272 - Move to true once this channel uses
@@ -58,7 +73,8 @@ class GattNotifyChannel : public L2capChannel {
 
   explicit GattNotifyChannel(L2capChannelManager& l2cap_channel_manager,
                              uint16_t connection_handle,
-                             uint16_t attribute_handle);
+                             uint16_t attribute_handle,
+                             ChannelEventCallback&& event_fn);
 
   uint16_t attribute_handle_;
 };

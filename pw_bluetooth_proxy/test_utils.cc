@@ -29,10 +29,9 @@
 #include "pw_bluetooth_proxy/l2cap_channel_common.h"
 #include "pw_bluetooth_proxy/l2cap_status_delegate.h"
 #include "pw_bluetooth_proxy/proxy_host.h"
-#include "pw_function/function.h"
 #include "pw_status/status.h"
 #include "pw_status/try.h"
-#include "pw_unit_test/framework.h"  // IWYU pragma: keep
+#include "pw_unit_test/framework.h"
 
 namespace pw::bluetooth::proxy {
 
@@ -506,17 +505,55 @@ RfcommChannel ProxyHostTest::BuildRfcomm(
     ProxyHost& proxy,
     RfcommParameters params,
     Function<void(multibuf::MultiBuf&& payload)>&& receive_fn,
-    Function<void(L2capChannelEvent event)>&& event_fn) {
-  pw::Result<RfcommChannel> channel =
-      proxy.AcquireRfcommChannel(sut_multibuf_allocator_,
-                                 params.handle,
-                                 params.rx_config,
-                                 params.tx_config,
-                                 params.rfcomm_channel,
-                                 std::move(receive_fn),
-                                 std::move(event_fn));
+    ChannelEventCallback&& event_fn) {
+  pw::Result<RfcommChannel> channel = proxy.AcquireRfcommChannel(
+      sut_multibuf_allocator_,
+      params.handle,
+      RfcommChannel::Config{
+          .cid = params.rx_config.cid,
+          .max_information_length = params.rx_config.max_information_length,
+          .credits = params.rx_config.credits},
+      RfcommChannel::Config{
+          .cid = params.tx_config.cid,
+          .max_information_length = params.tx_config.max_information_length,
+          .credits = params.tx_config.credits},
+      params.rfcomm_channel,
+      std::move(receive_fn),
+      std::move(event_fn));
   PW_TEST_EXPECT_OK(channel);
   return std::move((channel.value()));
+}
+
+OneOfEachChannel ProxyHostTest::BuildOneOfEachChannel(
+    ProxyHost& proxy, ChannelEventCallback& shared_event_fn) {
+  // Each channel its unique cids and its own rvalue lambda which calls the
+  // shared_event_fn.
+  return OneOfEachChannel(
+      BuildBasicL2capChannel(proxy,
+                             {.local_cid = 201,
+                              .remote_cid = 301,
+                              .event_fn =
+                                  [&shared_event_fn](L2capChannelEvent event) {
+                                    shared_event_fn(event);
+                                  }}),
+      BuildCoc(proxy,
+               {.local_cid = 202,
+                .remote_cid = 302,
+                .event_fn =
+                    [&shared_event_fn](L2capChannelEvent event) {
+                      shared_event_fn(event);
+                    }}),
+      BuildRfcomm(proxy,
+                  {.rx_config{.cid = 203}, .tx_config = {.cid = 303}},
+                  /*receive_fn=*/nullptr,
+                  /*event_fn=*/
+                  [&shared_event_fn](L2capChannelEvent event) {
+                    shared_event_fn(event);
+                  }),
+      BuildGattNotifyChannel(
+          proxy, {.event_fn = [&shared_event_fn](L2capChannelEvent event) {
+            shared_event_fn(event);
+          }}));
 }
 
 }  // namespace pw::bluetooth::proxy

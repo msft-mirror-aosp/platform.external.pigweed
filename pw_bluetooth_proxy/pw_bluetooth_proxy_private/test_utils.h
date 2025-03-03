@@ -26,18 +26,22 @@
 #include "pw_bluetooth/hci_events.emb.h"
 #include "pw_bluetooth/hci_h4.emb.h"
 #include "pw_bluetooth/l2cap_frames.emb.h"
+#include "pw_bluetooth_proxy/basic_l2cap_channel.h"
+#include "pw_bluetooth_proxy/gatt_notify_channel.h"
 #include "pw_bluetooth_proxy/h4_packet.h"
+#include "pw_bluetooth_proxy/internal/l2cap_channel.h"
 #include "pw_bluetooth_proxy/internal/logical_transport.h"
 #include "pw_bluetooth_proxy/l2cap_channel_common.h"
 #include "pw_bluetooth_proxy/l2cap_coc.h"
 #include "pw_bluetooth_proxy/l2cap_status_delegate.h"
 #include "pw_bluetooth_proxy/proxy_host.h"
+#include "pw_bluetooth_proxy/rfcomm_channel.h"
 #include "pw_containers/flat_map.h"
 #include "pw_function/function.h"
 #include "pw_multibuf/simple_allocator_for_test.h"
 #include "pw_status/status.h"
 #include "pw_status/try.h"
-#include "pw_unit_test/framework.h"  // IWYU pragma: keep
+#include "pw_unit_test/framework.h"
 
 namespace pw::bluetooth::proxy {
 
@@ -241,7 +245,7 @@ struct CocParameters {
   uint16_t tx_mps = 100;
   uint16_t tx_credits = 1;
   Function<void(multibuf::MultiBuf&& payload)>&& receive_fn = nullptr;
-  pw::Function<void(L2capChannelEvent event)>&& event_fn = nullptr;
+  ChannelEventCallback&& event_fn = nullptr;
 };
 
 struct BasicL2capParameters {
@@ -251,22 +255,55 @@ struct BasicL2capParameters {
   AclTransportType transport = AclTransportType::kLe;
   OptionalPayloadReceiveCallback&& payload_from_controller_fn = nullptr;
   OptionalPayloadReceiveCallback&& payload_from_host_fn = nullptr;
-  Function<void(L2capChannelEvent event)>&& event_fn = nullptr;
+  ChannelEventCallback&& event_fn = nullptr;
 };
 
 struct GattNotifyChannelParameters {
   uint16_t handle = 0xAB;
   uint16_t attribute_handle = 0xBC;
-  Function<void(L2capChannelEvent event)>&& event_fn = nullptr;
+  ChannelEventCallback&& event_fn = nullptr;
+};
+
+struct RfcommConfigParameters {
+  uint16_t cid = 123;
+  uint16_t max_information_length = 900;
+  uint16_t credits = 10;
 };
 
 struct RfcommParameters {
   uint16_t handle = 123;
-  RfcommChannel::Config rx_config = {
+  RfcommConfigParameters rx_config = {
       .cid = 234, .max_information_length = 900, .credits = 10};
-  RfcommChannel::Config tx_config = {
+  RfcommConfigParameters tx_config = {
       .cid = 456, .max_information_length = 900, .credits = 10};
   uint8_t rfcomm_channel = 3;
+};
+
+// See BuildOneOfEachChannel
+struct OneOfEachChannelParameters {
+  Function<void(multibuf::MultiBuf&& payload)>&& receive_fn = nullptr;
+  ChannelEventCallback&& event_fn = nullptr;
+};
+
+// See BuildOneOfEachChannel
+struct OneOfEachChannel {
+  OneOfEachChannel(BasicL2capChannel&& basic,
+                   L2capCoc&& coc,
+                   RfcommChannel&& rfcomm,
+                   GattNotifyChannel&& gatt)
+      : basic_{std::move(basic)},
+        coc_{std::move(coc)},
+        rfcomm_{std::move(rfcomm)},
+        gatt_{std::move(gatt)} {}
+
+  std::vector<L2capChannel*> AllChannels() {
+    return std::vector<L2capChannel*>{&basic_, &coc_, &rfcomm_, &gatt_};
+  }
+
+  BasicL2capChannel basic_;
+  L2capCoc coc_;
+  RfcommChannel rfcomm_;
+  GattNotifyChannel gatt_;
 };
 
 // ########## Test Suites
@@ -294,7 +331,7 @@ class ProxyHostTest : public testing::Test {
       ProxyHost& proxy,
       RfcommParameters params = {},
       Function<void(multibuf::MultiBuf&& payload)>&& receive_fn = nullptr,
-      Function<void(L2capChannelEvent event)>&& event_fn = nullptr);
+      ChannelEventCallback&& event_fn = nullptr);
 
   template <typename T, size_t N>
   pw::multibuf::MultiBuf MultiBufFromSpan(span<T, N> buf) {
@@ -306,6 +343,14 @@ class ProxyHostTest : public testing::Test {
     PW_TEST_EXPECT_OK(multibuf->CopyFrom(as_bytes(buf)));
     return std::move(*multibuf);
   }
+
+  // Builds a struct with one of each channel to support tests across all
+  // of them.
+  //
+  // Note, shared_event_fn is a reference (rather than a rvalue) so it can
+  // be shared across each channel.
+  OneOfEachChannel BuildOneOfEachChannel(ProxyHost& proxy,
+                                         ChannelEventCallback& shared_event_fn);
 
   template <typename T, size_t N>
   pw::multibuf::MultiBuf MultiBufFromArray(const std::array<T, N>& arr) {
