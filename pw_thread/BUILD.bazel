@@ -196,6 +196,7 @@ cc_library(
         "thread_snapshot_service.cc",
     ],
     hdrs = ["public/pw_thread/thread_snapshot_service.h"],
+    implementation_deps = ["//pw_containers:vector"],
     strip_include_prefix = "public",
     tags = ["noclangtidy"],
     deps = [
@@ -279,7 +280,7 @@ cc_library(
     strip_include_prefix = "public",
     visibility = ["//visibility:private"],
     deps = [
-        "//pw_assert",
+        "//pw_assert:assert",
         "//pw_numeric:integer_division",
         "//pw_polyfill",
         "//third_party/fuchsia:stdcompat",

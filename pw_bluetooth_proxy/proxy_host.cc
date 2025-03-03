@@ -14,7 +14,7 @@
 
 #include "pw_bluetooth_proxy/proxy_host.h"
 
-#include "pw_assert/check.h"  // IWYU pragma: keep
+#include "pw_assert/check.h"
 #include "pw_bluetooth/emboss_util.h"
 #include "pw_bluetooth/hci_commands.emb.h"
 #include "pw_bluetooth/hci_common.emb.h"
@@ -146,6 +146,8 @@ void ProxyHost::HandleEventFromController(H4PacketWithHci&& h4_packet) {
     }
   }
   PW_MODIFY_DIAGNOSTICS_POP();
+
+  l2cap_channel_manager_.DeliverPendingEvents();
 }
 
 void ProxyHost::HandleEventFromHost(H4PacketWithH4&& h4_packet) {
