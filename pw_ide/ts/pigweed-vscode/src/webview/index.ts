@@ -12,5 +12,9 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-pub mod mutex;
-pub mod spinlock;
+import '@vscode-elements/elements-lite/components/button/button.css';
+import '@vscode-elements/elements-lite/components/collapsible/collapsible.css';
+import './style.css';
+import './root';
+
+console.log('Webview loaded!');
