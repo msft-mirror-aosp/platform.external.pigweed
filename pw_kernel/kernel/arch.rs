@@ -22,8 +22,10 @@ mod host;
 #[cfg(feature = "arch_host")]
 pub use host::Arch;
 
-use crate::scheduler::{SchedulerState, Stack, Thread};
+use crate::scheduler::{SchedulerState, Stack};
 use crate::sync::spinlock::SpinLockGuard;
+
+pub type ArchThreadState = <Arch as ArchInterface>::ThreadState;
 
 pub trait ThreadState {
     #[allow(dead_code)]
@@ -33,15 +35,13 @@ pub trait ThreadState {
     // sched_state: a locked spinlockguard for the main SCHEDULER_STATE struct.
     //   Will potentially be dropped and reacquired across this function, and
     //   a copy will be returned (either still held, or newly reacquired).
-    // old_thread: thread we're moving from.
-    // new_thread: must match current_thread and the container for this ThreadState.
-
-    #[allow(dead_code)]
-    fn context_switch<'a>(
-        sched_state: SpinLockGuard<'a, SchedulerState>,
-        old_thread: &mut Thread,
-        new_thread: &mut Thread,
-    ) -> SpinLockGuard<'a, SchedulerState>;
+    // old_thread_state: thread we're moving from.
+    // new_thread_state: must match current_thread and the container for this ThreadState.
+    unsafe fn context_switch(
+        sched_state: SpinLockGuard<'_, SchedulerState>,
+        old_thread_state: *mut ArchThreadState,
+        new_thread_state: *mut ArchThreadState,
+    ) -> SpinLockGuard<'_, SchedulerState>;
 
     // Initialize the default frame of the thread which arranges for it to start at the initial_function
     // with one argument passed in the first argument slot.
@@ -61,6 +61,7 @@ pub trait BareSpinLock {
 
     fn try_lock(&self) -> Option<Self::Guard<'_>>;
 
+    #[inline(always)]
     fn lock(&self) -> Self::Guard<'_> {
         loop {
             if let Some(sentinel) = self.try_lock() {

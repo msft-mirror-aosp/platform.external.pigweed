@@ -412,16 +412,16 @@ void AclDataChannel::ProcessDisconnectionCompleteEvent(
             .MarkCompleted(connection_ptr->num_pending_packets());
       }
 
-      l2cap_channel_manager_.HandleDisconnectionComplete(conn_handle);
+      l2cap_channel_manager_.HandleAclDisconnectionComplete(conn_handle);
       acl_connections_.erase(connection_ptr);
-      return;
-    }
-    if (connection_ptr->num_pending_packets() > 0) {
-      PW_LOG_WARN(
-          "Proxy viewed failed disconnect (status: %#.2hhx) for connection "
-          "%#x with packets in flight. Not releasing associated credits.",
-          cpp23::to_underlying(status),
-          conn_handle);
+    } else {  // Failed disconnect status
+      if (connection_ptr->num_pending_packets() > 0) {
+        PW_LOG_WARN(
+            "Proxy viewed failed disconnect (status: %#.2hhx) for connection "
+            "%#x with packets in flight. Not releasing associated credits.",
+            cpp23::to_underlying(status),
+            conn_handle);
+      }
     }
   }
 }
@@ -799,6 +799,7 @@ bool AclDataChannel::HandleAclData(AclDataChannel::Direction direction,
   // that possibility.
   channel.reset();
   l2cap_channel_manager_.DrainChannelQueuesIfNewTx();
+  l2cap_channel_manager_.DeliverPendingEvents();
 
   return result;
 }

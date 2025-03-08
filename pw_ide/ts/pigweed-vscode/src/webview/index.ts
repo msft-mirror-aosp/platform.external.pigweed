@@ -1,4 +1,4 @@
-// Copyright 2024 The Pigweed Authors
+// Copyright 2025 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -12,17 +12,9 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_allocator/deallocator.h"
+import '@vscode-elements/elements-lite/components/button/button.css';
+import '@vscode-elements/elements-lite/components/collapsible/collapsible.css';
+import './style.css';
+import './root';
 
-namespace pw::allocator::internal {
-
-bool BaseUniquePtr::HasCapability(Deallocator* deallocator,
-                                  Capability capability) {
-  return deallocator->HasCapability(capability);
-}
-
-void BaseUniquePtr::Deallocate(Deallocator* deallocator, void* ptr) {
-  deallocator->Deallocate(ptr);
-}
-
-}  // namespace pw::allocator::internal
+console.log('Webview loaded!');

@@ -40,9 +40,11 @@ label_flag(
 # Libraries
 
 cc_library(
-    # This group is deprecated. Prefer to depend on individual features rather
-    # than on this collection.
     name = "pw_containers",
+    deprecation = "Depend on the individual single-header targets instead",
+    # Tagged manual so that we don't hit the deprecation warning when building
+    # upstream Pigweed itself.
+    tags = ["manual"],
     deps = [
         ":algorithm",
         ":flat_map",
@@ -66,7 +68,7 @@ cc_library(
     name = "intrusive_item",
     srcs = ["intrusive_item.cc"],
     hdrs = ["public/pw_containers/internal/intrusive_item.h"],
-    implementation_deps = ["//pw_assert"],
+    implementation_deps = ["//pw_assert:check"],
     strip_include_prefix = "public",
 )
 
@@ -125,7 +127,7 @@ cc_library(
     visibility = [":__subpackages__"],
     deps = [
         ":intrusive_item",
-        "//pw_assert",
+        "//pw_assert:assert",
         "//pw_bytes:packed_ptr",
         "//pw_function",
     ],
@@ -174,7 +176,7 @@ cc_library(
     strip_include_prefix = "public",
     deps = [
         ":raw_storage",
-        "//pw_assert",
+        "//pw_assert:assert",
         "//pw_preprocessor",
         "//pw_span",
         "//pw_toolchain:constexpr_tag",
@@ -187,20 +189,18 @@ cc_library(
         "public/pw_containers/inline_queue.h",
     ],
     strip_include_prefix = "public",
-    deps = [
-        ":inline_deque",
-    ],
+    deps = [":inline_deque"],
 )
 
 cc_library(
     name = "inline_var_len_entry_queue",
     srcs = ["inline_var_len_entry_queue.c"],
     hdrs = ["public/pw_containers/inline_var_len_entry_queue.h"],
+    implementation_deps = ["//pw_assert:check"],
     strip_include_prefix = "public",
     tags = ["noclangtidy"],
     deps = [
         ":raw_storage",
-        "//pw_assert",
         "//pw_preprocessor",
         "//pw_toolchain:constexpr_tag",
         "//pw_varint",
@@ -214,7 +214,7 @@ cc_library(
     ],
     strip_include_prefix = "public",
     deps = [
-        "//pw_assert",
+        "//pw_assert:assert",
         "//pw_preprocessor",
         "//pw_toolchain:constexpr_tag",
     ],
@@ -225,8 +225,8 @@ cc_library(
     hdrs = ["public/pw_containers/filtered_view.h"],
     strip_include_prefix = "public",
     deps = [
-        "//pw_assert",
-        "//pw_containers",
+        "//pw_assert:assert",
+        "//pw_preprocessor",
     ],
 )
 
@@ -234,7 +234,7 @@ cc_library(
     name = "flat_map",
     hdrs = ["public/pw_containers/flat_map.h"],
     strip_include_prefix = "public",
-    deps = ["//pw_assert"],
+    deps = ["//pw_assert:assert"],
 )
 
 cc_library(
@@ -250,8 +250,8 @@ cc_library(
     name = "test_helpers",
     srcs = ["test_helpers.cc"],
     hdrs = ["pw_containers_private/test_helpers.h"],
+    implementation_deps = ["//pw_assert:check"],
     visibility = [":__subpackages__"],
-    deps = ["//pw_assert"],
 )
 
 cc_library(
@@ -311,7 +311,7 @@ pw_cc_test(
     ],
     deps = [
         ":inline_var_len_entry_queue",
-        "//pw_assert",
+        "//pw_assert:assert",
         "//pw_bytes",
         "//pw_varint",
     ],
@@ -448,7 +448,6 @@ pw_cc_test(
     name = "intrusive_item_test",
     srcs = ["intrusive_item_test.cc"],
     deps = [
-        ":flat_map",
         ":intrusive_forward_list",
         ":intrusive_list",
         ":intrusive_map",
