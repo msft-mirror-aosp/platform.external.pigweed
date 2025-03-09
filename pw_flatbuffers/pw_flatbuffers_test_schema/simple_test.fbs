@@ -12,4 +12,19 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-pub mod spinlock;
+// Very simple schema for basic tests
+
+// Structure containing all scalar types
+struct ScalarTypes {
+  b8 : byte;
+  u8 : uint8;
+  i16: int16;
+  u16: uint16;
+  i32: int32;
+  u32: uint32;
+  i64: int64;
+  u64: uint64;
+  f32: float32;
+  f64: float64;
+}
+
