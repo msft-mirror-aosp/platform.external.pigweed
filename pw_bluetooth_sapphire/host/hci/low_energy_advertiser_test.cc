@@ -21,7 +21,7 @@
 #include "pw_bluetooth_sapphire/internal/host/testing/fake_controller.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/fake_peer.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/test_helpers.h"
-#include "pw_bluetooth_sapphire/internal/host/transport/emboss_control_packets.h"
+#include "pw_bluetooth_sapphire/internal/host/transport/control_packets.h"
 
 // LowEnergyAdvertiser has many potential subclasses (e.g.
 // LegacyLowEnergyAdvertiser, ExtendedLowEnergyAdvertiser,
@@ -248,7 +248,7 @@ class LowEnergyAdvertiserTest : public TestingBase {
 
   void SetRandomAddress(DeviceAddress random_address) {
     if (std::is_same_v<T, LegacyLowEnergyAdvertiser>) {
-      auto emboss_packet = EmbossCommandPacket::New<
+      auto emboss_packet = CommandPacket::New<
           pw::bluetooth::emboss::LESetRandomAddressCommandWriter>(
           hci_spec::kLESetRandomAddress);
       emboss_packet.view_t().random_address().CopyFrom(
@@ -286,10 +286,8 @@ TYPED_TEST(LowEnergyAdvertiserTest, GetLegacyAdvertisingEventPropertiesAdvInd) {
                              /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
   LowEnergyAdvertiser::AdvertisingEventProperties properties =
-      LowEnergyAdvertiser::GetAdvertisingEventProperties(this->GetExampleData(),
-                                                         this->GetExampleData(),
-                                                         options,
-                                                         [](auto value) {});
+      LowEnergyAdvertiser::GetAdvertisingEventProperties(
+          this->GetExampleData(), this->GetExampleData(), options, [](auto) {});
   EXPECT_TRUE(properties.connectable);
   EXPECT_TRUE(properties.scannable);
   EXPECT_FALSE(properties.directed);
@@ -402,7 +400,7 @@ TYPED_TEST(LowEnergyAdvertiserTest,
                              /*include_tx_power_level=*/false);
   LowEnergyAdvertiser::AdvertisingEventProperties properties =
       LowEnergyAdvertiser::GetAdvertisingEventProperties(
-          empty, empty, options, [](auto value) {});
+          empty, empty, options, [](auto) {});
   EXPECT_TRUE(properties.connectable);
   EXPECT_FALSE(properties.scannable);
   EXPECT_FALSE(properties.directed);

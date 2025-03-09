@@ -59,7 +59,7 @@ fit::result<HostError> LowEnergyAdvertiser::CanStartAdvertising(
     const AdvertisingData& scan_rsp,
     const AdvertisingOptions& options,
     const ConnectionCallback& connect_callback) const {
-  BT_ASSERT(address.type() != DeviceAddress::Type::kBREDR);
+  PW_CHECK(address.type() != DeviceAddress::Type::kBREDR);
 
   if (options.anonymous) {
     bt_log(WARN, "hci-le", "anonymous advertising not supported");
@@ -107,7 +107,7 @@ fit::result<HostError> LowEnergyAdvertiser::CanStartAdvertising(
 
 static LowEnergyAdvertiser::AdvertisingEventProperties
 GetExtendedAdvertisingEventProperties(
-    const AdvertisingData& data,
+    const AdvertisingData&,
     const AdvertisingData& scan_rsp,
     const LowEnergyAdvertiser::AdvertisingOptions& options,
     const LowEnergyAdvertiser::ConnectionCallback& connect_callback) {
@@ -143,9 +143,9 @@ GetExtendedAdvertisingEventProperties(
 
 static LowEnergyAdvertiser::AdvertisingEventProperties
 GetLegacyAdvertisingEventProperties(
-    const AdvertisingData& data,
+    const AdvertisingData&,
     const AdvertisingData& scan_rsp,
-    const LowEnergyAdvertiser::AdvertisingOptions& options,
+    const LowEnergyAdvertiser::AdvertisingOptions&,
     const LowEnergyAdvertiser::ConnectionCallback& connect_callback) {
   LowEnergyAdvertiser::AdvertisingEventProperties properties;
   properties.use_legacy_pdus = true;
@@ -222,7 +222,7 @@ void LowEnergyAdvertiser::StartAdvertisingInternal(
     hci::ResultFunction<> result_callback) {
   if (IsAdvertising(address, options.extended_pdu)) {
     // Temporarily disable advertising so we can tweak the parameters
-    EmbossCommandPacket packet = BuildEnablePacket(
+    CommandPacket packet = BuildEnablePacket(
         address, pwemb::GenericEnableParam::DISABLE, options.extended_pdu);
     hci_cmd_runner_->QueueCommand(packet);
   }
@@ -239,7 +239,7 @@ void LowEnergyAdvertiser::StartAdvertisingInternal(
 
   AdvertisingEventProperties properties =
       GetAdvertisingEventProperties(data, scan_rsp, options, connect_callback);
-  std::optional<EmbossCommandPacket> set_adv_params_packet =
+  std::optional<CommandPacket> set_adv_params_packet =
       BuildSetAdvertisingParams(address,
                                 properties,
                                 own_addr_type,
@@ -260,29 +260,27 @@ void LowEnergyAdvertiser::StartAdvertisingInternal(
   // of the SetAdvertisingParams HCI command, we place the remaining advertising
   // setup HCI commands in the result callback here. SequentialCommandRunner
   // doesn't allow enqueuing commands within a callback (during a run).
-  hci_cmd_runner_->RunCommands([this,
-                                address,
-                                options,
-                                result_callback = std::move(result_callback),
-                                connect_callback = std::move(connect_callback)](
-                                   hci::Result<> result) mutable {
-    if (bt_is_error(result,
-                    WARN,
-                    "hci-le",
-                    "failed to start advertising for %s",
-                    bt_str(address))) {
-      result_callback(result);
-      return;
-    }
+  hci_cmd_runner_->RunCommands(
+      [this,
+       address,
+       options,
+       result_cb = std::move(result_callback),
+       connect_cb = std::move(connect_callback)](hci::Result<> result) mutable {
+        if (bt_is_error(result,
+                        WARN,
+                        "hci-le",
+                        "failed to start advertising for %s",
+                        bt_str(address))) {
+          result_cb(result);
+          return;
+        }
 
-    bool success = StartAdvertisingInternalStep2(address,
-                                                 options,
-                                                 std::move(connect_callback),
-                                                 std::move(result_callback));
-    if (!success) {
-      result_callback(ToResult(HostError::kCanceled));
-    }
-  });
+        bool success = StartAdvertisingInternalStep2(
+            address, options, std::move(connect_cb), std::move(result_cb));
+        if (!success) {
+          result_cb(ToResult(HostError::kCanceled));
+        }
+      });
 }
 
 bool LowEnergyAdvertiser::StartAdvertisingInternalStep2(
@@ -290,22 +288,19 @@ bool LowEnergyAdvertiser::StartAdvertisingInternalStep2(
     const AdvertisingOptions& options,
     ConnectionCallback connect_callback,
     hci::ResultFunction<> result_callback) {
-  std::vector<EmbossCommandPacket> set_adv_data_packets =
-      BuildSetAdvertisingData(address,
-                              staged_parameters_.data,
-                              options.flags,
-                              options.extended_pdu);
+  std::vector<CommandPacket> set_adv_data_packets = BuildSetAdvertisingData(
+      address, staged_parameters_.data, options.flags, options.extended_pdu);
   for (auto& packet : set_adv_data_packets) {
     hci_cmd_runner_->QueueCommand(std::move(packet));
   }
 
-  std::vector<EmbossCommandPacket> set_scan_rsp_packets = BuildSetScanResponse(
+  std::vector<CommandPacket> set_scan_rsp_packets = BuildSetScanResponse(
       address, staged_parameters_.scan_rsp, options.extended_pdu);
   for (auto& packet : set_scan_rsp_packets) {
     hci_cmd_runner_->QueueCommand(std::move(packet));
   }
 
-  EmbossCommandPacket enable_packet = BuildEnablePacket(
+  CommandPacket enable_packet = BuildEnablePacket(
       address, pwemb::GenericEnableParam::ENABLE, options.extended_pdu);
   hci_cmd_runner_->QueueCommand(enable_packet);
 
@@ -313,8 +308,8 @@ bool LowEnergyAdvertiser::StartAdvertisingInternalStep2(
   hci_cmd_runner_->RunCommands([this,
                                 address,
                                 extended_pdu = options.extended_pdu,
-                                result_callback = std::move(result_callback),
-                                connect_callback = std::move(connect_callback)](
+                                result_cb = std::move(result_callback),
+                                connect_cb = std::move(connect_callback)](
                                    Result<> result) mutable {
     if (!bt_is_error(result,
                      WARN,
@@ -322,11 +317,10 @@ bool LowEnergyAdvertiser::StartAdvertisingInternalStep2(
                      "failed to start advertising for %s",
                      bt_str(address))) {
       bt_log(INFO, "hci-le", "advertising enabled for %s", bt_str(address));
-      connection_callbacks_[{address, extended_pdu}] =
-          std::move(connect_callback);
+      connection_callbacks_[{address, extended_pdu}] = std::move(connect_cb);
     }
 
-    result_callback(result);
+    result_cb(result);
     OnCurrentOperationComplete();
   });
 
@@ -393,13 +387,13 @@ void LowEnergyAdvertiser::StopAdvertisingInternal(const DeviceAddress& address,
 
 bool LowEnergyAdvertiser::EnqueueStopAdvertisingCommands(
     const DeviceAddress& address, bool extended_pdu) {
-  EmbossCommandPacket disable_packet = BuildEnablePacket(
+  CommandPacket disable_packet = BuildEnablePacket(
       address, pwemb::GenericEnableParam::DISABLE, extended_pdu);
-  EmbossCommandPacket unset_scan_rsp_packet =
+  CommandPacket unset_scan_rsp_packet =
       BuildUnsetScanResponse(address, extended_pdu);
-  EmbossCommandPacket unset_adv_data_packet =
+  CommandPacket unset_adv_data_packet =
       BuildUnsetAdvertisingData(address, extended_pdu);
-  EmbossCommandPacket remove_packet =
+  CommandPacket remove_packet =
       BuildRemoveAdvertisingSet(address, extended_pdu);
 
   hci_cmd_runner_->QueueCommand(disable_packet);

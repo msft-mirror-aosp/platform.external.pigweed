@@ -44,21 +44,25 @@ cc_library_static {
         "pw_base64",
         "pw_bytes",
         "pw_containers",
+        "pw_elf_reader",
         "pw_log_tokenized",
         "pw_polyfill",
         "pw_preprocessor",
         "pw_result",
         "pw_span",
+        "pw_stream",
         "pw_varint",
     ],
     export_static_lib_headers: [
         "pw_base64",
         "pw_bytes",
         "pw_containers",
+        "pw_elf_reader",
         "pw_polyfill",
         "pw_preprocessor",
         "pw_result",
         "pw_span",
+        "pw_stream",
         "pw_varint",
     ],
 }
@@ -171,6 +175,8 @@ genrule {
         "--sources $(location pw_tokenizer_proto/options.proto) " +
         "--language pwpb " +
         "--no-experimental-proto3-optional " +
+        "--no-experimental-editions " +
+        "--pwpb-no-oneof-callbacks " +
         "--protoc=$(location aprotoc) ",
     out: [
         "pw_tokenizer_proto/options.pwpb.h",

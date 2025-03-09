@@ -12,7 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("//pw_build:pigweed.bzl", "pw_cc_test")
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//pw_bluetooth_sapphire:__subpackages__"])
 
@@ -24,9 +24,7 @@ cc_library(
     hdrs = [
         "public/cpp-string/string_printf.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
 )
 
 pw_cc_test(

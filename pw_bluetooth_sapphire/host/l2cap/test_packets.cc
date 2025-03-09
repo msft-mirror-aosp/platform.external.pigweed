@@ -205,7 +205,7 @@ DynamicByteBuffer AclConfigReq(l2cap::CommandId id,
       params.mode.value_or(l2cap::RetransmissionAndFlowControlMode::kBasic);
   const auto mtu = params.max_rx_sdu_size.value_or(l2cap::kMaxMTU);
 
-  BT_ASSERT_MSG(
+  PW_CHECK(
       std::holds_alternative<l2cap::RetransmissionAndFlowControlMode>(any_mode),
       "Channel mode is unsupported for configuration request.");
   const auto mode = std::get<l2cap::RetransmissionAndFlowControlMode>(any_mode);
@@ -278,7 +278,7 @@ DynamicByteBuffer AclConfigReq(l2cap::CommandId id,
     case l2cap::RetransmissionAndFlowControlMode::kRetransmission:
     case l2cap::RetransmissionAndFlowControlMode::kFlowControl:
     case l2cap::RetransmissionAndFlowControlMode::kStreaming:
-      BT_ASSERT_MSG(false, "unsupported mode");
+      PW_CHECK(false, "unsupported mode");
   }
 }
 
@@ -290,7 +290,7 @@ DynamicByteBuffer AclConfigRsp(l2cap::CommandId id,
       params.mode.value_or(l2cap::RetransmissionAndFlowControlMode::kBasic);
   const auto mtu = params.max_rx_sdu_size.value_or(l2cap::kMaxMTU);
 
-  BT_ASSERT_MSG(
+  PW_CHECK(
       std::holds_alternative<l2cap::RetransmissionAndFlowControlMode>(any_mode),
       "Channel mode is unsupported for configuration response.");
   const auto mode = std::get<l2cap::RetransmissionAndFlowControlMode>(any_mode);
@@ -374,7 +374,7 @@ DynamicByteBuffer AclConfigRsp(l2cap::CommandId id,
     case l2cap::RetransmissionAndFlowControlMode::kRetransmission:
     case l2cap::RetransmissionAndFlowControlMode::kFlowControl:
     case l2cap::RetransmissionAndFlowControlMode::kStreaming:
-      BT_ASSERT_MSG(false, "unsupported mode");
+      PW_CHECK(false, "unsupported mode");
   }
 }
 
@@ -554,6 +554,88 @@ DynamicByteBuffer AclConnectionParameterUpdateRsp(
       id,
       0x02,
       0x00,
+      // Result
+      LowerBits(static_cast<uint16_t>(result)),
+      UpperBits(static_cast<uint16_t>(result))));
+}
+
+DynamicByteBuffer AclLeCreditBasedConnectionReq(
+    l2cap::CommandId id,
+    hci_spec::ConnectionHandle link_handle,
+    l2cap::Psm psm,
+    l2cap::ChannelId cid,
+    uint16_t mtu,
+    uint16_t mps,
+    uint16_t credits) {
+  return DynamicByteBuffer(StaticByteBuffer(
+      // ACL data header (link_handle, length: 18 bytes)
+      LowerBits(link_handle),
+      UpperBits(link_handle),
+      0x12,
+      0x00,
+      // L2CAP B-frame header: length 14, channel-id 5 (LE signaling)
+      0x0e,
+      0x00,
+      0x05,
+      0x00,
+      // LE credit based connection request, id 0x14, length 10
+      l2cap::kLECreditBasedConnectionRequest,
+      id,
+      0x0a,
+      0x00,
+      // SPSM
+      LowerBits(psm),
+      UpperBits(psm),
+      // Source CID
+      LowerBits(cid),
+      UpperBits(cid),
+      // MTU
+      LowerBits(mtu),
+      UpperBits(mtu),
+      // MPS
+      LowerBits(mps),
+      UpperBits(mps),
+      // Initial Credits
+      LowerBits(credits),
+      UpperBits(credits)));
+}
+
+DynamicByteBuffer AclLeCreditBasedConnectionRsp(
+    l2cap::CommandId id,
+    hci_spec::ConnectionHandle link_handle,
+    l2cap::ChannelId cid,
+    uint16_t mtu,
+    uint16_t mps,
+    uint16_t credits,
+    LECreditBasedConnectionResult result) {
+  return DynamicByteBuffer(StaticByteBuffer(
+      // ACL data header (link_handle, length: 18 bytes)
+      LowerBits(link_handle),
+      UpperBits(link_handle),
+      0x12,
+      0x00,
+      // L2CAP B-frame header: length 14, channel-id 5 (LE signaling)
+      0x0e,
+      0x00,
+      0x05,
+      0x00,
+      // LE credit based connection response, id 0x14, length 10
+      l2cap::kLECreditBasedConnectionResponse,
+      id,
+      0x0a,
+      0x00,
+      // Destination CID
+      LowerBits(cid),
+      UpperBits(cid),
+      // MTU
+      LowerBits(mtu),
+      UpperBits(mtu),
+      // MPS
+      LowerBits(mps),
+      UpperBits(mps),
+      // Initial Credits
+      LowerBits(credits),
+      UpperBits(credits),
       // Result
       LowerBits(static_cast<uint16_t>(result)),
       UpperBits(static_cast<uint16_t>(result))));

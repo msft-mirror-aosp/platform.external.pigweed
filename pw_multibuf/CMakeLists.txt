@@ -121,6 +121,7 @@ pw_add_library(pw_multibuf.allocator STATIC
   PUBLIC_DEPS
     pw_async2.dispatcher
     pw_async2.poll
+    pw_containers.intrusive_forward_list
     pw_multibuf
     pw_result
   SOURCES
@@ -185,6 +186,32 @@ pw_add_test(pw_multibuf.stream_test
     pw_bytes
     pw_multibuf.stream
     pw_multibuf._internal_test_utils
+  GROUPS
+    modules
+    pw_multibuf
+)
+
+pw_add_library(pw_multibuf.from_span STATIC
+  HEADERS
+    public/pw_multibuf/from_span.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_allocator.allocator
+    pw_multibuf
+    pw_function
+  SOURCES
+    from_span.cc
+)
+
+pw_add_test(pw_multibuf.from_span_test
+  SOURCES
+    from_span_test.cc
+  PRIVATE_DEPS
+    pw_allocator.testing
+    pw_multibuf.from_span
+  SOURCES
+    from_span_test.cc
   GROUPS
     modules
     pw_multibuf

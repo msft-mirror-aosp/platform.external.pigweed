@@ -29,7 +29,6 @@ Which tests to run can be specified as command-line arguments:
 
 """
 
-import itertools
 from parameterized import parameterized
 import random
 
@@ -255,8 +254,7 @@ class LegacyTransferIntegrationTest(test_fixture.TransferIntegrationTest):
 class LegacyClientTransferIntegrationTests(LegacyTransferIntegrationTest):
     r = runfiles.Create()
     client_binary = r.Rlocation(
-        "pw_transfer_test_binaries/cpp_client_528098d5",
-        "pw_transfer_test_binaries",
+        "+_repo_rules+pw_transfer_test_binaries/cpp_client_528098d5",
     )
     HARNESS_CONFIG = TransferIntegrationTestHarness.Config(
         cpp_client_binary=client_binary,
@@ -269,7 +267,7 @@ class LegacyClientTransferIntegrationTests(LegacyTransferIntegrationTest):
 class LegacyServerTransferIntegrationTests(LegacyTransferIntegrationTest):
     r = runfiles.Create()
     server_binary = r.Rlocation(
-        "pw_transfer_test_binaries/server_528098d5", "pw_transfer_test_binaries"
+        "+_repo_rules+pw_transfer_test_binaries/server_528098d5",
     )
     HARNESS_CONFIG = TransferIntegrationTestHarness.Config(
         server_binary=server_binary,

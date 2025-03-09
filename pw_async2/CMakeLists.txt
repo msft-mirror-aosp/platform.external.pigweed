@@ -85,6 +85,7 @@ pw_add_library(pw_async2.pend_func_task INTERFACE
     public/pw_async2/pend_func_task.h
   PUBLIC_DEPS
     pw_async2.dispatcher
+    pw_function
   PUBLIC_INCLUDES
     public
 )
@@ -148,7 +149,7 @@ pw_add_test(pw_async2.once_sender_test
     pw_containers.vector
 )
 
-if(NOT "cxx_std_20" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
+if("cxx_std_20" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
   pw_add_library(pw_async2.coro STATIC
     HEADERS
       public/pw_async2/coro.h
@@ -261,5 +262,40 @@ if((NOT "${pw_chrono.system_clock_BACKEND}" STREQUAL "") AND
   )
 endif()
 
+pw_add_library(pw_async2.enqueue_heap_func INTERFACE
+  HEADERS
+    public/pw_async2/enqueue_heap_func.h
+  PUBLIC_DEPS
+    pw_async2.dispatcher
+)
+
+pw_add_test(pw_async2.enqueue_heap_func_test
+  SOURCES
+    enqueue_heap_func_test.cc
+  PRIVATE_DEPS
+    pw_async2.dispatcher
+    pw_async2.enqueue_heap_func
+  GROUPS
+    modules
+    pw_async2
+)
+
+pw_add_library(pw_async2.join INTERFACE
+  HEADERS
+    public/pw_async2/join.h
+  PUBLIC_DEPS
+    pw_async2.dispatcher
+)
+
+pw_add_test(pw_async2.join_test
+  SOURCES
+    join_test.cc
+  PRIVATE_DEPS
+    pw_async2.dispatcher
+    pw_async2.join
+  GROUPS
+    modules
+    pw_async2
+)
 
 add_subdirectory(examples)

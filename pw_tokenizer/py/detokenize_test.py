@@ -337,7 +337,7 @@ class DetokenizeTest(unittest.TestCase):
         expected_tokens = frozenset(detok.database.token_to_entries.keys())
 
         csv_database = str(detok.database)
-        self.assertEqual(len(csv_database.splitlines()), DEFAULT_DOMAIN_TOKENS)
+        self.assertEqual(len(csv_database.splitlines()), ALL_DOMAIN_TOKENS)
 
         with tempfile.NamedTemporaryFile('w', delete=False) as csv_file:
             try:
@@ -503,7 +503,7 @@ class AutoUpdatingDetokenizerTest(unittest.TestCase):
         db = database.load_token_database(
             io.BytesIO(ELF_WITH_TOKENIZER_SECTIONS)
         )
-        self.assertEqual(len(db), DEFAULT_DOMAIN_TOKENS)
+        self.assertEqual(len(db), ALL_DOMAIN_TOKENS)
 
         the_time = [100]
 
@@ -544,7 +544,7 @@ class AutoUpdatingDetokenizerTest(unittest.TestCase):
         db = database.load_token_database(
             io.BytesIO(ELF_WITH_TOKENIZER_SECTIONS)
         )
-        self.assertEqual(len(db), DEFAULT_DOMAIN_TOKENS)
+        self.assertEqual(len(db), ALL_DOMAIN_TOKENS)
 
         the_time = [100]
 
@@ -628,40 +628,48 @@ class AutoUpdatingDetokenizerTest(unittest.TestCase):
                 os.unlink(file.name)
 
     def test_token_domain_in_str(self, _) -> None:
-        """Tests a str containing a domain"""
+        """Tests a str containing a domain."""
         detok = detokenize.AutoUpdatingDetokenizer(
-            f'{ELF_WITH_TOKENIZER_SECTIONS_PATH}#.*',
+            f'{ELF_WITH_TOKENIZER_SECTIONS_PATH}#',  # Default domain
             min_poll_period_s=0,
             pool=InlinePoolExecutor(),
         )
-        self.assertEqual(len(detok.database), ALL_DOMAIN_TOKENS)
+        self.assertEqual(len(detok.database), DEFAULT_DOMAIN_TOKENS)
 
     def test_token_domain_in_path(self, _) -> None:
-        """Tests a Path() containing a domain"""
+        """Tests a Path() containing a domain."""
         detok = detokenize.AutoUpdatingDetokenizer(
-            Path(f'{ELF_WITH_TOKENIZER_SECTIONS_PATH}#.*'),
+            Path(f'{ELF_WITH_TOKENIZER_SECTIONS_PATH}#'),
             min_poll_period_s=0,
             pool=InlinePoolExecutor(),
         )
-        self.assertEqual(len(detok.database), ALL_DOMAIN_TOKENS)
+        self.assertEqual(len(detok.database), DEFAULT_DOMAIN_TOKENS)
 
     def test_token_no_domain_in_str(self, _) -> None:
-        """Tests a str without a domain"""
+        """Tests a str without a domain, which loads all domains."""
         detok = detokenize.AutoUpdatingDetokenizer(
             str(ELF_WITH_TOKENIZER_SECTIONS_PATH),
             min_poll_period_s=0,
             pool=InlinePoolExecutor(),
         )
-        self.assertEqual(len(detok.database), DEFAULT_DOMAIN_TOKENS)
+        self.assertEqual(len(detok.database), ALL_DOMAIN_TOKENS)
 
     def test_token_no_domain_in_path(self, _) -> None:
-        """Tests a Path() without a domain"""
+        """Tests a Path() without a domain, which loads all domains."""
         detok = detokenize.AutoUpdatingDetokenizer(
             ELF_WITH_TOKENIZER_SECTIONS_PATH,
             min_poll_period_s=0,
             pool=InlinePoolExecutor(),
         )
-        self.assertEqual(len(detok.database), DEFAULT_DOMAIN_TOKENS)
+        self.assertEqual(len(detok.database), ALL_DOMAIN_TOKENS)
+
+    def test_invalid_domain_specification(self, _) -> None:
+        with self.assertRaises(ValueError, msg='Too many # delimiters'):
+            detokenize.AutoUpdatingDetokenizer(
+                f'{ELF_WITH_TOKENIZER_SECTIONS_PATH}##',
+                min_poll_period_s=0,
+                pool=InlinePoolExecutor(),
+            )
 
 
 def _next_char(message: bytes) -> bytes:
@@ -722,7 +730,8 @@ class NestedMessageParserTest(unittest.TestCase):
             )
 
     def test_transform_bytes_sequential(self) -> None:
-        transform = lambda message: message.upper().replace(b'$', b'*')
+        def transform(message):
+            return message.upper().replace(b'$', b'*')
 
         self.assertEqual(self.decoder.transform(b'abc$abcd', transform), b'abc')
         self.assertEqual(self.decoder.transform(b'$', transform), b'*ABCD')
@@ -1024,6 +1033,28 @@ class DetokenizeNestedDomains(unittest.TestCase):
             'This is all in domain1',
         )
 
+    def test_multiple_nested_args_in_one_sentence(self) -> None:
+        detok = detokenize.Detokenizer(
+            tokens.Database(
+                [
+                    tokens.TokenizedStringEntry(0xA, 'nested token 1', 'D1'),
+                    tokens.TokenizedStringEntry(
+                        2,
+                        'This is '
+                        + '${D1}#%08x'
+                        + ' and this is '
+                        + '${D1}#00000003',
+                        'D1',
+                    ),
+                    tokens.TokenizedStringEntry(3, 'nested token 2', 'D1'),
+                ]
+            )
+        )
+        self.assertEqual(
+            str(detok.detokenize(b'\x02\0\0\0\x14')),
+            'This is nested token 1 and this is nested token 2',
+        )
+
     def test_nested_hashed_arg_with_two_domain_match(self) -> None:
         detok = detokenize.Detokenizer(
             tokens.Database(
@@ -1072,6 +1103,24 @@ class DetokenizeNestedDomains(unittest.TestCase):
         self.assertEqual(
             str(detok.detokenize(b'\x02\0\0\0\x09$AQAAAA==')),  # token for 1
             'This is a nested base64 argument',
+        )
+
+    def test_nested_hashed_arg_with_domain_whitespace(self) -> None:
+        detok = detokenize.Detokenizer(
+            tokens.Database(
+                [
+                    tokens.TokenizedStringEntry(
+                        0xA, 'and this is domain1', 'Domain1'
+                    ),
+                    tokens.TokenizedStringEntry(
+                        2, 'This is domain2 ' + '${Domain 1}#%08x', 'D2'
+                    ),
+                ]
+            )
+        )
+        self.assertEqual(
+            str(detok.detokenize(b'\x02\0\0\0\x14')),
+            'This is domain2 and this is domain1',
         )
 
 

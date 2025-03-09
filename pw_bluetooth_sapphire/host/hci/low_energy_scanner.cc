@@ -69,10 +69,10 @@ LowEnergyScanner::PendingScanResult::PendingScanResult(
     fit::closure timeout_handler)
     : result_(result), timeout_(timeout), timeout_task_(dispatcher) {
   timeout_task_.set_function(
-      [timeout_handler = std::move(timeout_handler)](pw::async::Context /*ctx*/,
-                                                     pw::Status status) {
+      [timeout_handler_cb = std::move(timeout_handler)](
+          pw::async::Context /*ctx*/, pw::Status status) {
         if (status.ok()) {
-          timeout_handler();
+          timeout_handler_cb();
         }
       });
   StartTimer();
@@ -85,8 +85,8 @@ LowEnergyScanner::LowEnergyScanner(LocalAddressDelegate* local_addr_delegate,
       scan_timeout_task_(pw_dispatcher_),
       local_addr_delegate_(local_addr_delegate),
       hci_(std::move(hci)) {
-  BT_DEBUG_ASSERT(local_addr_delegate_);
-  BT_DEBUG_ASSERT(hci_.is_alive());
+  PW_DCHECK(local_addr_delegate_);
+  PW_DCHECK(hci_.is_alive());
   hci_cmd_runner_ = std::make_unique<SequentialCommandRunner>(
       hci_->command_channel()->AsWeakPtr());
 
@@ -124,8 +124,8 @@ LowEnergyScanner::RemovePendingResult(const DeviceAddress& address) {
 
 bool LowEnergyScanner::StartScan(const ScanOptions& options,
                                  ScanStatusCallback callback) {
-  BT_ASSERT(callback);
-  BT_ASSERT(options.window < options.interval);
+  PW_CHECK(callback);
+  PW_CHECK(options.window < options.interval);
 
   if (state_ != State::kIdle) {
     bt_log(ERROR,
@@ -141,9 +141,14 @@ bool LowEnergyScanner::StartScan(const ScanOptions& options,
 
   // Obtain the local address type.
   local_addr_delegate_->EnsureLocalAddress(
-      [this, options, callback = std::move(callback)](
-          const auto& address) mutable {
-        StartScanInternal(address, options, std::move(callback));
+      /*address_type=*/std::nullopt,
+      [this, options, cb = std::move(callback)](
+          fit::result<HostError, const DeviceAddress> result) mutable {
+        if (result.is_error()) {
+          cb(ScanStatus::kFailed);
+          return;
+        }
+        StartScanInternal(result.value(), options, std::move(cb));
       });
 
   return true;
@@ -151,7 +156,7 @@ bool LowEnergyScanner::StartScan(const ScanOptions& options,
 
 void LowEnergyScanner::StartScanInternal(const DeviceAddress& local_address,
                                          const ScanOptions& options,
-                                         ScanStatusCallback callback) {
+                                         ScanStatusCallback) {
   // Check if the scan request was canceled by StopScan() while we were waiting
   // for the local address.
   if (state_ != State::kInitiating) {
@@ -169,9 +174,9 @@ void LowEnergyScanner::StartScanInternal(const DeviceAddress& local_address,
          options.interval,
          options.window);
 
-  EmbossCommandPacket scan_params_command =
+  CommandPacket scan_params_command =
       BuildSetScanParametersPacket(local_address, options);
-  EmbossCommandPacket scan_enable_command = BuildEnablePacket(
+  CommandPacket scan_enable_command = BuildEnablePacket(
       options, pw::bluetooth::emboss::GenericEnableParam::ENABLE);
 
   hci_cmd_runner_->QueueCommand(std::move(scan_params_command));
@@ -179,8 +184,8 @@ void LowEnergyScanner::StartScanInternal(const DeviceAddress& local_address,
   hci_cmd_runner_->RunCommands([this,
                                 active = options.active,
                                 period = options.period](Result<> status) {
-    BT_DEBUG_ASSERT(scan_cb_);
-    BT_DEBUG_ASSERT(state_ == State::kInitiating);
+    PW_DCHECK(scan_cb_);
+    PW_DCHECK(state_ == State::kInitiating);
 
     if (status.is_error()) {
       if (status == ToResult(HostError::kCanceled)) {
@@ -232,7 +237,7 @@ bool LowEnergyScanner::StopScan() {
 }
 
 void LowEnergyScanner::StopScanInternal(bool stopped_by_user) {
-  BT_DEBUG_ASSERT(scan_cb_);
+  PW_DCHECK(scan_cb_);
 
   scan_timeout_task_.Cancel();
   state_ = State::kStopping;
@@ -248,17 +253,17 @@ void LowEnergyScanner::StopScanInternal(bool stopped_by_user) {
   // Either way clear all results from the previous scan period.
   pending_results_.clear();
 
-  BT_DEBUG_ASSERT(hci_cmd_runner_->IsReady());
+  PW_DCHECK(hci_cmd_runner_->IsReady());
 
   // Tell the controller to stop scanning.
   ScanOptions options;
-  EmbossCommandPacket command = BuildEnablePacket(
+  CommandPacket command = BuildEnablePacket(
       options, pw::bluetooth::emboss::GenericEnableParam::DISABLE);
 
   hci_cmd_runner_->QueueCommand(std::move(command));
   hci_cmd_runner_->RunCommands([this, stopped_by_user](Result<> status) {
-    BT_DEBUG_ASSERT(scan_cb_);
-    BT_DEBUG_ASSERT(state_ == State::kStopping);
+    PW_DCHECK(scan_cb_);
+    PW_DCHECK(state_ == State::kStopping);
     state_ = State::kIdle;
 
     // Something went wrong but there isn't really a meaningful way to recover,

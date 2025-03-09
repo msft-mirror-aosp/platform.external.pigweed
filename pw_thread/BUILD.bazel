@@ -14,12 +14,13 @@
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//pw_build:compatibility.bzl", "host_backend_alias")
+load("//pw_build:pw_facade.bzl", "pw_facade")
 load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-    "pw_facade",
+    "//pw_protobuf_compiler:pw_proto_library.bzl",
+    "pwpb_proto_library",
+    "raw_rpc_proto_library",
 )
-load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_library")
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -31,7 +32,7 @@ pw_facade(
         "public/pw_thread/id.h",
     ],
     backend = ":id_backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 label_flag(
@@ -47,7 +48,7 @@ host_backend_alias(
 cc_library(
     name = "config",
     hdrs = ["public/pw_thread/config.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [":config_override"],
 )
 
@@ -59,7 +60,7 @@ label_flag(
 cc_library(
     name = "thread_info",
     hdrs = ["public/pw_thread/thread_info.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = ["//pw_span"],
 )
 
@@ -69,7 +70,7 @@ pw_facade(
         "public/pw_thread/thread_iteration.h",
     ],
     backend = ":iteration_backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":thread_info",
         "//pw_function",
@@ -97,9 +98,9 @@ pw_facade(
     ],
     backend = ":sleep_backend",
     implementation_deps = [
-        ":id",
+        ":thread",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_chrono:system_clock",
         "//pw_preprocessor",
@@ -127,7 +128,7 @@ pw_facade(
         "public/pw_thread/thread.h",
     ],
     backend = ":thread_backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":id",
         ":options",
@@ -139,7 +140,7 @@ pw_facade(
 cc_library(
     name = "options",
     hdrs = ["public/pw_thread/options.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 label_flag(
@@ -153,30 +154,11 @@ host_backend_alias(
 )
 
 cc_library(
-    name = "deprecated_or_new_thread_function",
-    hdrs = ["public/pw_thread/deprecated_or_new_thread_function.h"],
-    includes = ["public"],
-    deps = [
-        "//pw_function",
-    ],
-)
-
-pw_cc_test(
-    name = "deprecated_or_new_thread_function_test",
-    srcs = [
-        "deprecated_or_new_thread_function_test.cc",
-    ],
-    deps = [
-        ":deprecated_or_new_thread_function",
-    ],
-)
-
-cc_library(
     name = "thread_core",
     hdrs = [
         "public/pw_thread/thread_core.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_log",
         "//pw_status",
@@ -190,18 +172,18 @@ cc_library(
         "thread_snapshot_service.cc",
     ],
     hdrs = ["public/pw_thread/thread_snapshot_service.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_protobuf",
         "//pw_rpc/raw:server_api",
         "//pw_span",
         "//pw_status",
         ":config",
-        ":thread_cc.pwpb",
+        ":thread_pwpb",
         ":thread_info",
         ":thread_iteration",
-        ":thread_snapshot_service_cc.pwpb",
-        ":thread_snapshot_service_cc.raw_rpc",
+        ":thread_snapshot_service_pwpb",
+        ":thread_snapshot_service_raw_rpc",
         # TODO(amontanez): This should depend on FreeRTOS but our third parties
         # currently do not have Bazel support.
     ],
@@ -213,7 +195,7 @@ pw_facade(
         "public/pw_thread/test_thread_context.h",
     ],
     backend = ":test_thread_context_backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 label_flag(
@@ -236,9 +218,9 @@ pw_facade(
     ],
     backend = ":yield_backend",
     implementation_deps = [
-        ":id",
+        ":thread",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_preprocessor",
     ],
@@ -262,9 +244,11 @@ cc_library(
     hdrs = [
         "public/pw_thread/snapshot.h",
     ],
+    strip_include_prefix = "public",
     deps = [
+        ":config",
         ":thread",
-        ":thread_cc.pwpb",
+        ":thread_pwpb",
         "//pw_bytes",
         "//pw_function",
         "//pw_log",
@@ -278,6 +262,7 @@ cc_library(
     hdrs = [
         "public/pw_thread/non_portable_test_thread_options.h",
     ],
+    strip_include_prefix = "public",
     deps = [
         ":thread",
     ],
@@ -293,7 +278,6 @@ cc_library(
         "thread_facade_test.cc",
     ],
     deps = [
-        ":id",
         ":non_portable_test_thread_options",
         ":thread",
         "//pw_chrono:system_clock",
@@ -332,7 +316,7 @@ pw_cc_test(
         "id_facade_test.cc",
     ],
     deps = [
-        ":id",
+        ":thread",
         "//pw_unit_test",
     ],
 )
@@ -353,8 +337,8 @@ pw_cc_test(
         "sleep_facade_test_c.c",
     ],
     deps = [
-        ":id",
         ":sleep",
+        ":thread",
         "//pw_chrono:system_clock",
         "//pw_preprocessor",
         "//pw_unit_test",
@@ -381,11 +365,11 @@ pw_cc_test(
     # TODO: https://pwbug.dev/342662853 - This test fails under ASAN.
     tags = ["noasan"],
     deps = [
-        ":thread_cc.pwpb",
         ":thread_info",
         ":thread_iteration",
+        ":thread_pwpb",
         ":thread_snapshot_service",
-        ":thread_snapshot_service_cc.pwpb",
+        ":thread_snapshot_service_pwpb",
         "//pw_protobuf",
         "//pw_span",
         "//pw_sync:thread_notification",
@@ -399,7 +383,7 @@ pw_cc_test(
         "yield_facade_test_c.c",
     ],
     deps = [
-        ":id",
+        ":thread",
         ":yield",
         "//pw_preprocessor",
         "//pw_unit_test",
@@ -429,8 +413,13 @@ proto_library(
     ],
 )
 
-pw_proto_library(
-    name = "thread_snapshot_service_cc",
+pwpb_proto_library(
+    name = "thread_snapshot_service_pwpb",
+    deps = [":thread_snapshot_service_proto"],
+)
+
+raw_rpc_proto_library(
+    name = "thread_snapshot_service_raw_rpc",
     deps = [":thread_snapshot_service_proto"],
 )
 
@@ -439,7 +428,16 @@ py_proto_library(
     deps = [":thread_snapshot_service_proto"],
 )
 
-pw_proto_library(
-    name = "thread_cc",
+pwpb_proto_library(
+    name = "thread_pwpb",
     deps = [":thread_proto"],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_thread/options.h",
+        "public/pw_thread/test_thread_context.h",
+        "public/pw_thread/thread.h",
+    ],
 )

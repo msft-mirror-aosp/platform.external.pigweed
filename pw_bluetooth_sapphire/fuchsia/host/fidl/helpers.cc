@@ -1442,7 +1442,7 @@ bool IsScanFilterValid(const fble::ScanFilter& fidl_filter) {
 
 bool PopulateDiscoveryFilter(const fble::ScanFilter& fidl_filter,
                              bt::gap::DiscoveryFilter* out_filter) {
-  BT_DEBUG_ASSERT(out_filter);
+  PW_DCHECK(out_filter);
 
   if (fidl_filter.service_uuids) {
     std::vector<bt::UUID> uuids;
@@ -1596,6 +1596,12 @@ std::optional<bt::AdvertisingData> AdvertisingDataFromFidl(
       }
     }
   }
+  if (input.has_broadcast_name()) {
+    output.SetBroadcastName(input.broadcast_name());
+  }
+  if (input.has_resolvable_set_identifier()) {
+    output.SetResolvableSetIdentifier(input.resolvable_set_identifier());
+  }
 
   return output;
 }
@@ -1658,6 +1664,12 @@ fble::AdvertisingData AdvertisingDataToFidl(const bt::AdvertisingData& input) {
       uris.push_back(uri);
     }
     output.set_uris(std::move(uris));
+  }
+  if (input.broadcast_name()) {
+    output.set_broadcast_name(*input.broadcast_name());
+  }
+  if (input.resolvable_set_identifier()) {
+    output.set_resolvable_set_identifier(*input.resolvable_set_identifier());
   }
 
   return output;
@@ -1742,7 +1754,7 @@ fuchsia::bluetooth::le::ScanData AdvertisingDataToFidlScanData(
 }
 
 fble::Peer PeerToFidlLe(const bt::gap::Peer& peer) {
-  BT_ASSERT(peer.le());
+  PW_CHECK(peer.le());
 
   fble::Peer output;
   output.set_id(fbt::PeerId{peer.identifier().value()});
@@ -1848,7 +1860,7 @@ ServiceDefinitionToServiceRecord(
     // ProtocolListId = uint8_t, and std::numeric_limits<uint8_t>::max() == 255
     // == the MAX_SEQUENCE_LENGTH vector limit from
     // fuchsia.bluetooth.bredr/ServiceDefinition.additional_protocol_descriptor_lists.
-    BT_ASSERT(
+    PW_CHECK(
         definition.additional_protocol_descriptor_lists()->size() <=
         std::numeric_limits<bt::sdp::ServiceRecord::ProtocolListId>::max());
     bt::sdp::ServiceRecord::ProtocolListId protocol_list_id = 1;
@@ -1969,7 +1981,7 @@ ServiceDefinitionToServiceRecord(
     // ProtocolListId = uint8_t, and std::numeric_limits<uint8_t>::max() == 255
     // == the MAX_SEQUENCE_LENGTH vector limit from
     // fuchsia.bluetooth.bredr/ServiceDefinition.additional_protocol_descriptor_lists.
-    BT_ASSERT(
+    PW_CHECK(
         definition.additional_protocol_descriptor_lists().size() <=
         std::numeric_limits<bt::sdp::ServiceRecord::ProtocolListId>::max());
     bt::sdp::ServiceRecord::ProtocolListId protocol_list_id = 1;
@@ -2654,7 +2666,7 @@ bt::StaticPacket<pw::bluetooth::emboss::CodecIdWriter> CodecIdFromFidl(
         CodingFormatFromFidl(fidl_codec_id.assigned_format());
     result_view.coding_format().Write(out_coding_format);
   } else {
-    BT_ASSERT(fidl_codec_id.is_vendor_format());
+    PW_CHECK(fidl_codec_id.is_vendor_format());
     result_view.coding_format().Write(
         pw::bluetooth::emboss::CodingFormat::VENDOR_SPECIFIC);
     result_view.company_id().Write(fidl_codec_id.vendor_format().company_id());
@@ -2902,6 +2914,14 @@ fuchsia::bluetooth::le::CisEstablishedParameters CisEstablishedParametersToFidl(
   return params_out;
 }
 
+bt::DeviceAddress::Type FidlToDeviceAddressType(fbt::AddressType addr_type) {
+  switch (addr_type) {
+    case fbt::AddressType::PUBLIC:
+      return bt::DeviceAddress::Type::kLEPublic;
+    case fbt::AddressType::RANDOM:
+      return bt::DeviceAddress::Type::kLERandom;
+  }
+}
 }  // namespace bthost::fidl_helpers
 
 // static

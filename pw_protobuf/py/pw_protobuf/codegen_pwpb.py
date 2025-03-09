@@ -14,6 +14,7 @@
 """This module defines the generated code for pw_protobuf C++ classes."""
 
 import abc
+from dataclasses import dataclass
 import enum
 
 # Type ignore here for graphlib-backport on Python 3.8
@@ -40,6 +41,37 @@ PROTO_CC_EXTENSION = '.pwpb.cc'
 
 PROTOBUF_NAMESPACE = '::pw::protobuf'
 _INTERNAL_NAMESPACE = '::pw::protobuf::internal'
+
+
+@dataclass
+class GeneratorOptions:
+    oneof_callbacks: bool
+    exclude_legacy_snake_case_field_name_enums: bool
+    suppress_legacy_namespace: bool
+
+
+class CodegenError(Exception):
+    def __init__(
+        self,
+        error_message: str,
+        node: ProtoNode,
+        field: ProtoMessageField | None,
+    ):
+        super().__init__(f'pwpb codegen error: {error_message}')
+        self.error_message = error_message
+        self.node = node
+        self.field = field
+
+    def formatted_message(self) -> str:
+        lines = [
+            f'pwpb codegen error: {self.error_message}',
+            f'    at {self.node.proto_path()}',
+        ]
+
+        if self.field is not None:
+            lines.append(f'    in field {self.field.name()}')
+
+        return '\n'.join(lines)
 
 
 class ClassType(enum.Enum):
@@ -89,11 +121,30 @@ def debug_print(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
 
+class _CallbackType(enum.Enum):
+    NONE = 0
+    SINGLE_FIELD = 1
+    ONEOF_GROUP = 2
+
+    def as_cpp(self) -> str:
+        match self:
+            case _CallbackType.NONE:
+                return 'kNone'
+            case _CallbackType.SINGLE_FIELD:
+                return 'kSingleField'
+            case _CallbackType.ONEOF_GROUP:
+                return 'kOneOfGroup'
+
+
 class ProtoMember(abc.ABC):
     """Base class for a C++ class member for a field in a protobuf message."""
 
     def __init__(
-        self, field: ProtoMessageField, scope: ProtoNode, root: ProtoNode
+        self,
+        codegen_options: GeneratorOptions,
+        field: ProtoMessageField,
+        scope: ProtoNode,
+        root: ProtoNode,
     ):
         """Creates an instance of a class member.
 
@@ -101,6 +152,7 @@ class ProtoMember(abc.ABC):
           field: the ProtoMessageField to which the method belongs.
           scope: the ProtoNode namespace in which the method is being defined.
         """
+        self._codegen_options: GeneratorOptions = codegen_options
         self._field: ProtoMessageField = field
         self._scope: ProtoNode = scope
         self._root: ProtoNode = root
@@ -112,6 +164,24 @@ class ProtoMember(abc.ABC):
     @abc.abstractmethod
     def should_appear(self) -> bool:  # pylint: disable=no-self-use
         """Whether the member should be generated."""
+
+    @abc.abstractmethod
+    def _use_callback(self) -> bool:
+        """Whether the member should be encoded and decoded with a callback."""
+
+    def callback_type(self) -> _CallbackType:
+        if (
+            self._codegen_options.oneof_callbacks
+            and self._field.oneof() is not None
+        ):
+            return _CallbackType.ONEOF_GROUP
+
+        options = self._field.options()
+        assert options is not None
+
+        if options.use_callback or self._use_callback():
+            return _CallbackType.SINGLE_FIELD
+        return _CallbackType.NONE
 
     def field_cast(self) -> str:
         return 'static_cast<uint32_t>(Fields::{})'.format(
@@ -141,12 +211,13 @@ class ProtoMethod(ProtoMember):
 
     def __init__(
         self,
+        codegen_options: GeneratorOptions,
         field: ProtoMessageField,
         scope: ProtoNode,
         root: ProtoNode,
         base_class: str,
     ):
-        super().__init__(field, scope, root)
+        super().__init__(codegen_options, field, scope, root)
         self._base_class: str = base_class
 
     @abc.abstractmethod
@@ -189,6 +260,9 @@ class ProtoMethod(ProtoMember):
     def should_appear(self) -> bool:  # pylint: disable=no-self-use
         """Whether the method should be generated."""
         return True
+
+    def _use_callback(self) -> bool:  # pylint: disable=no-self-use
+        return False
 
     def param_string(self) -> str:
         return ', '.join([f'{type} {name}' for type, name in self.params()])
@@ -347,18 +421,31 @@ class PackedReadVectorMethod(ReadMethod):
 
 
 class FindMethod(ReadMethod):
+    """A method for finding a field within a serialized message."""
+
     def name(self) -> str:
         return 'Find{}'.format(self._field.name())
 
     def params(self) -> list[tuple[str, str]]:
         return [('::pw::ConstByteSpan', 'message')]
 
+    def return_type(self, from_root: bool = False) -> str:
+        if self._field.is_repeated():
+            return f'::pw::protobuf::{self._finder()}'
+        return '::pw::Result<{}>'.format(self._result_type())
+
     def body(self) -> list[str]:
         lines: list[str] = []
-        lines += [
-            f'return {PROTOBUF_NAMESPACE}::{self._find_fn()}'
-            f'(message, {self.field_cast()});'
-        ]
+        if self._field.is_repeated():
+            lines.append(
+                f'return ::pw::protobuf::{self._finder()}'
+                f'(message, {self.field_cast()});'
+            )
+        else:
+            lines += [
+                f'return {PROTOBUF_NAMESPACE}::{self._find_fn()}'
+                f'(message, {self.field_cast()});'
+            ]
         return lines
 
     def _find_fn(self) -> str:
@@ -370,6 +457,10 @@ class FindMethod(ReadMethod):
         """
         raise NotImplementedError()
 
+    def _finder(self) -> str:
+        """Type of the finder object for the field type."""
+        raise NotImplementedError(f'xdd {self.__class__}')
+
 
 class FindStreamMethod(FindMethod):
     def name(self) -> str:
@@ -380,10 +471,16 @@ class FindStreamMethod(FindMethod):
 
     def body(self) -> list[str]:
         lines: list[str] = []
-        lines += [
-            f'return {PROTOBUF_NAMESPACE}::{self._find_fn()}'
-            f'(message_stream, {self.field_cast()});'
-        ]
+        if self._field.is_repeated():
+            lines.append(
+                f'return ::pw::protobuf::{self._finder()}'
+                f'(message_stream, {self.field_cast()});'
+            )
+        else:
+            lines += [
+                f'return {PROTOBUF_NAMESPACE}::{self._find_fn()}'
+                f'(message_stream, {self.field_cast()});'
+            ]
         return lines
 
 
@@ -394,6 +491,11 @@ class MessageProperty(ProtoMember):
         return self._field.field_name()
 
     def should_appear(self) -> bool:
+        # Oneof fields are not supported by the code generator.
+        oneof = self._field.oneof()
+        if self._codegen_options.oneof_callbacks and oneof is not None:
+            return oneof.is_synthetic()
+
         return True
 
     @abc.abstractmethod
@@ -424,18 +526,14 @@ class MessageProperty(ProtoMember):
         """
         return f'::pw::Vector<{type_name}, {max_size}>'
 
-    def use_callback(self) -> bool:  # pylint: disable=no-self-use
+    def _use_callback(self) -> bool:  # pylint: disable=no-self-use
         """Returns whether the decoder should use a callback."""
-        options = self._field.options()
-        assert options is not None
-        return options.use_callback or (
-            self._field.is_repeated() and self.max_size() == 0
-        )
+        return self._field.is_repeated() and self.max_size() == 0
 
     def is_optional(self) -> bool:
         """Returns whether the decoder should use std::optional."""
         return (
-            self._field.is_optional()
+            self._field.has_presence()
             and self.max_size() == 0
             and self.wire_type() != 'kDelimited'
         )
@@ -466,7 +564,7 @@ class MessageProperty(ProtoMember):
 
     def struct_member_type(self, from_root: bool = False) -> str:
         """Returns the structure member type."""
-        if self.use_callback():
+        if self.callback_type() is _CallbackType.SINGLE_FIELD:
             return (
                 f'{PROTOBUF_NAMESPACE}::Callback<StreamEncoder, StreamDecoder>'
             )
@@ -514,6 +612,17 @@ class MessageProperty(ProtoMember):
 
     def table_entry(self) -> list[str]:
         """Table entry."""
+
+        oneof = self._field.oneof()
+        if (
+            self._codegen_options.oneof_callbacks
+            and oneof is not None
+            and not oneof.is_synthetic()
+        ):
+            struct_member = oneof.name
+        else:
+            struct_member = self.name()
+
         return [
             self.field_cast(),
             self._wire_type_table_entry(),
@@ -523,9 +632,12 @@ class MessageProperty(ProtoMember):
             self._bool_attr('is_fixed_size'),
             self._bool_attr('is_repeated'),
             self._bool_attr('is_optional'),
-            self._bool_attr('use_callback'),
-            'offsetof(Message, {})'.format(self.name()),
-            'sizeof(Message::{})'.format(self.name()),
+            (
+                f'{_INTERNAL_NAMESPACE}::CallbackType::'
+                + self.callback_type().as_cpp()
+            ),
+            'offsetof(Message, {})'.format(struct_member),
+            'sizeof(Message::{})'.format(struct_member),
             self.sub_table(),
         ]
 
@@ -542,6 +654,19 @@ class MessageProperty(ProtoMember):
         size_call = '{}::{}({})'.format(
             PROTOBUF_NAMESPACE, self._size_fn(), self.field_cast()
         )
+
+        if self.is_repeated():
+            # We have to assume the worst-case: a non-packed repeated field,
+            # which is encoded as one record per entry.
+            # https://protobuf.dev/programming-guides/encoding/#packed
+            if self.max_size():
+                size_call += f' * {self.max_size_constant_name()}'
+            else:
+                # TODO: https://pwbug.dev/379868242 - Change this to return
+                # None to indicate that we don't know the maximum encoded size,
+                # because the field is unconstrained.
+                msg = 'TODO: https://pwbug.dev/379868242 - Max size unknown!'
+                size_call += f' /* {msg} */'
 
         size_length: str | None = self._size_length()
         if size_length is None:
@@ -618,9 +743,30 @@ class SubMessageFindMethod(FindMethod):
     def _find_fn(self) -> str:
         return 'FindBytes'
 
+    def _finder(self) -> str:
+        return 'BytesFinder'
+
 
 class SubMessageProperty(MessageProperty):
     """Property which contains a sub-message."""
+
+    def __init__(
+        self,
+        codegen_options: GeneratorOptions,
+        field: ProtoMessageField,
+        scope: ProtoNode,
+        root: ProtoNode,
+    ):
+        super().__init__(codegen_options, field, scope, root)
+
+        if self._field.is_repeated() and (
+            self.max_size() != 0 or self.is_fixed_size()
+        ):
+            raise CodegenError(
+                'Repeated messages cannot set a max_count or fixed_count',
+                scope,
+                field,
+            )
 
     def _dependency_removed(self) -> bool:
         """Returns true if the message dependency was removed to break a cycle.
@@ -642,23 +788,17 @@ class SubMessageProperty(MessageProperty):
     def type_name(self, from_root: bool = False) -> str:
         return '{}::Message'.format(self._relative_type_namespace(from_root))
 
-    def use_callback(self) -> bool:
+    def _use_callback(self) -> bool:
         # Always use a callback for a message dependency removed to break a
         # cycle, and for repeated fields, since in both cases there's no way
         # to handle the size of nested field.
-        options = self._field.options()
-        assert options is not None
-        return (
-            options.use_callback
-            or self._dependency_removed()
-            or self._field.is_repeated()
-        )
+        return self._dependency_removed() or self._field.is_repeated()
 
     def wire_type(self) -> str:
         return 'kDelimited'
 
     def sub_table(self) -> str:
-        if self.use_callback():
+        if self.callback_type() is not _CallbackType.NONE:
             return 'nullptr'
 
         return '&{}::kMessageFields'.format(self._relative_type_namespace())
@@ -671,7 +811,7 @@ class SubMessageProperty(MessageProperty):
         return 'SizeOfDelimitedFieldWithoutValue'
 
     def _size_length(self) -> str | None:
-        if self.use_callback():
+        if self.callback_type() is not _CallbackType.NONE:
             return None
 
         return '{}::kMaxEncodedSizeBytes'.format(
@@ -770,6 +910,9 @@ class DoubleFindMethod(FindMethod):
     def _find_fn(self) -> str:
         return 'FindDouble'
 
+    def _finder(self) -> str:
+        return 'DoubleFinder'
+
 
 class DoubleFindStreamMethod(FindStreamMethod):
     """Method which reads a proto double value."""
@@ -779,6 +922,9 @@ class DoubleFindStreamMethod(FindStreamMethod):
 
     def _find_fn(self) -> str:
         return 'FindDouble'
+
+    def _finder(self) -> str:
+        return 'DoubleStreamFinder'
 
 
 class DoubleProperty(MessageProperty):
@@ -863,6 +1009,9 @@ class FloatFindMethod(FindMethod):
     def _find_fn(self) -> str:
         return 'FindFloat'
 
+    def _finder(self) -> str:
+        return 'FloatFinder'
+
 
 class FloatFindStreamMethod(FindStreamMethod):
     """Method which reads a proto float value."""
@@ -872,6 +1021,9 @@ class FloatFindStreamMethod(FindStreamMethod):
 
     def _find_fn(self) -> str:
         return 'FindFloat'
+
+    def _finder(self) -> str:
+        return 'FloatStreamFinder'
 
 
 class FloatProperty(MessageProperty):
@@ -956,6 +1108,9 @@ class Int32FindMethod(FindMethod):
     def _find_fn(self) -> str:
         return 'FindInt32'
 
+    def _finder(self) -> str:
+        return 'Int32Finder'
+
 
 class Int32FindStreamMethod(FindStreamMethod):
     """Method which reads a proto int32 value."""
@@ -965,6 +1120,9 @@ class Int32FindStreamMethod(FindStreamMethod):
 
     def _find_fn(self) -> str:
         return 'FindInt32'
+
+    def _finder(self) -> str:
+        return 'Int32StreamFinder'
 
 
 class Int32Property(MessageProperty):
@@ -1052,6 +1210,9 @@ class Sint32FindMethod(FindMethod):
     def _find_fn(self) -> str:
         return 'FindSint32'
 
+    def _finder(self) -> str:
+        return 'Sint32Finder'
+
 
 class Sint32FindStreamMethod(FindStreamMethod):
     """Method which reads a proto sint32 value."""
@@ -1061,6 +1222,9 @@ class Sint32FindStreamMethod(FindStreamMethod):
 
     def _find_fn(self) -> str:
         return 'FindSint32'
+
+    def _finder(self) -> str:
+        return 'Sint32StreamFinder'
 
 
 class Sint32Property(MessageProperty):
@@ -1148,6 +1312,9 @@ class Sfixed32FindMethod(FindMethod):
     def _find_fn(self) -> str:
         return 'FindSfixed32'
 
+    def _finder(self) -> str:
+        return 'Sfixed32Finder'
+
 
 class Sfixed32FindStreamMethod(FindStreamMethod):
     """Method which reads a proto sfixed32 value."""
@@ -1157,6 +1324,9 @@ class Sfixed32FindStreamMethod(FindStreamMethod):
 
     def _find_fn(self) -> str:
         return 'FindSfixed32'
+
+    def _finder(self) -> str:
+        return 'Sfixed32StreamFinder'
 
 
 class Sfixed32Property(MessageProperty):
@@ -1241,6 +1411,9 @@ class Int64FindMethod(FindMethod):
     def _find_fn(self) -> str:
         return 'FindInt64'
 
+    def _finder(self) -> str:
+        return 'Int64Finder'
+
 
 class Int64FindStreamMethod(FindStreamMethod):
     """Method which reads a proto int64 value."""
@@ -1250,6 +1423,9 @@ class Int64FindStreamMethod(FindStreamMethod):
 
     def _find_fn(self) -> str:
         return 'FindInt64'
+
+    def _finder(self) -> str:
+        return 'Int64StreamFinder'
 
 
 class Int64Property(MessageProperty):
@@ -1526,6 +1702,9 @@ class Uint32FindMethod(FindMethod):
     def _find_fn(self) -> str:
         return 'FindUint32'
 
+    def _finder(self) -> str:
+        return 'Uint32Finder'
+
 
 class Uint32FindStreamMethod(FindStreamMethod):
     """Method which finds a proto uint32 value."""
@@ -1535,6 +1714,9 @@ class Uint32FindStreamMethod(FindStreamMethod):
 
     def _find_fn(self) -> str:
         return 'FindUint32'
+
+    def _finder(self) -> str:
+        return 'Uint32StreamFinder'
 
 
 class Uint32Property(MessageProperty):
@@ -1622,6 +1804,9 @@ class Fixed32FindMethod(FindMethod):
     def _find_fn(self) -> str:
         return 'FindFixed32'
 
+    def _finder(self) -> str:
+        return 'Fixed32Finder'
+
 
 class Fixed32FindStreamMethod(FindStreamMethod):
     """Method which finds a proto fixed32 value."""
@@ -1631,6 +1816,9 @@ class Fixed32FindStreamMethod(FindStreamMethod):
 
     def _find_fn(self) -> str:
         return 'FindFixed32'
+
+    def _finder(self) -> str:
+        return 'Fixed32StreamFinder'
 
 
 class Fixed32Property(MessageProperty):
@@ -1715,6 +1903,9 @@ class Uint64FindMethod(FindMethod):
     def _find_fn(self) -> str:
         return 'FindUint64'
 
+    def _finder(self) -> str:
+        return 'Uint64Finder'
+
 
 class Uint64FindStreamMethod(FindStreamMethod):
     """Method which finds a proto uint64 value."""
@@ -1724,6 +1915,9 @@ class Uint64FindStreamMethod(FindStreamMethod):
 
     def _find_fn(self) -> str:
         return 'FindUint64'
+
+    def _finder(self) -> str:
+        return 'Uint64StreamFinder'
 
 
 class Uint64Property(MessageProperty):
@@ -1811,6 +2005,9 @@ class Fixed64FindMethod(FindMethod):
     def _find_fn(self) -> str:
         return 'FindFixed64'
 
+    def _finder(self) -> str:
+        return 'Fixed64Finder'
+
 
 class Fixed64FindStreamMethod(FindStreamMethod):
     """Method which finds a proto fixed64 value."""
@@ -1820,6 +2017,9 @@ class Fixed64FindStreamMethod(FindStreamMethod):
 
     def _find_fn(self) -> str:
         return 'FindFixed64'
+
+    def _finder(self) -> str:
+        return 'Fixed64StreamFinder'
 
 
 class Fixed64Property(MessageProperty):
@@ -1894,6 +2094,9 @@ class BoolFindMethod(FindMethod):
     def _find_fn(self) -> str:
         return 'FindBool'
 
+    def _finder(self) -> str:
+        return 'BoolFinder'
+
 
 class BoolFindStreamMethod(FindStreamMethod):
     """Method which finds a proto bool value."""
@@ -1903,6 +2106,9 @@ class BoolFindStreamMethod(FindStreamMethod):
 
     def _find_fn(self) -> str:
         return 'FindBool'
+
+    def _finder(self) -> str:
+        return 'BoolStreamFinder'
 
 
 class BoolProperty(MessageProperty):
@@ -1953,6 +2159,9 @@ class BytesFindMethod(FindMethod):
     def _find_fn(self) -> str:
         return 'FindBytes'
 
+    def _finder(self) -> str:
+        return 'BytesFinder'
+
 
 class BytesFindStreamMethod(FindStreamMethod):
     """Method which reads a proto bytes value."""
@@ -1984,7 +2193,7 @@ class BytesProperty(MessageProperty):
     def type_name(self, from_root: bool = False) -> str:
         return 'std::byte'
 
-    def use_callback(self) -> bool:
+    def _use_callback(self) -> bool:
         return self.max_size() == 0
 
     def max_size(self) -> int:
@@ -2013,7 +2222,7 @@ class BytesProperty(MessageProperty):
         return 'SizeOfDelimitedFieldWithoutValue'
 
     def _size_length(self) -> str | None:
-        if self.use_callback():
+        if self.callback_type() is not _CallbackType.NONE:
             return None
         return self.max_size_constant_name()
 
@@ -2059,6 +2268,9 @@ class StringFindMethod(FindMethod):
 
     def _find_fn(self) -> str:
         return 'FindString'
+
+    def _finder(self) -> str:
+        return 'StringFinder'
 
 
 class StringFindStreamMethod(FindStreamMethod):
@@ -2115,7 +2327,7 @@ class StringProperty(MessageProperty):
     def type_name(self, from_root: bool = False) -> str:
         return 'char'
 
-    def use_callback(self) -> bool:
+    def _use_callback(self) -> bool:
         return self.max_size() == 0
 
     def max_size(self) -> int:
@@ -2146,7 +2358,7 @@ class StringProperty(MessageProperty):
         return 'SizeOfDelimitedFieldWithoutValue'
 
     def _size_length(self) -> str | None:
-        if self.use_callback():
+        if self.callback_type() is not _CallbackType.NONE:
             return None
         return self.max_size_constant_name()
 
@@ -2267,6 +2479,9 @@ class EnumFindMethod(FindMethod):
         return self._relative_type_namespace()
 
     def body(self) -> list[str]:
+        if self._field.is_repeated():
+            return super().body()
+
         lines: list[str] = []
         lines += [
             '::pw::Result<uint32_t> result = '
@@ -2282,6 +2497,9 @@ class EnumFindMethod(FindMethod):
     def _find_fn(self) -> str:
         return 'FindUint32'
 
+    def _finder(self) -> str:
+        return f'EnumFinder<{self._result_type()}>'
+
 
 class EnumFindStreamMethod(FindStreamMethod):
     """Method which finds a proto enum value."""
@@ -2290,6 +2508,9 @@ class EnumFindStreamMethod(FindStreamMethod):
         return self._relative_type_namespace()
 
     def body(self) -> list[str]:
+        if self._field.is_repeated():
+            return super().body()
+
         lines: list[str] = []
         lines += [
             '::pw::Result<uint32_t> result = '
@@ -2304,6 +2525,9 @@ class EnumFindStreamMethod(FindStreamMethod):
 
     def _find_fn(self) -> str:
         return 'FindUint32'
+
+    def _finder(self) -> str:
+        return f'EnumStreamFinder<{self._result_type()}>'
 
 
 class EnumProperty(MessageProperty):
@@ -2576,16 +2800,21 @@ PROTO_FIELD_PROPERTIES: dict[int, Type[MessageProperty]] = {
 
 
 def proto_message_field_props(
+    codegen_options: GeneratorOptions,
     message: ProtoMessage,
     root: ProtoNode,
+    include_hidden: bool = False,
 ) -> Iterable[MessageProperty]:
     """Yields a MessageProperty for each field in a ProtoMessage.
 
-    Only properties which should_appear() is True are returned.
+    Only properties which should_appear() is True are returned, unless
+    `include_hidden` is set.
 
     Args:
       message: The ProtoMessage whose fields are iterated.
       root: The root ProtoNode of the tree.
+      include_hidden: If True, also yield fields which shouldn't appear in the
+          struct.
 
     Yields:
       An appropriately-typed MessageProperty object for each field
@@ -2593,8 +2822,8 @@ def proto_message_field_props(
     """
     for field in message.fields():
         property_class = PROTO_FIELD_PROPERTIES[field.type()]
-        prop = property_class(field, message, root)
-        if prop.should_appear():
+        prop = property_class(codegen_options, field, message, root)
+        if include_hidden or prop.should_appear():
             yield prop
 
 
@@ -2610,6 +2839,7 @@ def generate_class_for_message(
     message: ProtoMessage,
     root: ProtoNode,
     output: OutputFile,
+    codegen_options: GeneratorOptions,
     class_type: ClassType,
 ) -> None:
     """Creates a C++ class to encode or decoder a protobuf message."""
@@ -2691,7 +2921,9 @@ def generate_class_for_message(
         # Generate methods for each of the message's fields.
         for field in message.fields():
             for method_class in proto_field_methods(class_type, field.type()):
-                method = method_class(field, message, root, base_class)
+                method = method_class(
+                    codegen_options, field, message, root, base_class
+                )
                 if not method.should_appear():
                     continue
 
@@ -2720,6 +2952,7 @@ def define_not_in_class_methods(
     message: ProtoMessage,
     root: ProtoNode,
     output: OutputFile,
+    codegen_options: GeneratorOptions,
     class_type: ClassType,
 ) -> None:
     """Defines methods for a message class that were previously declared."""
@@ -2730,7 +2963,13 @@ def define_not_in_class_methods(
 
     for field in message.fields():
         for method_class in proto_field_methods(class_type, field.type()):
-            method = method_class(field, message, root, base_class)
+            method = method_class(
+                codegen_options,
+                field,
+                message,
+                root,
+                base_class,
+            )
             if not method.should_appear() or method.in_class_definition():
                 continue
 
@@ -2856,7 +3095,7 @@ def forward_declare(
     message: ProtoMessage,
     root: ProtoNode,
     output: OutputFile,
-    exclude_legacy_snake_case_field_name_enums: bool,
+    codegen_options: GeneratorOptions,
 ) -> None:
     """Generates code forward-declaring entities in a message's namespace."""
     namespace = message.cpp_namespace(root=root)
@@ -2870,7 +3109,7 @@ def forward_declare(
             output.write_line(f'{field.enum_name()} = {field.number()},')
 
         # Migration support from SNAKE_CASE to kConstantCase.
-        if not exclude_legacy_snake_case_field_name_enums:
+        if not codegen_options.exclude_legacy_snake_case_field_name_enums:
             for field in message.fields():
                 output.write_line(
                     f'{field.legacy_enum_name()} = {field.number()},'
@@ -2880,7 +3119,7 @@ def forward_declare(
 
     # Define constants for fixed-size fields.
     output.write_line()
-    for prop in proto_message_field_props(message, root):
+    for prop in proto_message_field_props(codegen_options, message, root):
         max_size = prop.max_size()
         if max_size:
             output.write_line(
@@ -2915,7 +3154,10 @@ def forward_declare(
 
 
 def generate_struct_for_message(
-    message: ProtoMessage, root: ProtoNode, output: OutputFile
+    message: ProtoMessage,
+    root: ProtoNode,
+    output: OutputFile,
+    codegen_options: GeneratorOptions,
 ) -> None:
     """Creates a C++ struct to hold a protobuf message values."""
     assert message.type() == ProtoNode.Type.MESSAGE
@@ -2925,13 +3167,24 @@ def generate_struct_for_message(
     # Generate members for each of the message's fields.
     with output.indent():
         cmp: list[str] = []
-        for prop in proto_message_field_props(message, root):
+        for prop in proto_message_field_props(codegen_options, message, root):
             type_name = prop.struct_member_type()
             name = prop.name()
             output.write_line(f'{type_name} {name};')
 
-            if not prop.use_callback():
+            if prop.callback_type() is _CallbackType.NONE:
                 cmp.append(f'this->{name} == other.{name}')
+
+        if codegen_options.oneof_callbacks:
+            for oneof in message.oneofs():
+                if oneof.is_synthetic():
+                    continue
+
+                fields = f'{message.cpp_namespace(root=root)}::Fields'
+                output.write_line(
+                    f'{PROTOBUF_NAMESPACE}::OneOf'
+                    f'<StreamEncoder, StreamDecoder, {fields}> {oneof.name};'
+                )
 
         # Equality operator
         output.write_line()
@@ -2952,7 +3205,10 @@ def generate_struct_for_message(
 
 
 def generate_table_for_message(
-    message: ProtoMessage, root: ProtoNode, output: OutputFile
+    message: ProtoMessage,
+    root: ProtoNode,
+    output: OutputFile,
+    codegen_options: GeneratorOptions,
 ) -> None:
     """Creates a C++ array to hold a protobuf message description."""
     assert message.type() == ProtoNode.Type.MESSAGE
@@ -2960,7 +3216,7 @@ def generate_table_for_message(
     namespace = message.cpp_namespace(root=root)
     output.write_line(f'namespace {namespace} {{')
 
-    properties = list(proto_message_field_props(message, root))
+    properties = list(proto_message_field_props(codegen_options, message, root))
 
     output.write_line('PW_MODIFY_DIAGNOSTICS_PUSH();')
     output.write_line('PW_MODIFY_DIAGNOSTIC(ignored, "-Winvalid-offsetof");')
@@ -2986,7 +3242,12 @@ def generate_table_for_message(
     #
     # The kMessageFields span is generated whether the message has fields or
     # not. Only the span is referenced elsewhere.
-    if properties:
+    all_properties = list(
+        proto_message_field_props(
+            codegen_options, message, root, include_hidden=True
+        )
+    )
+    if all_properties:
         output.write_line(
             f'inline constexpr {_INTERNAL_NAMESPACE}::MessageField '
             ' _kMessageFields[] = {'
@@ -2994,7 +3255,7 @@ def generate_table_for_message(
 
         # Generate members for each of the message's fields.
         with output.indent():
-            for prop in properties:
+            for prop in all_properties:
                 table = ', '.join(prop.table_entry())
                 output.write_line(f'{{{table}}},')
 
@@ -3010,19 +3271,20 @@ def generate_table_for_message(
             [f'message.{prop.name()}' for prop in properties]
         )
 
-        # Generate std::tuple for Message fields.
-        output.write_line(
-            'inline constexpr auto ToTuple(const Message &message) {'
-        )
-        output.write_line(f'  return std::tie({member_list});')
-        output.write_line('}')
+        if properties:
+            # Generate std::tuple for main Message fields only.
+            output.write_line(
+                'inline constexpr auto ToTuple(const Message &message) {'
+            )
+            output.write_line(f'  return std::tie({member_list});')
+            output.write_line('}')
 
-        # Generate mutable std::tuple for Message fields.
-        output.write_line(
-            'inline constexpr auto ToMutableTuple(Message &message) {'
-        )
-        output.write_line(f'  return std::tie({member_list});')
-        output.write_line('}')
+            # Generate mutable std::tuple for Message fields.
+            output.write_line(
+                'inline constexpr auto ToMutableTuple(Message &message) {'
+            )
+            output.write_line(f'  return std::tie({member_list});')
+            output.write_line('}')
     else:
         output.write_line(
             f'inline constexpr pw::span<const {_INTERNAL_NAMESPACE}::'
@@ -3033,7 +3295,10 @@ def generate_table_for_message(
 
 
 def generate_sizes_for_message(
-    message: ProtoMessage, root: ProtoNode, output: OutputFile
+    message: ProtoMessage,
+    root: ProtoNode,
+    output: OutputFile,
+    codegen_options: GeneratorOptions,
 ) -> None:
     """Creates C++ constants for the encoded sizes of a protobuf message."""
     assert message.type() == ProtoNode.Type.MESSAGE
@@ -3043,7 +3308,7 @@ def generate_sizes_for_message(
 
     property_sizes: list[str] = []
     scratch_sizes: list[str] = []
-    for prop in proto_message_field_props(message, root):
+    for prop in proto_message_field_props(codegen_options, message, root):
         property_sizes.append(prop.max_encoded_size())
         if prop.include_in_scratch_size():
             scratch_sizes.append(prop.max_encoded_size())
@@ -3074,7 +3339,10 @@ def generate_sizes_for_message(
 
 
 def generate_find_functions_for_message(
-    message: ProtoMessage, root: ProtoNode, output: OutputFile
+    message: ProtoMessage,
+    root: ProtoNode,
+    output: OutputFile,
+    codegen_options: GeneratorOptions,
 ) -> None:
     """Creates C++ constants for the encoded sizes of a protobuf message."""
     assert message.type() == ProtoNode.Type.MESSAGE
@@ -3083,18 +3351,13 @@ def generate_find_functions_for_message(
     output.write_line(f'namespace {namespace} {{')
 
     for field in message.fields():
-        if field.is_repeated():
-            # Find methods don't account for repeated field semantics, so
-            # ignore them to avoid confusion.
-            continue
-
         try:
             methods = PROTO_FIELD_FIND_METHODS[field.type()]
         except KeyError:
             continue
 
         for cls in methods:
-            method = cls(field, message, root, '')
+            method = cls(codegen_options, field, message, root, '')
             method_signature = (
                 f'inline {method.return_type()} '
                 f'{method.name()}({method.param_string()})'
@@ -3113,11 +3376,14 @@ def generate_find_functions_for_message(
 
 
 def generate_is_trivially_comparable_specialization(
-    message: ProtoMessage, root: ProtoNode, output: OutputFile
+    message: ProtoMessage,
+    root: ProtoNode,
+    output: OutputFile,
+    codegen_options: GeneratorOptions,
 ) -> None:
     is_trivially_comparable = True
-    for prop in proto_message_field_props(message, root):
-        if prop.use_callback():
+    for prop in proto_message_field_props(codegen_options, message, root):
+        if prop.callback_type() is not _CallbackType.NONE:
             is_trivially_comparable = False
             break
 
@@ -3171,8 +3437,7 @@ def generate_code_for_package(
     file_descriptor_proto,
     package: ProtoNode,
     output: OutputFile,
-    suppress_legacy_namespace: bool,
-    exclude_legacy_snake_case_field_name_enums: bool,
+    codegen_options: GeneratorOptions,
 ) -> None:
     """Generates code for a single .pb.h file corresponding to a .proto file."""
 
@@ -3220,7 +3485,7 @@ def generate_code_for_package(
                 cast(ProtoMessage, node),
                 package,
                 output,
-                exclude_legacy_snake_case_field_name_enums,
+                codegen_options,
             )
 
     # Define all top-level enums.
@@ -3237,24 +3502,41 @@ def generate_code_for_package(
     messages = []
     for message in dependency_sorted_messages(package):
         output.write_line()
-        generate_struct_for_message(message, package, output)
+        generate_struct_for_message(message, package, output, codegen_options)
         output.write_line()
-        generate_table_for_message(message, package, output)
+        generate_table_for_message(message, package, output, codegen_options)
         output.write_line()
-        generate_sizes_for_message(message, package, output)
+        generate_sizes_for_message(message, package, output, codegen_options)
         output.write_line()
-        generate_find_functions_for_message(message, package, output)
-        output.write_line()
-        generate_class_for_message(
-            message, package, output, ClassType.STREAMING_ENCODER
+        generate_find_functions_for_message(
+            message,
+            package,
+            output,
+            codegen_options,
         )
         output.write_line()
         generate_class_for_message(
-            message, package, output, ClassType.MEMORY_ENCODER
+            message,
+            package,
+            output,
+            codegen_options,
+            ClassType.STREAMING_ENCODER,
         )
         output.write_line()
         generate_class_for_message(
-            message, package, output, ClassType.STREAMING_DECODER
+            message,
+            package,
+            output,
+            codegen_options,
+            ClassType.MEMORY_ENCODER,
+        )
+        output.write_line()
+        generate_class_for_message(
+            message,
+            package,
+            output,
+            codegen_options,
+            ClassType.STREAMING_DECODER,
         )
         messages.append(message)
 
@@ -3262,13 +3544,25 @@ def generate_code_for_package(
     # methods which were previously only declared.
     for message in messages:
         define_not_in_class_methods(
-            message, package, output, ClassType.STREAMING_ENCODER
+            message,
+            package,
+            output,
+            codegen_options,
+            ClassType.STREAMING_ENCODER,
         )
         define_not_in_class_methods(
-            message, package, output, ClassType.MEMORY_ENCODER
+            message,
+            package,
+            output,
+            codegen_options,
+            ClassType.MEMORY_ENCODER,
         )
         define_not_in_class_methods(
-            message, package, output, ClassType.STREAMING_DECODER
+            message,
+            package,
+            output,
+            codegen_options,
+            ClassType.STREAMING_DECODER,
         )
 
     if package.cpp_namespace():
@@ -3278,7 +3572,7 @@ def generate_code_for_package(
         # empty (since everyone can see the global namespace). It shouldn't
         # ever be empty, though.
 
-        if not suppress_legacy_namespace:
+        if not codegen_options.suppress_legacy_namespace:
             output.write_line()
             output.write_line(
                 '// Aliases for legacy pwpb codegen interface. '
@@ -3312,7 +3606,10 @@ def generate_code_for_package(
 
         for message in messages:
             generate_is_trivially_comparable_specialization(
-                message, package, output
+                message,
+                package,
+                output,
+                codegen_options,
             )
 
         output.write_line(f'}}  // namespace {proto_namespace}')
@@ -3321,9 +3618,8 @@ def generate_code_for_package(
 def process_proto_file(
     proto_file,
     proto_options,
-    suppress_legacy_namespace: bool,
-    exclude_legacy_snake_case_field_name_enums: bool,
-) -> Iterable[OutputFile]:
+    codegen_options: GeneratorOptions,
+) -> Iterable[OutputFile] | None:
     """Generates code for a single .proto file."""
 
     # Two passes are made through the file. The first builds the tree of all
@@ -3334,12 +3630,16 @@ def process_proto_file(
 
     output_filename = _proto_filename_to_generated_header(proto_file.name)
     output_file = OutputFile(output_filename)
-    generate_code_for_package(
-        proto_file,
-        package_root,
-        output_file,
-        suppress_legacy_namespace,
-        exclude_legacy_snake_case_field_name_enums,
-    )
+
+    try:
+        generate_code_for_package(
+            proto_file,
+            package_root,
+            output_file,
+            codegen_options,
+        )
+    except CodegenError as e:
+        print(e.formatted_message(), file=sys.stderr)
+        return None
 
     return [output_file]

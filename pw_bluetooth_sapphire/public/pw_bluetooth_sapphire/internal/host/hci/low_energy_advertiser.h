@@ -34,7 +34,7 @@ class AdvertisingIntervalRange final {
   constexpr AdvertisingIntervalRange(uint16_t min, uint16_t max)
       : min_(std::max(min, hci_spec::kLEAdvertisingIntervalMin)),
         max_(std::min(max, hci_spec::kLEAdvertisingIntervalMax)) {
-    BT_ASSERT(min < max);
+    PW_ASSERT(min < max);
   }
 
   uint16_t min() const { return min_; }
@@ -107,16 +107,16 @@ class LowEnergyAdvertiser : public LocalAddressClient {
   // HostError::kAdvertisingDataTooLong or HostError::kScanResponseTooLong error
   // will be generated.
   struct AdvertisingOptions {
-    AdvertisingOptions(AdvertisingIntervalRange interval,
-                       AdvFlags flags,
-                       bool extended_pdu,
-                       bool anonymous,
-                       bool include_tx_power_level)
-        : interval(interval),
-          flags(flags),
-          extended_pdu(extended_pdu),
-          include_tx_power_level(include_tx_power_level),
-          anonymous(anonymous) {}
+    AdvertisingOptions(AdvertisingIntervalRange init_interval,
+                       AdvFlags init_flags,
+                       bool init_extended_pdu,
+                       bool init_anonymous,
+                       bool init_include_tx_power_level)
+        : interval(init_interval),
+          flags(init_flags),
+          extended_pdu(init_extended_pdu),
+          include_tx_power_level(init_include_tx_power_level),
+          anonymous(init_anonymous) {}
 
     AdvertisingIntervalRange interval;
     AdvFlags flags;
@@ -207,14 +207,14 @@ class LowEnergyAdvertiser : public LocalAddressClient {
  protected:
   // Build the HCI command packet to enable advertising for the flavor of low
   // energy advertising being implemented.
-  virtual EmbossCommandPacket BuildEnablePacket(
+  virtual CommandPacket BuildEnablePacket(
       const DeviceAddress& address,
       pw::bluetooth::emboss::GenericEnableParam enable,
       bool extended_pdu) = 0;
 
   // Build the HCI command packet to set the advertising parameters for the
   // flavor of low energy advertising being implemented.
-  virtual std::optional<EmbossCommandPacket> BuildSetAdvertisingParams(
+  virtual std::optional<CommandPacket> BuildSetAdvertisingParams(
       const DeviceAddress& address,
       const AdvertisingEventProperties& properties,
       pw::bluetooth::emboss::LEOwnAddressType own_address_type,
@@ -223,7 +223,7 @@ class LowEnergyAdvertiser : public LocalAddressClient {
 
   // Build the HCI command packet to set the advertising data for the flavor of
   // low energy advertising being implemented.
-  virtual std::vector<EmbossCommandPacket> BuildSetAdvertisingData(
+  virtual std::vector<CommandPacket> BuildSetAdvertisingData(
       const DeviceAddress& address,
       const AdvertisingData& data,
       AdvFlags flags,
@@ -232,30 +232,30 @@ class LowEnergyAdvertiser : public LocalAddressClient {
   // Build the HCI command packet to delete the advertising parameters from the
   // controller for the flavor of low energy advertising being implemented. This
   // method is used when stopping an advertisement.
-  virtual EmbossCommandPacket BuildUnsetAdvertisingData(
-      const DeviceAddress& address, bool extended_pdu) = 0;
+  virtual CommandPacket BuildUnsetAdvertisingData(const DeviceAddress& address,
+                                                  bool extended_pdu) = 0;
 
   // Build the HCI command packet to set the data sent in a scan response (if
   // requested) for the flavor of low energy advertising being implemented.
-  virtual std::vector<EmbossCommandPacket> BuildSetScanResponse(
+  virtual std::vector<CommandPacket> BuildSetScanResponse(
       const DeviceAddress& address,
       const AdvertisingData& scan_rsp,
       bool extended_pdu) = 0;
 
   // Build the HCI command packet to delete the advertising parameters from the
   // controller for the flavor of low energy advertising being implemented.
-  virtual EmbossCommandPacket BuildUnsetScanResponse(
-      const DeviceAddress& address, bool extended_pdu) = 0;
+  virtual CommandPacket BuildUnsetScanResponse(const DeviceAddress& address,
+                                               bool extended_pdu) = 0;
 
   // Build the HCI command packet to remove the advertising set entirely from
   // the controller's memory for the flavor of low energy advertising being
   // implemented.
-  virtual EmbossCommandPacket BuildRemoveAdvertisingSet(
-      const DeviceAddress& address, bool extended_pdu) = 0;
+  virtual CommandPacket BuildRemoveAdvertisingSet(const DeviceAddress& address,
+                                                  bool extended_pdu) = 0;
 
   // Called when the command packet created with BuildSetAdvertisingParams
   // returns with a result
-  virtual void OnSetAdvertisingParamsComplete(const EmbossEventPacket& event) {}
+  virtual void OnSetAdvertisingParamsComplete(const EventPacket&) {}
 
   // Called when a sequence of HCI commands that form a single operation (e.g.
   // start advertising, stop advertising) completes in its entirety. Subclasses

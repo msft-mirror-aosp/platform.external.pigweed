@@ -12,10 +12,9 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_linker_script",
-)
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
+load("//pw_build:pw_linker_script.bzl", "pw_linker_script")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -68,4 +67,12 @@ cc_library(
     ],
     includes = ["./"],
     deps = ["//third_party/freertos:config_assert"],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "target_docs.rst",
+    ],
+    target_compatible_with = incompatible_with_mcu(),
 )

@@ -13,7 +13,7 @@
 # the License.
 
 load("//pw_build:compatibility.bzl", "boolean_constraint_value")
-load("//pw_build:pigweed.bzl", "pw_facade")
+load("//pw_build:pw_facade.bzl", "pw_facade")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -53,7 +53,7 @@ pw_facade(
         "public/pw_cpu_exception/state.h",
     ],
     backend = ":entry_backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_preprocessor",
     ],
@@ -67,7 +67,7 @@ pw_facade(
     implementation_deps = [
         "//pw_preprocessor",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [":entry"],
 )
 
@@ -75,7 +75,7 @@ pw_facade(
     name = "support",
     hdrs = ["public/pw_cpu_exception/support.h"],
     backend = ":support_backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":entry",
     ],

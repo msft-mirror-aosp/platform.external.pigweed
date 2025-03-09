@@ -33,7 +33,11 @@ Tokenization
       .. doxygenclass:: pw::tokenizer::EncodedMessage
          :members:
       .. doxygenfunction:: pw::tokenizer::MinEncodingBufferSizeBytes
+      .. doxygenfunction:: pw::tokenizer::EnumToToken
+      .. doxygenfunction:: pw::tokenizer::EnumToString
       .. doxygendefine:: PW_TOKEN_FMT
+      .. doxygendefine:: PW_TOKENIZE_ENUM
+      .. doxygendefine:: PW_TOKENIZE_ENUM_CUSTOM
       .. doxygendefine:: PW_TOKENIZE_FORMAT_STRING
       .. doxygendefine:: PW_TOKENIZE_FORMAT_STRING_ANY_ARG_COUNT
       .. doxygendefine:: PW_TOKENIZE_STRING
@@ -47,6 +51,7 @@ Tokenization
       .. doxygendefine:: PW_TOKENIZE_TO_BUFFER_MASK
       .. doxygendefine:: PW_TOKENIZER_REPLACE_FORMAT_STRING
       .. doxygendefine:: PW_TOKENIZER_ARG_TYPES
+      .. doxygendefine:: PW_TOKENIZER_DEFINE_TOKEN
       .. doxygenfunction:: pw_tokenizer_EncodeArgs
       .. doxygenfunction:: pw_tokenizer_EncodeInt
       .. doxygenfunction:: pw_tokenizer_EncodeInt64

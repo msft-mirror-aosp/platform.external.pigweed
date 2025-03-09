@@ -34,7 +34,7 @@ LowEnergyInterrogator::LowEnergyInterrogator(
       weak_self_(this) {}
 
 void LowEnergyInterrogator::Start(ResultCallback callback) {
-  BT_ASSERT(!callback_);
+  PW_CHECK(!callback_);
   callback_ = std::move(callback);
 
   if (!peer_.is_alive()) {
@@ -42,7 +42,7 @@ void LowEnergyInterrogator::Start(ResultCallback callback) {
     return;
   }
 
-  BT_ASSERT(peer_->le().has_value());
+  PW_CHECK(peer_->le().has_value());
 
   // Always read remote version information as a test of whether the connection
   // was *actually* successfully established. If the connection failed to be
@@ -109,7 +109,7 @@ void LowEnergyInterrogator::Complete(hci::Result<> result) {
 }
 
 void LowEnergyInterrogator::QueueRequestPeerSca() {
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::LERequestPeerSCACommandWriter>(
       hci_spec::kLERequestPeerSCA);
   packet.view_t().connection_handle().Write(handle_);
@@ -117,8 +117,8 @@ void LowEnergyInterrogator::QueueRequestPeerSca() {
   // It's safe to capture |this| instead of a weak ptr to self because
   // |cmd_runner_| guarantees that |cmd_cb| won't be invoked if |cmd_runner_| is
   // destroyed, and |this| outlives |cmd_runner_|.
-  auto cmd_cb = [this](const hci::EmbossEventPacket& event) {
-    if (hci_is_error(event, WARN, "gap-le", "LE request peer SCA failed")) {
+  auto cmd_cb = [this](const hci::EventPacket& event) {
+    if (HCI_IS_ERROR(event, WARN, "gap-le", "LE request peer SCA failed")) {
       return;
     }
     auto view = event.view<
@@ -140,9 +140,9 @@ void LowEnergyInterrogator::QueueRequestPeerSca() {
   cmd_runner_.RunCommands([this](hci::Result<> result) {
     // This shouldn't happen since we verified that the peer supports SCA
     // updates
-    BT_DEBUG_ASSERT_MSG(!result.is_error(),
-                        "request for SCA from peer %s failed",
-                        bt_str(peer_id_));
+    PW_DCHECK(!result.is_error(),
+              "request for SCA from peer %s failed",
+              bt_str(peer_id_));
     // Report success since the data is not critical and we don't want to
     // interrupt pairing
     Complete(fit::ok());
@@ -150,7 +150,7 @@ void LowEnergyInterrogator::QueueRequestPeerSca() {
 }
 
 void LowEnergyInterrogator::QueueReadLERemoteFeatures() {
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::LEReadRemoteFeaturesCommandWriter>(
       hci_spec::kLEReadRemoteFeatures);
   packet.view_t().connection_handle().Write(handle_);
@@ -158,9 +158,9 @@ void LowEnergyInterrogator::QueueReadLERemoteFeatures() {
   // It's safe to capture |this| instead of a weak ptr to self because
   // |cmd_runner_| guarantees that |cmd_cb| won't be invoked if |cmd_runner_| is
   // destroyed, and |this| outlives |cmd_runner_|.
-  auto cmd_cb = [this](const hci::EmbossEventPacket& event) {
+  auto cmd_cb = [this](const hci::EventPacket& event) {
     peer_->MutLe().SetFeatureInterrogationComplete();
-    if (hci_is_error(event, WARN, "gap-le", "LE read remote features failed")) {
+    if (HCI_IS_ERROR(event, WARN, "gap-le", "LE read remote features failed")) {
       return;
     }
     bt_log(DEBUG,
@@ -185,7 +185,7 @@ void LowEnergyInterrogator::QueueReadLERemoteFeatures() {
 }
 
 void LowEnergyInterrogator::QueueReadRemoteVersionInformation() {
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::ReadRemoteVersionInfoCommandWriter>(
       hci_spec::kReadRemoteVersionInfo);
   packet.view_t().connection_handle().Write(handle_);
@@ -193,13 +193,13 @@ void LowEnergyInterrogator::QueueReadRemoteVersionInformation() {
   // It's safe to capture |this| instead of a weak ptr to self because
   // |cmd_runner_| guarantees that |cmd_cb| won't be invoked if |cmd_runner_| is
   // destroyed, and |this| outlives |cmd_runner_|.
-  auto cmd_cb = [this](const hci::EmbossEventPacket& event) {
-    if (hci_is_error(
+  auto cmd_cb = [this](const hci::EventPacket& event) {
+    if (HCI_IS_ERROR(
             event, WARN, "gap-le", "read remote version info failed")) {
       return;
     }
-    BT_DEBUG_ASSERT(event.event_code() ==
-                    hci_spec::kReadRemoteVersionInfoCompleteEventCode);
+    PW_DCHECK(event.event_code() ==
+              hci_spec::kReadRemoteVersionInfoCompleteEventCode);
     bt_log(TRACE,
            "gap-le",
            "read remote version info completed (peer: %s)",

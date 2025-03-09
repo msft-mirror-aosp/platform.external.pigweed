@@ -386,7 +386,7 @@ const auto kIoCapabilityRequestNegativeReply =
 const auto kIoCapabilityRequestNegativeReplyRsp =
     testing::IoCapabilityRequestNegativeReplyResponse(TEST_DEV_ADDR);
 
-DynamicByteBuffer MakeUserConfirmationRequest(uint32_t passkey) {
+DynamicByteBuffer MakeUserConfirmationRequest(uint32_t) {
   return testing::UserConfirmationRequestPacket(TEST_DEV_ADDR, kPasskey);
 }
 
@@ -489,7 +489,7 @@ DynamicByteBuffer MakeUserPasskeyRequestReply() {
 const auto kUserPasskeyRequestReplyRsp =
     testing::UserPasskeyRequestReplyResponse(TEST_DEV_ADDR);
 
-DynamicByteBuffer MakeUserPasskeyNotification(uint32_t passkey) {
+DynamicByteBuffer MakeUserPasskeyNotification(uint32_t) {
   return testing::UserPasskeyNotificationPacket(TEST_DEV_ADDR, kPasskey);
 }
 
@@ -1015,7 +1015,7 @@ TEST_F(BrEdrConnectionManagerLegacyPairingTest,
   QueueDisconnection(kConnectionHandle);
   connmgr()->Pair(peer->identifier(),
                   kNoSecurityRequirements,
-                  [](hci::Result<> status) { FAIL(); });
+                  [](hci::Result<>) { FAIL(); });
 
   RunUntilIdle();
 
@@ -1290,7 +1290,7 @@ TEST_F(
 
   // Approve pairing requests.
   pairing_delegate.SetDisplayPasskeyCallback(
-      [](PeerId, uint32_t passkey, auto method, auto confirm_cb) {
+      [](PeerId, uint32_t, auto, auto confirm_cb) {
         ASSERT_TRUE(confirm_cb);
         confirm_cb(true);
       });
@@ -1521,6 +1521,10 @@ TEST_F(BrEdrConnectionManagerTest, IncomingConnectionSuccess) {
   EXPECT_EQ(kIncomingConnTransactions, transaction_count());
   // Confirm remote name request during interrogation sets proper name source.
   EXPECT_EQ(peer->name_source(), Peer::NameSource::kNameDiscoveryProcedure);
+  // We should have set the Class Of Device from the incoming connection request
+  ASSERT_TRUE(peer->bredr()->device_class().has_value());
+  // endianness so this magic number is backwards from the packet definition
+  EXPECT_EQ(*peer->bredr()->device_class(), DeviceClass(0x000C425A));
 
   // When we deallocate the connection manager during teardown, we should
   // disconnect.
@@ -2621,7 +2625,7 @@ TEST_F(BrEdrConnectionManagerTest, OpenL2capPairsAndEncryptsThenRetries) {
 
   // Approve pairing requests.
   pairing_delegate.SetDisplayPasskeyCallback(
-      [](PeerId, uint32_t passkey, auto method, auto confirm_cb) {
+      [](PeerId, uint32_t, auto, auto confirm_cb) {
         ASSERT_TRUE(confirm_cb);
         confirm_cb(true);
       });
@@ -2870,7 +2874,7 @@ TEST_F(BrEdrConnectionManagerTest, OpenL2capPairingFinishesButDisconnects) {
 
   // Approve pairing requests.
   pairing_delegate.SetDisplayPasskeyCallback(
-      [](PeerId, uint32_t passkey, auto method, auto confirm_cb) {
+      [](PeerId, uint32_t, auto, auto confirm_cb) {
         ASSERT_TRUE(confirm_cb);
         confirm_cb(true);
       });
@@ -2977,7 +2981,7 @@ TEST_F(BrEdrConnectionManagerTest,
 
   // Approve pairing requests
   pairing_delegate.SetDisplayPasskeyCallback(
-      [](PeerId, uint32_t passkey, auto method, auto confirm_cb) {
+      [](PeerId, uint32_t, auto, auto confirm_cb) {
         ASSERT_TRUE(confirm_cb);
         confirm_cb(true);
       });
@@ -3079,7 +3083,7 @@ TEST_F(BrEdrConnectionManagerTest,
 
   // Approve pairing requests
   pairing_delegate.SetDisplayPasskeyCallback(
-      [](PeerId, uint32_t passkey, auto method, auto confirm_cb) {
+      [](PeerId, uint32_t, auto, auto confirm_cb) {
         ASSERT_TRUE(confirm_cb);
         confirm_cb(true);
       });
@@ -4071,7 +4075,7 @@ TEST_F(BrEdrConnectionManagerTest, SDPChannelCreationFailsGracefully) {
       [](auto new_chan) { ASSERT_FALSE(new_chan.is_alive()); });
 
   // Since SDP channel creation fails, search_cb should not be called by SDP.
-  auto search_cb = [&](auto id, const auto& attributes) { FAIL(); };
+  auto search_cb = [&](auto, const auto&) { FAIL(); };
   connmgr()->AddServiceSearch(
       sdp::profile::kAudioSink, {sdp::kServiceId}, search_cb);
 
@@ -4243,7 +4247,7 @@ TEST_F(BrEdrConnectionManagerTest, Pair) {
 
   // Approve pairing requests.
   pairing_delegate.SetDisplayPasskeyCallback(
-      [](PeerId, uint32_t passkey, auto method, auto confirm_cb) {
+      [](PeerId, uint32_t, auto, auto confirm_cb) {
         ASSERT_TRUE(confirm_cb);
         confirm_cb(true);
       });
@@ -4292,7 +4296,7 @@ TEST_F(BrEdrConnectionManagerTest, PairTwice) {
 
   // Approve pairing requests.
   pairing_delegate.SetDisplayPasskeyCallback(
-      [](PeerId, uint32_t passkey, auto method, auto confirm_cb) {
+      [](PeerId, uint32_t, auto, auto confirm_cb) {
         ASSERT_TRUE(confirm_cb);
         confirm_cb(true);
       });
@@ -4354,9 +4358,7 @@ TEST_F(BrEdrConnectionManagerTest,
   connmgr()->SetPairingDelegate(pairing_delegate.GetWeakPtr());
   // Approve pairing requests.
   pairing_delegate.SetDisplayPasskeyCallback(
-      [](PeerId, uint32_t passkey, auto method, auto confirm_cb) {
-        confirm_cb(true);
-      });
+      [](PeerId, uint32_t, auto, auto confirm_cb) { confirm_cb(true); });
   pairing_delegate.SetCompletePairingCallback(
       [](PeerId, sm::Result<> status) { EXPECT_EQ(fit::ok(), status); });
 
@@ -4480,9 +4482,7 @@ TEST_F(BrEdrConnectionManagerTest, OpenL2capChannelUpgradesLinkKey) {
       sm::IOCapability::kDisplayYesNo);
   connmgr()->SetPairingDelegate(pairing_delegate_with_display.GetWeakPtr());
   pairing_delegate_with_display.SetDisplayPasskeyCallback(
-      [](PeerId, uint32_t passkey, auto method, auto confirm_cb) {
-        confirm_cb(true);
-      });
+      [](PeerId, uint32_t, auto, auto confirm_cb) { confirm_cb(true); });
   pairing_delegate_with_display.SetCompletePairingCallback(
       [](PeerId, sm::Result<> status) { EXPECT_EQ(fit::ok(), status); });
 
@@ -5223,7 +5223,7 @@ TEST_F(BrEdrConnectionManagerTest,
 
   // Approve pairing requests
   pairing_delegate.SetDisplayPasskeyCallback(
-      [](PeerId, uint32_t passkey, auto method, auto confirm_cb) {
+      [](PeerId, uint32_t, auto, auto confirm_cb) {
         ASSERT_TRUE(confirm_cb);
         confirm_cb(true);
       });
@@ -5328,7 +5328,7 @@ TEST_F(BrEdrConnectionManagerTest,
 
   // Approve pairing requests
   pairing_delegate.SetDisplayPasskeyCallback(
-      [](PeerId, uint32_t passkey, auto method, auto confirm_cb) {
+      [](PeerId, uint32_t, auto, auto confirm_cb) {
         ASSERT_TRUE(confirm_cb);
         confirm_cb(true);
       });
@@ -5380,7 +5380,7 @@ TEST_F(BrEdrConnectionManagerTest,
 
   // Approve pairing requests.
   pairing_delegate.SetDisplayPasskeyCallback(
-      [](PeerId, uint32_t passkey, auto method, auto confirm_cb) {
+      [](PeerId, uint32_t, auto, auto confirm_cb) {
         ASSERT_TRUE(confirm_cb);
         confirm_cb(true);
       });
@@ -5437,7 +5437,7 @@ TEST_F(BrEdrConnectionManagerTest,
 
   // Approve pairing requests.
   pairing_delegate.SetDisplayPasskeyCallback(
-      [](PeerId, uint32_t passkey, auto method, auto confirm_cb) {
+      [](PeerId, uint32_t, auto, auto confirm_cb) {
         ASSERT_TRUE(confirm_cb);
         confirm_cb(true);
       });

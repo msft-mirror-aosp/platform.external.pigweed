@@ -234,8 +234,7 @@ class BrEdrConnectionManager final {
 
   // Helper to register an event handler to run.
   hci::CommandChannel::EventHandlerId AddEventHandler(
-      const hci_spec::EventCode& code,
-      hci::CommandChannel::EventCallbackVariant cb);
+      const hci_spec::EventCode& code, hci::CommandChannel::EventCallback cb);
 
   // Find the outstanding connection request object for a connection request
   // to/from |peer_id|. Returns nullopt if no request for |peer_id| exists.
@@ -269,31 +268,31 @@ class BrEdrConnectionManager final {
 
   // Callbacks for registered events
   hci::CommandChannel::EventCallbackResult OnAuthenticationComplete(
-      const hci::EmbossEventPacket& event);
+      const hci::EventPacket& event);
   hci::CommandChannel::EventCallbackResult OnConnectionRequest(
-      const hci::EmbossEventPacket& event);
+      const hci::EventPacket& event);
   hci::CommandChannel::EventCallbackResult OnConnectionComplete(
-      const hci::EmbossEventPacket& event);
+      const hci::EventPacket& event);
   hci::CommandChannel::EventCallbackResult OnIoCapabilityRequest(
-      const hci::EmbossEventPacket& event);
+      const hci::EventPacket& event);
   hci::CommandChannel::EventCallbackResult OnIoCapabilityResponse(
-      const hci::EmbossEventPacket& event);
+      const hci::EventPacket& event);
   hci::CommandChannel::EventCallbackResult OnLinkKeyRequest(
-      const hci::EmbossEventPacket& event);
+      const hci::EventPacket& event);
   hci::CommandChannel::EventCallbackResult OnLinkKeyNotification(
-      const hci::EmbossEventPacket& event);
+      const hci::EventPacket& event);
   hci::CommandChannel::EventCallbackResult OnSimplePairingComplete(
-      const hci::EmbossEventPacket& event_packet);
+      const hci::EventPacket& event_packet);
   hci::CommandChannel::EventCallbackResult OnUserConfirmationRequest(
-      const hci::EmbossEventPacket& event_packet);
+      const hci::EventPacket& event_packet);
   hci::CommandChannel::EventCallbackResult OnUserPasskeyRequest(
-      const hci::EmbossEventPacket& event_packet);
+      const hci::EventPacket& event_packet);
   hci::CommandChannel::EventCallbackResult OnUserPasskeyNotification(
-      const hci::EmbossEventPacket& event_packet);
+      const hci::EventPacket& event_packet);
   hci::CommandChannel::EventCallbackResult OnRoleChange(
-      const hci::EmbossEventPacket& event);
+      const hci::EventPacket& event);
   hci::CommandChannel::EventCallbackResult OnPinCodeRequest(
-      const hci::EmbossEventPacket& event);
+      const hci::EventPacket& event);
 
   void HandleNonAclConnectionRequest(const DeviceAddress& addr,
                                      pw::bluetooth::emboss::LinkType link_type);

@@ -38,10 +38,13 @@ from pathlib import Path
 import sys
 from types import ModuleType
 from typing import (
+    Any,
     Callable,
     Collection,
     TYPE_CHECKING,
 )
+
+import debugpy  # type: ignore
 
 from pw_cli import log as pw_cli_log
 from pw_console import embed
@@ -134,6 +137,19 @@ def add_logfile_args(
         default='pw_console-device-logs.txt',
         help='Device only log file.',
     )
+    parser.add_argument(
+        '--debugger-listen',
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help='Start the debugpy listener.',
+    )
+    parser.add_argument(
+        '--debugger-wait-for-client',
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help='Pause console start until a debugger connects.',
+    )
+
     return parser
 
 
@@ -302,8 +318,18 @@ def console(
     browser: bool = False,
     timestamp_decoder: Callable[[int], str] | None = None,
     device_connection: DeviceConnection | None = None,
+    debugger_listen: bool = False,
+    debugger_wait_for_client: bool = False,
+    extra_frame_handlers: dict[int, Callable[[bytes, Any], Any]] | None = None,
 ) -> int:
     """Starts an interactive RPC console for HDLC."""
+
+    if debugger_listen or debugger_wait_for_client:
+        debugpy.listen(("localhost", 5678))
+
+    if debugger_wait_for_client:
+        debugpy.wait_for_client()
+
     # Don't send device logs to the root logger.
     _DEVICE_LOG.propagate = False
     # Create pw_console log_store.LogStore handlers. These are the data source
@@ -385,6 +411,7 @@ def console(
             hdlc_encoding=hdlc_encoding,
             device_tracing=device_tracing,
             timestamp_decoder=timestamp_decoder,
+            extra_frame_handlers=extra_frame_handlers,
         )
 
     with device_connection as device_client:
@@ -409,6 +436,7 @@ def main(
     compiled_protos: list[ModuleType] | None = None,
     timestamp_decoder: Callable[[int], str] | None = None,
     device_connection: DeviceConnection | None = None,
+    extra_frame_handlers: dict[int, Callable[[bytes, Any], Any]] | None = None,
 ) -> int:
     """Startup the pw console UI for a pw_system device.
 
@@ -439,6 +467,7 @@ def main(
         compiled_protos=compiled_protos,
         timestamp_decoder=timestamp_decoder,
         device_connection=device_connection,
+        extra_frame_handlers=extra_frame_handlers,
     )
 
 

@@ -45,7 +45,7 @@ This is encoded as 4 bytes: ``44 a2 c9 da``.
 Arguments are encoded as follows:
 
 * **Integers**  (1--10 bytes) --
-  `ZagZag and varint encoded <https://developers.google.com/protocol-buffers/docs/encoding#signed-integers>`_,
+  `ZagZag and varint encoded <https://developers.google.com/protocol-buffers/docs/encoding#signed-ints>`_,
   similarly to Protocol Buffers. Smaller values take fewer bytes.
 * **Floating point numbers** (4 bytes) -- Single precision floating point.
 * **Strings** (1--128 bytes) -- Length byte followed by the string contents.
@@ -277,6 +277,43 @@ tokenized.
 
 .. _module-pw_tokenizer-custom-macro:
 
+Tokenizing enums
+================
+Logging enums is one common special case where tokenization is particularly
+appropriate: enum values are conceptually already tokens mapping to their
+names, assuming no duplicate values.
+
+:c:macro:`PW_TOKENIZE_ENUM` will take in a fully qualified enum name along with all
+of the associated enum values. This macro will create database entries that
+include the domain name (fully qualified enum name), enum value, and a tokenized
+form of the enum value.
+
+The macro also supports returing the string version of the enum value in the
+case that there is a non-tokenizing backend, using
+:cpp:func:`pw::tokenizer::EnumToString`.
+
+All enum values in the enum declaration must be present in the macro, and the
+macro must be in the same namespace as the enum to be able to use the
+:cpp:func:`pw::tokenizer::EnumToString` function and avoid compiler errors.
+
+.. literalinclude: enum_test.cc
+   :language: cpp
+   :start-after: [pw_tokenizer-examples-enum]
+   :end-before: [pw_tokenizer-examples-enum]
+
+:c:macro:`PW_TOKENIZE_ENUM_CUSTOM` is an alternative version of
+:c:macro:`PW_TOKENIZE_ENUM` to tokenized a custom strings instead of a
+stringified form of the enum value name. It will take in a fully qualified enum
+name along with all the associated enum values and custom string for these
+values. This macro will create database entries that include the domain name
+(fully qualified enum name), enum value, and a tokenized form of the custom
+string for the enum value.
+
+.. literalinclude: enum_test.cc
+   :language: cpp
+   :start-after: [pw_tokenizer-examples-enum-custom]
+   :end-before: [pw_tokenizer-examples-enum-custom]
+
 Tokenize a message with arguments in a custom macro
 ===================================================
 Projects can leverage the tokenization machinery in whichever way best suits
@@ -489,6 +526,9 @@ following:
 * Create a separate database for a small number of strings that use truncated
   tokens, for example only 10 or 16 bits instead of the full 32 bits.
 
+When a domain is specified, any whitespace will be ignored in domain names and
+removed from the database.
+
 If no domain is specified, the domain is empty (``""``). For many projects, this
 default domain is sufficient, so no additional configuration is required.
 
@@ -500,14 +540,15 @@ default domain is sufficient, so no additional configuration is required.
    // Tokenizes this string to the "my_custom_domain" domain.
    PW_TOKENIZE_STRING_DOMAIN("my_custom_domain", "Hello, world!");
 
-The database and detokenization command line tools default to reading from the
-default domain. The domain may be specified for ELF files by appending
-``#DOMAIN_NAME`` to the file path. Use ``#.*`` to read from all domains. For
-example, the following reads strings in ``some_domain`` from ``my_image.elf``.
+The database and detokenization command line tools default to loading tokens
+from all domains. The domain may be specified for ELF files by appending
+``#DOMAIN_NAME_REGEX`` to the file path. Use ``#`` to only read from the default
+domain. For example, the following reads strings in ``some_domain`` from
+``my_image.elf``.
 
 .. code-block:: sh
 
-   ./database.py create --database my_db.csv path/to/my_image.elf#some_domain
+   ./database.py create --database my_db.csv "path/to/my_image.elf#some_domain"
 
 See :ref:`module-pw_tokenizer-managing-token-databases` for information about
 the ``database.py`` command line tool.

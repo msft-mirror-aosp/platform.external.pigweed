@@ -18,6 +18,12 @@ load("//pw_build:python.bzl", "pw_py_binary", "pw_py_test")
 
 package(default_visibility = ["//visibility:public"])
 
+# TODO(jrreinhart): Move this file to pw_elf.
+exports_files(
+    ["elf_reader_test_binary.elf"],
+    visibility = ["//pw_elf:__pkg__"],
+)
+
 py_library(
     name = "pw_tokenizer",
     srcs = [
@@ -35,6 +41,16 @@ py_library(
     imports = ["."],
     deps = [
         "//pw_cli/py:pw_cli",
+    ],
+)
+
+pw_py_binary(
+    name = "database",
+    srcs = [
+        "pw_tokenizer/database.py",
+    ],
+    deps = [
+        ":pw_tokenizer",
     ],
 )
 

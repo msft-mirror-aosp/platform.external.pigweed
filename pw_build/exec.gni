@@ -25,6 +25,8 @@ import("python_action.gni")
 #
 #  args: Optional list of arguments to the program.
 #
+#  depfile: Optional depfile of the underlying target.
+#
 #  deps: Dependencies for this target.
 #
 #  public_deps: Public dependencies for this target. In addition to outputs from
@@ -138,9 +140,15 @@ template("pw_exec") {
 
     forward_variables_from(invoker,
                            [
+                             "cflags",
+                             "cflags_c",
+                             "configs",
+                             "defines",
+                             "depfile",
                              "deps",
                              "inputs",
                              "pool",
+                             "public_configs",
                              "public_deps",
                              "venv",
                              "visibility",
