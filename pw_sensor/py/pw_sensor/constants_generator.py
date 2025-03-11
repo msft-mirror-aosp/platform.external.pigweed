@@ -360,6 +360,7 @@ class SensorSpec:
     attributes: List[SensorAttributeSpec]
     channels: dict[str, List[ChannelSpec]]
     triggers: List[Any]
+    extras: dict[str, Any]
 
 
 class Sensor(Printable):
@@ -697,7 +698,7 @@ class InputData:
             attribute = attribute_type(
                 attr_id=attribute_id, definition=attribute_spec
             )
-            assert not attribute in self.all_attributes
+            assert attribute not in self.all_attributes
             self.all_attributes.add(attribute)
         for channel_id, channel_spec in spec.channels.items():
             channel = channel_type(
@@ -705,17 +706,17 @@ class InputData:
                 definition=channel_spec,
                 units=self.all_units,
             )
-            assert not channel in self.all_channels
+            assert channel not in self.all_channels
             self.all_channels.add(channel)
         for trigger_id, trigger_spec in spec.triggers.items():
             trigger = trigger_type(
                 trigger_id=trigger_id, definition=trigger_spec
             )
-            assert not trigger in self.all_triggers
+            assert trigger not in self.all_triggers
             self.all_triggers.add(trigger)
         for sensor_id, sensor_spec in spec.sensors.items():
             sensor = sensor_type(item_id=sensor_id, definition=sensor_spec)
-            assert not sensor in self.all_sensors
+            assert sensor not in self.all_sensors
             self.all_sensors.add(sensor)
 
 
@@ -773,17 +774,19 @@ def create_dataclass_from_dict(cls, data, indent: int = 0):
         # dataclass. If it is, recurse.
         if is_list_type(field.type):
             item_type = typing.get_args(field.type)[0]
-            print((" " * indent) + str(item_type), file=sys.stderr)
             field_value = [
                 create_dataclass_from_dict(item_type, item, indent + 2)
                 for item in field_value
             ]
         elif dict in field.type.__mro__:
-            value_type = typing.get_args(field.type)[1]
-            field_value = {
-                key: create_dataclass_from_dict(value_type, val, indent + 2)
-                for key, val in field_value.items()
-            }
+            # We might not have types specified in the dataclass
+            value_types = typing.get_args(field.type)
+            if len(value_types) != 0:
+                value_type = value_types[1]
+                field_value = {
+                    key: create_dataclass_from_dict(value_type, val, indent + 2)
+                    for key, val in field_value.items()
+                }
         elif is_dataclass(field.type):
             field_value = create_dataclass_from_dict(
                 field.type, field_value, indent + 2

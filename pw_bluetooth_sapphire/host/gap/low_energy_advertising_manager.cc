@@ -49,10 +49,11 @@ hci::AdvertisingIntervalRange GetIntervalRange(AdvertisingInterval interval) {
 AdvertisementInstance::AdvertisementInstance() : id_(kInvalidAdvertisementId) {}
 
 AdvertisementInstance::AdvertisementInstance(
-    AdvertisementId id, WeakSelf<LowEnergyAdvertisingManager>::WeakPtr owner)
-    : id_(id), owner_(std::move(owner)) {
-  BT_DEBUG_ASSERT(id_ != kInvalidAdvertisementId);
-  BT_DEBUG_ASSERT(owner_.is_alive());
+    AdvertisementId advertisement_id,
+    fit::function<void(AdvertisementId)> stop_advertising)
+    : id_(advertisement_id), stop_advertising_(std::move(stop_advertising)) {
+  PW_DCHECK(id_ != kInvalidAdvertisementId);
+  PW_DCHECK(stop_advertising_ != nullptr);
 }
 
 AdvertisementInstance::~AdvertisementInstance() { Reset(); }
@@ -63,17 +64,17 @@ void AdvertisementInstance::Move(AdvertisementInstance* other) {
 
   // Transfer the old data over and clear |other| so that it no longer owns its
   // advertisement.
-  owner_ = std::move(other->owner_);
+  stop_advertising_ = std::move(other->stop_advertising_);
   id_ = other->id_;
   other->id_ = kInvalidAdvertisementId;
 }
 
 void AdvertisementInstance::Reset() {
-  if (owner_.is_alive() && id_ != kInvalidAdvertisementId) {
-    owner_->StopAdvertising(id_);
+  if (stop_advertising_ && id_ != kInvalidAdvertisementId) {
+    stop_advertising_(id_);
   }
 
-  owner_.reset();
+  stop_advertising_ = nullptr;
   id_ = kInvalidAdvertisementId;
 }
 
@@ -104,8 +105,8 @@ LowEnergyAdvertisingManager::LowEnergyAdvertisingManager(
     : advertiser_(advertiser),
       local_addr_delegate_(local_addr_delegate),
       weak_self_(this) {
-  BT_DEBUG_ASSERT(advertiser_);
-  BT_DEBUG_ASSERT(local_addr_delegate_);
+  PW_DCHECK(advertiser_);
+  PW_DCHECK(local_addr_delegate_);
 }
 
 LowEnergyAdvertisingManager::~LowEnergyAdvertisingManager() {
@@ -124,6 +125,7 @@ void LowEnergyAdvertisingManager::StartAdvertising(
     bool extended_pdu,
     bool anonymous,
     bool include_tx_power_level,
+    std::optional<DeviceAddress::Type> address_type,
     AdvertisingStatusCallback status_callback) {
   // Can't be anonymous and connectable
   if (anonymous && connect_callback) {
@@ -149,9 +151,9 @@ void LowEnergyAdvertisingManager::StartAdvertising(
 
   auto self = weak_self_.GetWeakPtr();
 
-  // TODO(fxbug.dev/42083437): The address used for legacy advertising must be
-  // coordinated via |local_addr_delegate_| however a unique address can be
-  // generated and assigned to each advertising set when the controller
+  // TODO: https://fxbug.dev/42083437 - The address used for legacy advertising
+  // must be coordinated via |local_addr_delegate_| however a unique address can
+  // be generated and assigned to each advertising set when the controller
   // supports 5.0 extended advertising. hci::LowEnergyAdvertiser needs to be
   // revised to not use device addresses to distinguish between advertising
   // instances especially since |local_addr_delegate_| is likely to return the
@@ -159,25 +161,32 @@ void LowEnergyAdvertisingManager::StartAdvertising(
   //
   // Revisit this logic when multi-advertising is supported.
   local_addr_delegate_->EnsureLocalAddress(
+      address_type,
       [self,
-       data = std::move(data),
-       scan_rsp = std::move(scan_rsp),
+       advertising_data = std::move(data),
+       scan_response = std::move(scan_rsp),
        options,
        connect_cb = std::move(connect_callback),
-       status_cb = std::move(status_callback)](const auto& address) mutable {
+       status_cb = std::move(status_callback)](
+          fit::result<HostError, const DeviceAddress> result) mutable {
         if (!self.is_alive()) {
           return;
         }
 
+        if (result.is_error()) {
+          status_cb(AdvertisementInstance(), fit::error(result.error_value()));
+          return;
+        }
+
         auto ad_ptr = std::make_unique<ActiveAdvertisement>(
-            address,
+            result.value(),
             AdvertisementId(self->next_advertisement_id_++),
             options.extended_pdu);
         hci::LowEnergyAdvertiser::ConnectionCallback adv_conn_cb;
         if (connect_cb) {
           adv_conn_cb = [self,
                          id = ad_ptr->id(),
-                         connect_cb = std::move(connect_cb)](auto link) {
+                         on_connect_cb = std::move(connect_cb)](auto link) {
             bt_log(DEBUG, "gap-le", "received new connection");
 
             if (!self.is_alive()) {
@@ -186,31 +195,37 @@ void LowEnergyAdvertisingManager::StartAdvertising(
 
             // remove the advertiser because advertising has stopped
             self->advertisements_.erase(id);
-            connect_cb(id, std::move(link));
+            on_connect_cb(id, std::move(link));
           };
         }
-        auto status_cb_wrapper =
-            [self,
-             ad_ptr = std::move(ad_ptr),
-             status_cb = std::move(status_cb)](hci::Result<> status) mutable {
-              if (!self.is_alive()) {
-                return;
-              }
+        auto status_cb_wrapper = [self,
+                                  advertisement_ptr = std::move(ad_ptr),
+                                  result_cb = std::move(status_cb)](
+                                     hci::Result<> status) mutable {
+          if (!self.is_alive()) {
+            return;
+          }
 
-              if (status.is_error()) {
-                status_cb(AdvertisementInstance(), status);
-                return;
-              }
+          if (status.is_error()) {
+            result_cb(AdvertisementInstance(), status);
+            return;
+          }
 
-              auto id = ad_ptr->id();
-              self->advertisements_.emplace(id, std::move(ad_ptr));
-              status_cb(AdvertisementInstance(id, self), status);
-            };
+          auto id = advertisement_ptr->id();
+          self->advertisements_.emplace(id, std::move(advertisement_ptr));
+          auto stop_advertising_cb = [self](AdvertisementId stop_id) {
+            if (self.is_alive()) {
+              self->StopAdvertising(stop_id);
+            }
+          };
+          result_cb(AdvertisementInstance(id, std::move(stop_advertising_cb)),
+                    status);
+        };
 
         // Call StartAdvertising, with the callback
-        self->advertiser_->StartAdvertising(address,
-                                            data,
-                                            scan_rsp,
+        self->advertiser_->StartAdvertising(result.value(),
+                                            advertising_data,
+                                            scan_response,
                                             options,
                                             std::move(adv_conn_cb),
                                             std::move(status_cb_wrapper));

@@ -26,12 +26,11 @@ FakeBrEdrConnection::FakeBrEdrConnection(
 
 void FakeBrEdrConnection::TriggerEncryptionChangeCallback(
     hci::Result<bool> result) {
-  BT_ASSERT(encryption_change_callback());
+  PW_CHECK(encryption_change_callback());
   encryption_change_callback()(result);
 }
 
-void FakeBrEdrConnection::Disconnect(pw::bluetooth::emboss::StatusCode reason) {
-}
+void FakeBrEdrConnection::Disconnect(pw::bluetooth::emboss::StatusCode) {}
 
 bool FakeBrEdrConnection::StartEncryption() {
   set_encryption_status(pw::bluetooth::emboss::EncryptionStatus::

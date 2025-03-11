@@ -13,50 +13,38 @@
 // the License.
 #pragma once
 
-#include "pw_allocator/block_allocator.h"
+#include "pw_allocator/config.h"
+#include "pw_allocator/first_fit.h"
 
 namespace pw::allocator {
 
-/// Block allocator that uses a "last-fit" allocation strategy.
+/// Alias for a default block type that is compatible with
+/// `LastFitBlockAllocator`.
+template <typename OffsetType>
+using LastFitBlock = FirstFitBlock<OffsetType>;
+
+/// Legacy last fit allocator.
 ///
-/// In this strategy, the allocator handles an allocation request by starting at
-/// the end of the range of blocks and looking for the last one which can
-/// satisfy the request.
+/// New usages should prefer to use `FirstFitAllocator` directly.
 ///
-/// This strategy may result in slightly better fragmentation than the
-/// corresponding "first-fit" strategy, since even with alignment it will result
-/// in at most one unused fragment before the allocated block.
-template <typename OffsetType = uintptr_t,
-          size_t kPoisonInterval = 0,
-          size_t kAlign = alignof(OffsetType)>
-class LastFitBlockAllocator
-    : public BlockAllocator<OffsetType, kPoisonInterval, kAlign> {
+/// This allocator sets the base type's threshold to value to the maximum value,
+/// ensuring that all allocations come from the end of the region.
+template <typename OffsetType = uintptr_t>
+class PW_ALLOCATOR_DEPRECATED LastFitBlockAllocator
+    : public FirstFitAllocator<LastFitBlock<OffsetType>> {
  public:
-  using Base = BlockAllocator<OffsetType, kPoisonInterval, kAlign>;
-  using BlockType = typename Base::BlockType;
-
-  /// Constexpr constructor. Callers must explicitly call `Init`.
-  constexpr LastFitBlockAllocator() : Base() {}
-
-  /// Non-constexpr constructor that automatically calls `Init`.
-  ///
-  /// @param[in]  region  Region of memory to use when satisfying allocation
-  ///                     requests. The region MUST be large enough to fit an
-  ///                     aligned block with overhead. It MUST NOT be larger
-  ///                     than what is addressable by `OffsetType`.
-  explicit LastFitBlockAllocator(ByteSpan region) : Base(region) {}
+  using BlockType = LastFitBlock<OffsetType>;
 
  private:
-  /// @copydoc Allocator::Allocate
-  BlockType* ChooseBlock(Layout layout) override {
-    // Search backwards for the last block that can hold this allocation.
-    for (auto* block : Base::rblocks()) {
-      if (BlockType::AllocLast(block, layout).ok()) {
-        return block;
-      }
-    }
-    return nullptr;
+  using Base = FirstFitAllocator<BlockType>;
+
+ public:
+  constexpr LastFitBlockAllocator() {
+    Base::set_threshold(std::numeric_limits<size_t>::max());
   }
+
+  explicit LastFitBlockAllocator(ByteSpan region)
+      : Base(region, std::numeric_limits<size_t>::max()) {}
 };
 
 }  // namespace pw::allocator

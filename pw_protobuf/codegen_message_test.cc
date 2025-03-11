@@ -1262,7 +1262,7 @@ TEST(CodegenMessage, ReadImportedFromDepsOptions) {
 
   // The options file for the imported proto is applied, making the string
   // fields a vector rather than requiring a callback. This will not compile if
-  // the .options files aren't applied correctly.
+  // the .pwpb_options files aren't applied correctly.
   TestMessage::Message message{};
   const auto status = test_message.Read(message);
   ASSERT_EQ(status, OkStatus());
@@ -1301,7 +1301,7 @@ TEST(CodegenMessage, DISABLED_ReadDoesNotOverrun) {
        false,
        false,
        false,
-       false,
+       internal::CallbackType::kNone,
        0,
        sizeof(KeyValuePair::Message) * 2,
        {}},
@@ -1903,7 +1903,7 @@ TEST(CodegenMessage, DISABLED_WriteDoesNotOverrun) {
        false,
        false,
        false,
-       false,
+       internal::CallbackType::kNone,
        0,
        sizeof(KeyValuePair::Message) * 2,
        {}},
@@ -2055,7 +2055,7 @@ TEST(CodegenMessage, CallbackInSubclass) {
 }
 
 TEST(CodegenMessage, MaxSize) {
-  // Verify constants generated from max_size options in full_test.options
+  // Verify constants generated from max_size options in full_test.pwpb_options
   static_assert(Pigweed::kErrorMessageMaxSize == 64);
   static_assert(Pigweed::kDataMaxSize == 8);
 
@@ -2064,7 +2064,7 @@ TEST(CodegenMessage, MaxSize) {
             Pigweed::kErrorMessageMaxSize);
   EXPECT_EQ(size_message.data.max_size(), Pigweed::kDataMaxSize);
 
-  // Verify constants generated from max_count options in repeated.options
+  // Verify constants generated from max_count options in repeated.pwpb_options
   static_assert(RepeatedTest::kUint32sMaxSize == 8);
   static_assert(RepeatedTest::kFixed32sMaxSize == 8);
   static_assert(RepeatedTest::kDoublesMaxSize == 2);
@@ -2077,6 +2077,149 @@ TEST(CodegenMessage, MaxSize) {
   EXPECT_EQ(count_message.doubles.max_size(), RepeatedTest::kDoublesMaxSize);
   EXPECT_EQ(count_message.uint64s.max_size(), RepeatedTest::kUint64sMaxSize);
   EXPECT_EQ(count_message.enums.max_size(), RepeatedTest::kEnumsMaxSize);
+}
+
+TEST(CodegenMessage, OneOf_Encode) {
+  OneOfTest::Message message;
+
+  int invocations = 0;
+  message.type.SetEncoder([&invocations](OneOfTest::StreamEncoder& encoder) {
+    invocations++;
+    return encoder.WriteAnInt(32);
+  });
+
+  // clang-format off
+  constexpr uint8_t expected_proto[] = {
+    // type.an_int
+    0x08, 0x20,
+  };
+  // clang-format on
+
+  std::array<std::byte, 8> buffer;
+  OneOfTest::MemoryEncoder oneof_test(buffer);
+
+  EXPECT_EQ(oneof_test.Write(message), OkStatus());
+  EXPECT_EQ(invocations, 1);
+
+  EXPECT_EQ(oneof_test.size(), sizeof(expected_proto));
+  EXPECT_EQ(
+      std::memcmp(oneof_test.data(), expected_proto, sizeof(expected_proto)),
+      0);
+}
+
+TEST(CodegenMessage, OneOf_Encode_MultipleTimes) {
+  OneOfTest::Message message;
+
+  int invocations = 0;
+  message.type.SetEncoder([&invocations](OneOfTest::StreamEncoder& encoder) {
+    invocations++;
+    return encoder.WriteAString("oneof");
+  });
+
+  // clang-format off
+  constexpr uint8_t expected_proto[] = {
+    // type.a_string
+    0x12, 0x05, 'o', 'n', 'e', 'o', 'f'
+  };
+  // clang-format on
+
+  // Write the same message struct to two different buffers. Even though its
+  // internal state is modified during the write, it should be logically const
+  // with both writes successfully producing the same output.
+
+  std::array<std::byte, 8> buffer_1;
+  std::array<std::byte, 8> buffer_2;
+  OneOfTest::MemoryEncoder oneof_test_1(buffer_1);
+  OneOfTest::MemoryEncoder oneof_test_2(buffer_2);
+
+  EXPECT_EQ(oneof_test_1.Write(message), OkStatus());
+  EXPECT_EQ(invocations, 1);
+  EXPECT_EQ(oneof_test_1.size(), sizeof(expected_proto));
+  EXPECT_EQ(
+      std::memcmp(oneof_test_1.data(), expected_proto, sizeof(expected_proto)),
+      0);
+
+  EXPECT_EQ(oneof_test_2.Write(message), OkStatus());
+  EXPECT_EQ(invocations, 2);
+  EXPECT_EQ(oneof_test_2.size(), sizeof(expected_proto));
+  EXPECT_EQ(
+      std::memcmp(oneof_test_2.data(), expected_proto, sizeof(expected_proto)),
+      0);
+}
+
+TEST(CodegenMessage, OneOf_Encode_UnsetEncoderIsIgnored) {
+  OneOfTest::Message message;
+  std::array<std::byte, 8> buffer;
+  OneOfTest::MemoryEncoder oneof_test(buffer);
+  EXPECT_EQ(oneof_test.Write(message), OkStatus());
+}
+
+TEST(CodegenMessage, OneOf_Decode) {
+  // clang-format off
+  constexpr uint8_t proto_data[] = {
+    // type.a_message
+    0x1a, 0x02, 0x08, 0x01,
+  };
+  // clang-format on
+
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
+  OneOfTest::StreamDecoder stream_decoder(reader);
+
+  struct {
+    OneOfTest::Fields field;
+    OneOfTest::AMessage::Message submessage;
+    int invocations = 0;
+  } result;
+
+  OneOfTest::Message message;
+  message.type.SetDecoder(
+      [&result](OneOfTest::Fields field, OneOfTest::StreamDecoder& decoder) {
+        result.field = field;
+        result.invocations++;
+        if (field == OneOfTest::Fields::kAMessage) {
+          return decoder.GetAMessageDecoder().Read(result.submessage);
+        }
+        return Status::InvalidArgument();
+      });
+
+  EXPECT_EQ(stream_decoder.Read(message), OkStatus());
+  EXPECT_EQ(result.field, OneOfTest::Fields::kAMessage);
+  EXPECT_EQ(result.invocations, 1);
+  EXPECT_EQ(result.submessage.a_bool, true);
+}
+
+TEST(CodegenMessage, OneOf_Decode_MultipleOneOfFieldsFails) {
+  // clang-format off
+  constexpr uint8_t proto_data[] = {
+    // type.an_int
+    0x08, 0x20,
+    // type.a_message
+    0x1a, 0x02, 0x08, 0x01,
+  };
+  // clang-format on
+
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
+  OneOfTest::StreamDecoder stream_decoder(reader);
+
+  OneOfTest::Message message;
+  message.type.SetDecoder(
+      [](OneOfTest::Fields, OneOfTest::StreamDecoder&) { return OkStatus(); });
+
+  EXPECT_EQ(stream_decoder.Read(message), Status::DataLoss());
+}
+
+TEST(CodegenMessage, OneOf_Decode_UnsetDecoderIsIgnored) {
+  // clang-format off
+  constexpr uint8_t proto_data[] = {
+    // type.an_int
+    0x08, 0x20,
+  };
+  // clang-format on
+
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
+  OneOfTest::StreamDecoder stream_decoder(reader);
+  OneOfTest::Message message;
+  EXPECT_EQ(stream_decoder.Read(message), OkStatus());
 }
 
 }  // namespace

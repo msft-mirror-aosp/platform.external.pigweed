@@ -12,6 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
+
 package(default_visibility = ["//pw_bluetooth_sapphire:__subpackages__"])
 
 cc_library(
@@ -151,6 +153,7 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/hci/sequential_command_runner.h",
         "public/pw_bluetooth_sapphire/internal/host/iso/fake_iso_stream.h",
         "public/pw_bluetooth_sapphire/internal/host/iso/iso_common.h",
+        "public/pw_bluetooth_sapphire/internal/host/iso/iso_inbound_packet_assembler.h",
         "public/pw_bluetooth_sapphire/internal/host/iso/iso_stream.h",
         "public/pw_bluetooth_sapphire/internal/host/iso/iso_stream_manager.h",
         "public/pw_bluetooth_sapphire/internal/host/l2cap/a2dp_offload_manager.h",
@@ -180,6 +183,7 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/l2cap/fragmenter.h",
         "public/pw_bluetooth_sapphire/internal/host/l2cap/frame_headers.h",
         "public/pw_bluetooth_sapphire/internal/host/l2cap/l2cap_defs.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/le_dynamic_channel.h",
         "public/pw_bluetooth_sapphire/internal/host/l2cap/le_signaling_channel.h",
         "public/pw_bluetooth_sapphire/internal/host/l2cap/logical_link.h",
         "public/pw_bluetooth_sapphire/internal/host/l2cap/low_energy_command_handler.h",
@@ -244,7 +248,6 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/transport/command_channel.h",
         "public/pw_bluetooth_sapphire/internal/host/transport/control_packets.h",
         "public/pw_bluetooth_sapphire/internal/host/transport/data_buffer_info.h",
-        "public/pw_bluetooth_sapphire/internal/host/transport/emboss_control_packets.h",
         "public/pw_bluetooth_sapphire/internal/host/transport/emboss_packet.h",
         "public/pw_bluetooth_sapphire/internal/host/transport/error.h",
         "public/pw_bluetooth_sapphire/internal/host/transport/fake_acl_connection.h",
@@ -258,8 +261,29 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/transport/slab_allocators.h",
         "public/pw_bluetooth_sapphire/internal/host/transport/transport.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     tags = ["manual"],
+)
+
+cc_library(
+    name = "peripheral",
+    srcs = ["peripheral.cc"],
+    hdrs = ["public/pw_bluetooth_sapphire/peripheral.h"],
+    includes = ["public"],
+    deps = [
+        "//pw_bluetooth:pw_bluetooth2",
+        "//pw_bluetooth_sapphire/host/gap",
+        "//pw_sync:mutex",
+    ],
+)
+
+pw_cc_test(
+    name = "peripheral_test",
+    srcs = ["peripheral_test.cc"],
+    deps = [
+        ":peripheral",
+        "//pw_async:fake_dispatcher",
+        "//pw_async2:pend_func_task",
+        "//pw_bluetooth_sapphire/host/gap:testing",
+    ],
 )

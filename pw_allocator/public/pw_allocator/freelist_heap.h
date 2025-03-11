@@ -15,18 +15,17 @@
 
 #include <cstddef>
 
-#include "pw_allocator/block.h"
-#include "pw_allocator/bucket_block_allocator.h"
+#include "pw_allocator/bucket_allocator.h"
 #include "pw_assert/assert.h"
 #include "pw_bytes/span.h"
 #include "pw_preprocessor/compiler.h"
 
 namespace pw::allocator {
 
-/// Legacy interface to BucketBlockAllocator.
+/// Legacy interface to BucketAllocator.
 ///
 /// This interface is deprecated, and is only maintained for compatibility
-/// reasons. New projects should use ``BucketBlockAllocator``.
+/// reasons. New projects should use ``BucketAllocator``.
 template <size_t kNumBuckets = 6>
 class FreeListHeapBuffer {
  public:
@@ -51,9 +50,9 @@ class FreeListHeapBuffer {
   }
 
  private:
-  using OffsetType = Block<>::OffsetType;
+  using BlockType = BucketBlock<>;
   static constexpr size_t kMinChunkSize = 16;
-  BucketBlockAllocator<OffsetType, kMinChunkSize, kNumBuckets> allocator_;
+  BucketAllocator<BlockType, kMinChunkSize, kNumBuckets> allocator_;
 };
 
 }  // namespace pw::allocator

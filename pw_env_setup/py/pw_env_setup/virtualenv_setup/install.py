@@ -13,8 +13,6 @@
 # the License.
 """Sets up a Python 3 virtualenv for Pigweed."""
 
-from __future__ import print_function
-
 import contextlib
 import datetime
 import glob
@@ -36,7 +34,7 @@ def _is_windows() -> bool:
     return platform.system().lower() == 'windows'
 
 
-class GnTarget(object):  # pylint: disable=useless-object-inheritance
+class GnTarget:
     def __init__(self, val):
         self.directory, self.target = val.split('#', 1)
         self.name = '-'.join(

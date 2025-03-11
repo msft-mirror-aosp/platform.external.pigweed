@@ -40,6 +40,7 @@ Modules
    pw_chre/docs
    pw_chrono/docs
    pw_cli/docs
+   pw_cli_analytics/docs
    pw_clock_tree/docs
    pw_compilation_testing/docs
    pw_config_loader/docs
@@ -52,6 +53,7 @@ Modules
    pw_dma_mcuxpresso/docs
    pw_docgen/docs
    pw_doctor/docs
+   pw_elf/docs
    pw_emu/docs
    pw_env_setup/docs
    pw_env_setup_zephyr/docs
@@ -77,6 +79,7 @@ Modules
    pw_module/docs
    pw_multibuf/docs
    pw_multisink/docs
+   pw_numeric/docs
    pw_package/docs
    pw_perf_test/docs
    pw_persistent_ram/docs

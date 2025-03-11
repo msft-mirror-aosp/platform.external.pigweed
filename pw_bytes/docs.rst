@@ -19,15 +19,27 @@ Dependencies
 Features
 --------
 
+pw_bytes/packed_ptr.h
+======================
+Wrapper type that allows storing data in the least significant bits of a
+pointer that would otherwise be unused.
+
+.. doxygenclass:: pw::PackedPtr
+   :members:
+
 pw_bytes/alignment.h
 ====================
 Functions for aligning sizes and addresses to memory alignment boundaries.
 
- .. doxygenfunction:: pw::AlignDown(size_t value, size_t alignment)
+ .. doxygenfunction:: pw::IsAlignedAs(const void* ptr, size_t alignment)
+
+ .. doxygenfunction:: pw::IsAlignedAs(const void* ptr)
+
+ .. doxygenfunction:: pw::AlignDown(uintptr_t value, size_t alignment)
 
  .. doxygenfunction:: pw::AlignDown(T* value, size_t alignment)
 
- .. doxygenfunction:: pw::AlignUp(size_t value, size_t alignment)
+ .. doxygenfunction:: pw::AlignUp(uintptr_t value, size_t alignment)
 
  .. doxygenfunction:: pw::AlignUp(T* value, size_t alignment)
 
@@ -74,7 +86,7 @@ pw_bytes/suffix.h
 This module exports a single ``_b`` literal, making it easier to create
 ``std::byte`` values for tests.
 
-.. cpp:function:: constexpr std::byte operator"" _b(unsigned long long value)
+.. cpp:function:: constexpr std::byte operator""_b(unsigned long long value)
 
 .. note::
    This should not be used in header files, as it requires a ``using``
@@ -137,4 +149,4 @@ project's configuration.
 Rust API
 --------
 ``pw_bytes``'s Rust API is documented in our
-`rustdoc API docs </rustdoc/pw_bytes>`_.
+`rustdoc API docs </rustdoc/pw_bytes/>`_.

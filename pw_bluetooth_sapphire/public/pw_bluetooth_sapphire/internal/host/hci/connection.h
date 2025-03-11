@@ -112,7 +112,7 @@ class Connection {
   static CommandChannel::EventCallbackResult OnDisconnectionComplete(
       const WeakSelf<Connection>::WeakPtr& self,
       hci_spec::ConnectionHandle handle,
-      const EmbossEventPacket& event,
+      const EventPacket& event,
       fit::callback<void()> on_disconnection_complete);
 
   hci_spec::ConnectionHandle handle_;

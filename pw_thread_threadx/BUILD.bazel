@@ -12,10 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -63,8 +60,8 @@ cc_library(
         ":config_override",
         ":id",
         "//pw_assert",
+        "//pw_function",
         "//pw_string",
-        "//pw_thread:deprecated_or_new_thread_function",
         "//pw_thread:thread.facade",
     ],
 )
@@ -147,7 +144,7 @@ cc_library(
     hdrs = [
         "public/pw_thread_threadx/util.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     # TODO: b/257321712 - This target doesn't build.
     tags = ["manual"],
     deps = [

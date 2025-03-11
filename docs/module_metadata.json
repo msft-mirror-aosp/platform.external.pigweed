@@ -79,7 +79,8 @@
     "status": "stable",
     "languages": [
       "C",
-      "C++"
+      "C++",
+      "Rust"
     ]
   },
   "pw_bloat": {
@@ -128,7 +129,7 @@
   "pw_bluetooth_sapphire": {
     "tagline": "Battle-tested Bluetooth with rock-solid reliability",
     "status": "unstable",
-    "size": "1.5 to 2 mB",
+    "size": "500 to 700 kB",
     "languages": [
       "C++17"
     ]
@@ -154,7 +155,8 @@
     "languages": [
       "Bazel",
       "CMake",
-      "GN"
+      "GN",
+      "Rust"
     ]
   },
   "pw_build_android": {
@@ -185,7 +187,8 @@
     "tagline": "Utilities for manipulating binary data",
     "status": "stable",
     "languages": [
-      "C++"
+      "C++",
+      "Rust"
     ]
   },
   "pw_channel": {
@@ -271,6 +274,13 @@
     "status": "stable",
     "languages": [
       "GN"
+    ]
+  },
+  "pw_elf": {
+    "tagline": "ELF file support",
+    "status": "experimental",
+    "languages": [
+      "C++17"
     ]
   },
   "pw_emu": {
@@ -391,7 +401,8 @@
     "languages": [
       "C++",
       "Java",
-      "Python"
+      "Python",
+      "Rust"
     ]
   },
   "pw_log_android": {
@@ -422,6 +433,13 @@
     "status": "unstable",
     "languages": [
       "C++17"
+    ]
+  },
+  "pw_numeric": {
+    "tagline": "Efficient mathematical utilities for embedded",
+    "status": "stable",
+    "languages": [
+      "C++"
     ]
   },
   "pw_perf_test": {
@@ -531,6 +549,14 @@
       "Python",
       "Java",
       "TypeScript",
+      "Rust"
+    ]
+  },
+  "pw_stream": {
+    "tagline": "A foundational interface for streaming data",
+    "status": "stable",
+    "languages": [
+      "C++",
       "Rust"
     ]
   },

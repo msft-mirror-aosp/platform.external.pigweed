@@ -15,42 +15,113 @@
 #include "pw_bluetooth_proxy/proxy_host.h"
 
 #include "pw_assert/check.h"  // IWYU pragma: keep
+#include "pw_bluetooth/emboss_util.h"
 #include "pw_bluetooth/hci_common.emb.h"
-#include "pw_bluetooth/hci_h4.emb.h"
-#include "pw_bluetooth_proxy/emboss_util.h"
+#include "pw_bluetooth/hci_data.emb.h"
+#include "pw_bluetooth/l2cap_frames.emb.h"
 #include "pw_bluetooth_proxy/h4_packet.h"
+#include "pw_bluetooth_proxy/internal/gatt_notify_channel_internal.h"
+#include "pw_bluetooth_proxy/internal/l2cap_coc_internal.h"
+#include "pw_bluetooth_proxy/internal/logical_transport.h"
 #include "pw_log/log.h"
 
 namespace pw::bluetooth::proxy {
 
-std::array<containers::Pair<uint8_t*, bool>, ProxyHost::kNumH4Buffs>
-ProxyHost::InitOccupiedMap() {
-  std::array<containers::Pair<uint8_t*, bool>, kNumH4Buffs> arr;
-  acl_send_mutex_.lock();
-  for (size_t i = 0; i < kNumH4Buffs; ++i) {
-    arr[i] = {h4_buffs_[i].data(), false};
-  }
-  acl_send_mutex_.unlock();
-  return arr;
-}
-
 ProxyHost::ProxyHost(
     pw::Function<void(H4PacketWithHci&& packet)>&& send_to_host_fn,
     pw::Function<void(H4PacketWithH4&& packet)>&& send_to_controller_fn,
-    uint16_t le_acl_credits_to_reserve)
+    uint16_t le_acl_credits_to_reserve,
+    uint16_t br_edr_acl_credits_to_reserve)
     : hci_transport_(std::move(send_to_host_fn),
                      std::move(send_to_controller_fn)),
-      acl_data_channel_(hci_transport_, le_acl_credits_to_reserve),
-      h4_buff_occupied_(InitOccupiedMap()) {}
+      acl_data_channel_(hci_transport_,
+                        l2cap_channel_manager_,
+                        le_acl_credits_to_reserve,
+                        br_edr_acl_credits_to_reserve),
+      l2cap_channel_manager_(acl_data_channel_) {}
+
+ProxyHost::~ProxyHost() { acl_data_channel_.Reset(); }
 
 void ProxyHost::HandleH4HciFromHost(H4PacketWithH4&& h4_packet) {
+  if (h4_packet.GetH4Type() == emboss::H4PacketType::ACL_DATA) {
+    HandleAclFromHost(std::move(h4_packet));
+    return;
+  }
   hci_transport_.SendToController(std::move(h4_packet));
 }
 
 void ProxyHost::HandleH4HciFromController(H4PacketWithHci&& h4_packet) {
+  if (h4_packet.GetH4Type() == emboss::H4PacketType::EVENT) {
+    HandleEventFromController(std::move(h4_packet));
+    return;
+  }
+  if (h4_packet.GetH4Type() == emboss::H4PacketType::ACL_DATA) {
+    HandleAclFromController(std::move(h4_packet));
+    return;
+  }
+  hci_transport_.SendToHost(std::move(h4_packet));
+}
+
+bool ProxyHost::CheckForActiveFragmenting(AclDataChannel::Direction direction,
+                                          emboss::AclDataFrameWriter& acl) {
+  const uint16_t handle = acl.header().handle().Read();
+  const emboss::AclDataPacketBoundaryFlag boundary_flag =
+      acl.header().packet_boundary_flag().Read();
+
+  pw::Result<bool> connection_is_receiving_fragmented_pdu =
+      acl_data_channel_.IsReceivingFragmentedPdu(direction, handle);
+  if (connection_is_receiving_fragmented_pdu.ok() &&
+      *connection_is_receiving_fragmented_pdu) {
+    // We're in a state where this connection is dropping continuing fragments
+    // in a fragmented PDU.
+    if (boundary_flag !=
+        emboss::AclDataPacketBoundaryFlag::CONTINUING_FRAGMENT) {
+      // The fragmented PDU has been fully received, so note that then proceed
+      // to process the new PDU as normal.
+      PW_CHECK(acl_data_channel_.FragmentedPduFinished(direction, handle).ok());
+    } else {
+      PW_LOG_INFO("(Connection: 0x%X) Dropping continuing PDU fragment.",
+                  handle);
+      return true;
+    }
+  }
+  return false;
+}
+
+bool ProxyHost::CheckForFragmentedStart(
+    AclDataChannel::Direction direction,
+    emboss::AclDataFrameWriter& acl,
+    emboss::BasicL2capHeaderView& l2cap_header,
+    L2capReadChannel* channel) {
+  const uint16_t handle = acl.header().handle().Read();
+  const emboss::AclDataPacketBoundaryFlag boundary_flag =
+      acl.header().packet_boundary_flag().Read();
+  // TODO: https://pwbug.dev/365179076 - Support recombination.
+  if (boundary_flag == emboss::AclDataPacketBoundaryFlag::CONTINUING_FRAGMENT) {
+    PW_LOG_INFO("(CID: 0x%X) Received unexpected continuing PDU fragment.",
+                handle);
+    channel->OnFragmentedPduReceived();
+    return true;
+  }
+  const uint16_t l2cap_frame_length =
+      emboss::BasicL2capHeader::IntrinsicSizeInBytes() +
+      l2cap_header.pdu_length().Read();
+  if (l2cap_frame_length > acl.data_total_length().Read()) {
+    pw::Status status =
+        acl_data_channel_.FragmentedPduStarted(direction, handle);
+    PW_CHECK(status.ok());
+    channel->OnFragmentedPduReceived();
+    return true;
+  }
+
+  return false;
+}
+
+void ProxyHost::HandleEventFromController(H4PacketWithHci&& h4_packet) {
   pw::span<uint8_t> hci_buffer = h4_packet.GetHciSpan();
-  auto event = MakeEmboss<emboss::EventHeaderView>(hci_buffer);
-  if (!event.IsComplete()) {
+  Result<emboss::EventHeaderView> event =
+      MakeEmbossView<emboss::EventHeaderView>(hci_buffer);
+  if (!event.ok()) {
     PW_LOG_ERROR(
         "Buffer is too small for EventHeader. So will pass on to host without "
         "processing.");
@@ -60,7 +131,7 @@ void ProxyHost::HandleH4HciFromController(H4PacketWithHci&& h4_packet) {
 
   PW_MODIFY_DIAGNOSTICS_PUSH();
   PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
-  switch (event.event_code_enum().Read()) {
+  switch (event->event_code_enum().Read()) {
     case emboss::EventCode::NUMBER_OF_COMPLETED_PACKETS: {
       acl_data_channel_.HandleNumberOfCompletedPacketsEvent(
           std::move(h4_packet));
@@ -74,6 +145,14 @@ void ProxyHost::HandleH4HciFromController(H4PacketWithHci&& h4_packet) {
       HandleCommandCompleteEvent(std::move(h4_packet));
       break;
     }
+    case emboss::EventCode::CONNECTION_COMPLETE: {
+      acl_data_channel_.HandleConnectionCompleteEvent(std::move(h4_packet));
+      break;
+    }
+    case emboss::EventCode::LE_META_EVENT: {
+      HandleLeMetaEvent(std::move(h4_packet));
+      break;
+    }
     default: {
       hci_transport_.SendToHost(std::move(h4_packet));
       return;
@@ -82,11 +161,99 @@ void ProxyHost::HandleH4HciFromController(H4PacketWithHci&& h4_packet) {
   PW_MODIFY_DIAGNOSTICS_POP();
 }
 
+void ProxyHost::HandleAclFromController(H4PacketWithHci&& h4_packet) {
+  pw::span<uint8_t> hci_buffer = h4_packet.GetHciSpan();
+
+  Result<emboss::AclDataFrameWriter> acl =
+      MakeEmbossWriter<emboss::AclDataFrameWriter>(hci_buffer);
+  if (!acl.ok()) {
+    PW_LOG_ERROR(
+        "Buffer is too small for ACL header. So will pass on to host.");
+    hci_transport_.SendToHost(std::move(h4_packet));
+    return;
+  }
+  const uint16_t handle = acl->header().handle().Read();
+
+  if (CheckForActiveFragmenting(AclDataChannel::Direction::kFromController,
+                                *acl)) {
+    return;
+  }
+
+  emboss::BasicL2capHeaderView l2cap_header = emboss::MakeBasicL2capHeaderView(
+      acl->payload().BackingStorage().data(),
+      acl->payload().BackingStorage().SizeInBytes());
+  // TODO: https://pwbug.dev/365179076 - Technically, the first fragment of a
+  // fragmented PDU may include an incomplete L2CAP header.
+  if (!l2cap_header.Ok()) {
+    PW_LOG_ERROR(
+        "(Connection: 0x%X) ACL packet does not include a valid L2CAP header. "
+        "So will pass on to host.",
+        handle);
+    hci_transport_.SendToHost(std::move(h4_packet));
+    return;
+  }
+
+  L2capReadChannel* channel = l2cap_channel_manager_.FindReadChannel(
+      acl->header().handle().Read(), l2cap_header.channel_id().Read());
+  if (!channel) {
+    hci_transport_.SendToHost(std::move(h4_packet));
+    return;
+  }
+
+  if (CheckForFragmentedStart(AclDataChannel::Direction::kFromController,
+                              *acl,
+                              l2cap_header,
+                              channel)) {
+    return;
+  }
+
+  if (!channel->HandlePduFromController(
+          pw::span(acl->payload().BackingStorage().data(),
+                   acl->payload().SizeInBytes()))) {
+    hci_transport_.SendToHost(std::move(h4_packet));
+  }
+}
+
+void ProxyHost::HandleLeMetaEvent(H4PacketWithHci&& h4_packet) {
+  pw::span<uint8_t> hci_buffer = h4_packet.GetHciSpan();
+  Result<emboss::LEMetaEventView> le_meta_event_view =
+      MakeEmbossView<emboss::LEMetaEventView>(hci_buffer);
+  if (!le_meta_event_view.ok()) {
+    PW_LOG_ERROR(
+        "Buffer is too small for LE_META_EVENT event. So will not process.");
+    hci_transport_.SendToHost(std::move(h4_packet));
+    return;
+  }
+
+  PW_MODIFY_DIAGNOSTICS_PUSH();
+  PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
+  switch (le_meta_event_view->subevent_code_enum().Read()) {
+    case emboss::LeSubEventCode::CONNECTION_COMPLETE: {
+      acl_data_channel_.HandleLeConnectionCompleteEvent(std::move(h4_packet));
+      return;
+    }
+    case emboss::LeSubEventCode::ENHANCED_CONNECTION_COMPLETE_V1: {
+      acl_data_channel_.HandleLeEnhancedConnectionCompleteV1Event(
+          std::move(h4_packet));
+      return;
+    }
+    case emboss::LeSubEventCode::ENHANCED_CONNECTION_COMPLETE_V2: {
+      acl_data_channel_.HandleLeEnhancedConnectionCompleteV2Event(
+          std::move(h4_packet));
+      return;
+    }
+    default:
+      break;
+  }
+  PW_MODIFY_DIAGNOSTICS_POP();
+  hci_transport_.SendToHost(std::move(h4_packet));
+}
+
 void ProxyHost::HandleCommandCompleteEvent(H4PacketWithHci&& h4_packet) {
   pw::span<uint8_t> hci_buffer = h4_packet.GetHciSpan();
-  emboss::CommandCompleteEventView command_complete_event =
-      MakeEmboss<emboss::CommandCompleteEventView>(hci_buffer);
-  if (!command_complete_event.IsComplete()) {
+  Result<emboss::CommandCompleteEventView> command_complete_event =
+      MakeEmbossView<emboss::CommandCompleteEventView>(hci_buffer);
+  if (!command_complete_event.ok()) {
     PW_LOG_ERROR(
         "Buffer is too small for COMMAND_COMPLETE event. So will not process.");
     hci_transport_.SendToHost(std::move(h4_packet));
@@ -95,31 +262,46 @@ void ProxyHost::HandleCommandCompleteEvent(H4PacketWithHci&& h4_packet) {
 
   PW_MODIFY_DIAGNOSTICS_PUSH();
   PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
-  switch (command_complete_event.command_opcode_enum().Read()) {
-    case emboss::OpCode::LE_READ_BUFFER_SIZE_V1: {
-      auto read_event =
-          MakeEmboss<emboss::LEReadBufferSizeV1CommandCompleteEventWriter>(
+  switch (command_complete_event->command_opcode_enum().Read()) {
+    case emboss::OpCode::READ_BUFFER_SIZE: {
+      Result<emboss::ReadBufferSizeCommandCompleteEventWriter> read_event =
+          MakeEmbossWriter<emboss::ReadBufferSizeCommandCompleteEventWriter>(
               hci_buffer);
-      if (!read_event.IsComplete()) {
+      if (!read_event.ok()) {
+        PW_LOG_ERROR(
+            "Buffer is too small for READ_BUFFER_SIZE command complete event. "
+            "Will not process.");
+        break;
+      }
+      acl_data_channel_.ProcessReadBufferSizeCommandCompleteEvent(*read_event);
+      break;
+    }
+    case emboss::OpCode::LE_READ_BUFFER_SIZE_V1: {
+      Result<emboss::LEReadBufferSizeV1CommandCompleteEventWriter> read_event =
+          MakeEmbossWriter<
+              emboss::LEReadBufferSizeV1CommandCompleteEventWriter>(hci_buffer);
+      if (!read_event.ok()) {
         PW_LOG_ERROR(
             "Buffer is too small for LE_READ_BUFFER_SIZE_V1 command complete "
             "event. So will not process.");
-        return;
+        break;
       }
-      acl_data_channel_.ProcessLEReadBufferSizeCommandCompleteEvent(read_event);
+      acl_data_channel_.ProcessLEReadBufferSizeCommandCompleteEvent(
+          *read_event);
       break;
     }
     case emboss::OpCode::LE_READ_BUFFER_SIZE_V2: {
-      auto read_event =
-          MakeEmboss<emboss::LEReadBufferSizeV2CommandCompleteEventWriter>(
-              hci_buffer);
-      if (!read_event.IsComplete()) {
+      Result<emboss::LEReadBufferSizeV2CommandCompleteEventWriter> read_event =
+          MakeEmbossWriter<
+              emboss::LEReadBufferSizeV2CommandCompleteEventWriter>(hci_buffer);
+      if (!read_event.ok()) {
         PW_LOG_ERROR(
             "Buffer is too small for LE_READ_BUFFER_SIZE_V2 command complete "
             "event. So will not process.");
-        return;
+        break;
       }
-      acl_data_channel_.ProcessLEReadBufferSizeCommandCompleteEvent(read_event);
+      acl_data_channel_.ProcessLEReadBufferSizeCommandCompleteEvent(
+          *read_event);
       break;
     }
     default:
@@ -129,145 +311,167 @@ void ProxyHost::HandleCommandCompleteEvent(H4PacketWithHci&& h4_packet) {
   hci_transport_.SendToHost(std::move(h4_packet));
 }
 
-void ProxyHost::Reset() {
-  acl_send_mutex_.lock();
-  acl_data_channel_.Reset();
-  for (const auto& [buff, _] : h4_buff_occupied_) {
-    h4_buff_occupied_.at(buff) = false;
+void ProxyHost::HandleAclFromHost(H4PacketWithH4&& h4_packet) {
+  pw::span<uint8_t> hci_buffer = h4_packet.GetHciSpan();
+
+  Result<emboss::AclDataFrameWriter> acl =
+      MakeEmbossWriter<emboss::AclDataFrameWriter>(hci_buffer);
+  if (!acl.ok()) {
+    PW_LOG_ERROR(
+        "Buffer is too small for ACL header. So will pass on to controller.");
+    hci_transport_.SendToController(std::move(h4_packet));
+    return;
   }
-  acl_send_mutex_.unlock();
+
+  if (CheckForActiveFragmenting(AclDataChannel::Direction::kFromHost, *acl)) {
+    return;
+  }
+
+  const uint16_t handle = acl->header().handle().Read();
+  emboss::BasicL2capHeaderView l2cap_header = emboss::MakeBasicL2capHeaderView(
+      acl->payload().BackingStorage().data(),
+      acl->payload().BackingStorage().SizeInBytes());
+  // TODO: https://pwbug.dev/365179076 - Technically, the first fragment of a
+  // fragmented PDU may include an incomplete L2CAP header.
+  if (!l2cap_header.Ok()) {
+    PW_LOG_ERROR(
+        "(Connection: 0x%X) ACL packet does not include a valid L2CAP header. "
+        "So will pass on to controller.",
+        handle);
+    hci_transport_.SendToController(std::move(h4_packet));
+    return;
+  }
+
+  L2capReadChannel* channel = acl_data_channel_.FindSignalingChannel(
+      acl->header().handle().Read(), l2cap_header.channel_id().Read());
+  if (!channel) {
+    hci_transport_.SendToController(std::move(h4_packet));
+
+    return;
+  }
+
+  if (CheckForFragmentedStart(
+          AclDataChannel::Direction::kFromHost, *acl, l2cap_header, channel)) {
+    return;
+  }
+
+  if (!channel->HandlePduFromHost(
+          pw::span(acl->payload().BackingStorage().data(),
+                   acl->payload().SizeInBytes()))) {
+    hci_transport_.SendToController(std::move(h4_packet));
+  }
 }
 
-std::optional<pw::span<uint8_t>> ProxyHost::ReserveH4Buff() {
-  for (const auto& [buff, occupied] : h4_buff_occupied_) {
-    if (!occupied) {
-      h4_buff_occupied_.at(buff) = true;
-      return {{buff, kH4BuffSize}};
+void ProxyHost::Reset() {
+  acl_data_channel_.Reset();
+  l2cap_channel_manager_.Reset();
+}
+
+pw::Result<L2capCoc> ProxyHost::AcquireL2capCoc(
+    uint16_t connection_handle,
+    L2capCoc::CocConfig rx_config,
+    L2capCoc::CocConfig tx_config,
+    pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn,
+    pw::Function<void(L2capCoc::Event event)>&& event_fn,
+    uint16_t rx_additional_credits) {
+  Status status = acl_data_channel_.CreateAclConnection(connection_handle,
+                                                        AclTransportType::kLe);
+  if (status.IsResourceExhausted()) {
+    return pw::Status::Unavailable();
+  }
+  PW_CHECK(status.ok() || status.IsAlreadyExists());
+  if (rx_additional_credits > 0) {
+    L2capSignalingChannel* signaling_channel =
+        acl_data_channel_.FindSignalingChannel(
+            connection_handle,
+            static_cast<uint16_t>(emboss::L2capFixedCid::LE_U_SIGNALING));
+    PW_CHECK(signaling_channel);
+    status = signaling_channel->SendFlowControlCreditInd(rx_config.cid,
+                                                         rx_additional_credits);
+    if (!status.ok()) {
+      return status;
     }
   }
-  return std::nullopt;
+  return L2capCocInternal::Create(l2cap_channel_manager_,
+                                  connection_handle,
+                                  rx_config,
+                                  tx_config,
+                                  std::move(receive_fn),
+                                  std::move(event_fn));
+}
+
+pw::Result<BasicL2capChannel> ProxyHost::AcquireBasicL2capChannel(
+    uint16_t connection_handle,
+    uint16_t local_cid,
+    uint16_t remote_cid,
+    AclTransportType transport,
+    pw::Function<void(pw::span<uint8_t> payload)>&&
+        payload_from_controller_fn) {
+  Status status =
+      acl_data_channel_.CreateAclConnection(connection_handle, transport);
+  if (status.IsResourceExhausted()) {
+    return pw::Status::Unavailable();
+  }
+  PW_CHECK(status.ok() || status.IsAlreadyExists());
+  return BasicL2capChannel::Create(
+      /*l2cap_channel_manager=*/l2cap_channel_manager_,
+      /*connection_handle=*/connection_handle,
+      /*local_cid=*/local_cid,
+      /*remote_cid=*/remote_cid,
+      /*payload_from_controller_fn=*/std::move(payload_from_controller_fn));
 }
 
 pw::Status ProxyHost::SendGattNotify(uint16_t connection_handle,
                                      uint16_t attribute_handle,
                                      pw::span<const uint8_t> attribute_value) {
-  if (connection_handle > 0x0EFF) {
-    PW_LOG_ERROR(
-        "Invalid connection handle: %d (max: 0x0EFF). So will not process.",
-        connection_handle);
-    return pw::Status::InvalidArgument();
-  }
-  if (attribute_handle == 0) {
-    PW_LOG_ERROR("Attribute handle cannot be 0. So will not process.");
-    return pw::Status::InvalidArgument();
-  }
-  if (constexpr uint16_t kMaxAttributeSize =
-          kH4BuffSize - 1 - emboss::AttNotifyOverAcl::MinSizeInBytes();
-      attribute_value.size() > kMaxAttributeSize) {
-    PW_LOG_ERROR("Attribute too large (%zu > %d). So will not process.",
-                 attribute_value.size(),
-                 kMaxAttributeSize);
-    return pw::Status::InvalidArgument();
-  }
-
-  H4PacketWithH4 h4_att_notify;
-  {
-    acl_send_mutex_.lock();
-    std::optional<span<uint8_t>> h4_buff = ReserveH4Buff();
-    if (!h4_buff) {
-      PW_LOG_WARN("No H4 buffers available. So will not send.");
-      acl_send_mutex_.unlock();
-      return pw::Status::Unavailable();
-    }
-
-    size_t acl_packet_size =
-        emboss::AttNotifyOverAcl::MinSizeInBytes() + attribute_value.size();
-    size_t h4_packet_size = sizeof(emboss::H4PacketType) + acl_packet_size;
-
-    H4PacketWithH4 h4_temp(
-        span(h4_buff->data(), h4_packet_size),
-        /*release_fn=*/[this](const uint8_t* buffer) {
-          acl_send_mutex_.lock();
-          PW_CHECK(h4_buff_occupied_.contains(const_cast<uint8_t*>(buffer)),
-                   "Received release callback for invalid buffer address.");
-          h4_buff_occupied_.at(const_cast<uint8_t*>(buffer)) = false;
-          acl_send_mutex_.unlock();
-        });
-    h4_temp.SetH4Type(emboss::H4PacketType::ACL_DATA);
-
-    if (h4_packet_size > h4_buff->size()) {
-      PW_LOG_ERROR("Buffer is too small for H4 packet. So will not send.");
-      acl_send_mutex_.unlock();
-      return pw::Status::InvalidArgument();
-    }
-
-    emboss::AttNotifyOverAclWriter att_notify =
-        emboss::MakeAttNotifyOverAclView(attribute_value.size(),
-                                         H4HciSubspan(*h4_buff).data(),
-                                         acl_packet_size);
-    if (!att_notify.IsComplete()) {
-      PW_LOG_ERROR("Buffer is too small for ATT Notify. So will not send.");
-      acl_send_mutex_.unlock();
-      return pw::Status::InvalidArgument();
-    }
-
-    BuildAttNotify(
-        att_notify, connection_handle, attribute_handle, attribute_value);
-
-    h4_att_notify = std::move(h4_temp);
-    acl_send_mutex_.unlock();
-  }
-
-  // H4 packet is hereby moved. Either ACL data channel will move packet to
-  // controller or will be unable to send packet. In either case, packet will be
-  // destructed, so its release function will clear the corresponding flag in
-  // `h4_buff_occupied_`.
-  if (!acl_data_channel_.SendAcl(std::move(h4_att_notify))) {
-    // SendAcl function will have logged reason for failure to send..
+  // TODO: https://pwbug.dev/369709521 - Migrate clients to channel API.
+  Status status = acl_data_channel_.CreateAclConnection(connection_handle,
+                                                        AclTransportType::kLe);
+  if (status != OkStatus() && status != Status::AlreadyExists()) {
     return pw::Status::Unavailable();
   }
-  return OkStatus();
+  pw::Result<GattNotifyChannel> channel_result =
+      GattNotifyChannelInternal::Create(
+          l2cap_channel_manager_, connection_handle, attribute_handle);
+  if (!channel_result.ok()) {
+    return channel_result.status();
+  }
+  return channel_result->Write(attribute_value);
 }
 
-void ProxyHost::BuildAttNotify(emboss::AttNotifyOverAclWriter att_notify,
-                               uint16_t connection_handle,
-                               uint16_t attribute_handle,
-                               pw::span<const uint8_t> attribute_value) {
-  // ACL header
-  att_notify.acl_header().handle().Write(connection_handle);
-  att_notify.acl_header().packet_boundary_flag().Write(
-      emboss::AclDataPacketBoundaryFlag::FIRST_NON_FLUSHABLE);
-  att_notify.acl_header().broadcast_flag().Write(
-      emboss::AclDataPacketBroadcastFlag::POINT_TO_POINT);
-  size_t att_pdu_size =
-      emboss::AttHandleValueNtf::MinSizeInBytes() + attribute_value.size();
-  att_notify.acl_header().data_total_length().Write(
-      emboss::BFrameHeader::IntrinsicSizeInBytes() + att_pdu_size);
-
-  // L2CAP header
-  // TODO: https://pwbug.dev/349602172 - Define ATT CID in pw_bluetooth.
-  constexpr uint16_t kAttributeProtocolCID = 0x0004;
-  att_notify.l2cap_header().channel_id().Write(kAttributeProtocolCID);
-  att_notify.l2cap_header().pdu_length().Write(att_pdu_size);
-
-  // ATT PDU
-  att_notify.att_handle_value_ntf().attribute_opcode().Write(
-      emboss::AttOpcode::ATT_HANDLE_VALUE_NTF);
-  att_notify.att_handle_value_ntf().attribute_handle().Write(attribute_handle);
-  std::memcpy(att_notify.att_handle_value_ntf()
-                  .attribute_value()
-                  .BackingStorage()
-                  .data(),
-              attribute_value.data(),
-              attribute_value.size());
+pw::Result<RfcommChannel> ProxyHost::AcquireRfcommChannel(
+    uint16_t connection_handle,
+    RfcommChannel::Config rx_config,
+    RfcommChannel::Config tx_config,
+    uint8_t channel_number,
+    pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn) {
+  Status status = acl_data_channel_.CreateAclConnection(
+      connection_handle, AclTransportType::kBrEdr);
+  if (status != OkStatus() && status != Status::AlreadyExists()) {
+    return pw::Status::Unavailable();
+  }
+  return RfcommChannel::Create(l2cap_channel_manager_,
+                               connection_handle,
+                               rx_config,
+                               tx_config,
+                               channel_number,
+                               std::move(receive_fn));
 }
 
-bool ProxyHost::HasSendAclCapability() const {
-  return acl_data_channel_.GetLeAclCreditsToReserve() > 0;
+bool ProxyHost::HasSendLeAclCapability() const {
+  return acl_data_channel_.HasSendAclCapability(AclTransportType::kLe);
+}
+
+bool ProxyHost::HasSendBrEdrAclCapability() const {
+  return acl_data_channel_.HasSendAclCapability(AclTransportType::kBrEdr);
 }
 
 uint16_t ProxyHost::GetNumFreeLeAclPackets() const {
-  return acl_data_channel_.GetNumFreeLeAclPackets();
+  return acl_data_channel_.GetNumFreeAclPackets(AclTransportType::kLe);
+}
+
+uint16_t ProxyHost::GetNumFreeBrEdrAclPackets() const {
+  return acl_data_channel_.GetNumFreeAclPackets(AclTransportType::kBrEdr);
 }
 
 }  // namespace pw::bluetooth::proxy

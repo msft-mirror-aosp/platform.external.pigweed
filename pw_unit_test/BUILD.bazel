@@ -15,13 +15,14 @@
 load("@local_config_platform//:constraints.bzl", "HOST_CONSTRAINTS")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//pw_build:compatibility.bzl", "boolean_constraint_value", "incompatible_with_mcu")
+load("//pw_build:pw_cc_binary.bzl", "pw_cc_binary")
+load("//pw_build:pw_facade.bzl", "pw_facade")
 load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_binary",
-    "pw_cc_test",
-    "pw_facade",
+    "//pw_protobuf_compiler:pw_proto_library.bzl",
+    "pwpb_proto_library",
+    "raw_rpc_proto_library",
 )
-load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_library")
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -35,7 +36,7 @@ label_flag(
 cc_library(
     name = "config",
     hdrs = ["public/pw_unit_test/config.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":config_override",
         "//pw_polyfill",
@@ -52,7 +53,8 @@ pw_facade(
     testonly = True,
     hdrs = ["public/pw_unit_test/framework.h"],
     backend = ":backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
+    deps = [":status_macros"],
 )
 
 label_flag(
@@ -95,11 +97,13 @@ cc_library(
     deps = [
         ":config",
         ":event_handler",
+        ":status_macros",
         "//pw_assert",
         "//pw_bytes:alignment",
         "//pw_polyfill",
         "//pw_preprocessor",
         "//pw_span",
+        "//pw_status",
         "//pw_string",
     ],
 )
@@ -116,6 +120,8 @@ cc_library(
     deps = [
         ":googletest_handler_adapter",
         ":pw_unit_test.facade",
+        "//pw_result",
+        "//pw_status",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -148,13 +154,21 @@ config_setting(
 cc_library(
     name = "event_handler",
     hdrs = ["public/pw_unit_test/event_handler.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
+)
+
+cc_library(
+    name = "status_macros",
+    testonly = True,
+    hdrs = ["public/pw_unit_test/status_macros.h"],
+    strip_include_prefix = "public",
 )
 
 cc_library(
     name = "googletest_style_event_handler",
     srcs = ["googletest_style_event_handler.cc"],
     hdrs = ["public/pw_unit_test/googletest_style_event_handler.h"],
+    strip_include_prefix = "public",
     deps = [
         ":event_handler",
         "//pw_preprocessor",
@@ -166,7 +180,7 @@ cc_library(
     testonly = True,
     srcs = ["googletest_handler_adapter.cc"],
     hdrs = ["public/pw_unit_test/googletest_handler_adapter.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     # TODO: b/310957361 - gtest not supported on device
     target_compatible_with = incompatible_with_mcu(),
     deps = [
@@ -180,7 +194,7 @@ cc_library(
     name = "googletest_test_matchers",
     testonly = True,
     hdrs = ["public/pw_unit_test/googletest_test_matchers.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     # TODO: b/310957361 - gtest not supported on device
     target_compatible_with = incompatible_with_mcu(),
     deps = [
@@ -205,9 +219,7 @@ cc_library(
     hdrs = [
         "public/pw_unit_test/simple_printing_event_handler.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":googletest_style_event_handler",
         "//pw_preprocessor",
@@ -232,6 +244,7 @@ cc_library(
     name = "printf_event_handler",
     testonly = True,
     hdrs = ["public/pw_unit_test/printf_event_handler.h"],
+    strip_include_prefix = "public",
     deps = [
         ":googletest_style_event_handler",
         "//pw_preprocessor",
@@ -264,9 +277,7 @@ cc_library(
     hdrs = [
         "public/pw_unit_test/logging_event_handler.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":googletest_style_event_handler",
         "//pw_log",
@@ -296,9 +307,7 @@ cc_library(
     hdrs = [
         "public/pw_unit_test/multi_event_handler.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":event_handler",
     ],
@@ -316,13 +325,11 @@ pw_cc_test(
 cc_library(
     name = "test_record_event_handler",
     testonly = True,
-    srcs = ["public/pw_unit_test/internal/test_record_trie.h"],
     hdrs = [
+        "public/pw_unit_test/internal/test_record_trie.h",
         "public/pw_unit_test/test_record_event_handler.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":event_handler",
         "//pw_assert",
@@ -350,8 +357,13 @@ py_proto_library(
     deps = [":unit_test_proto"],
 )
 
-pw_proto_library(
-    name = "unit_test_cc",
+pwpb_proto_library(
+    name = "unit_test_pwpb",
+    deps = [":unit_test_proto"],
+)
+
+raw_rpc_proto_library(
+    name = "unit_test_raw_rpc",
     deps = [":unit_test_proto"],
 )
 
@@ -381,8 +393,8 @@ cc_library(
         ":config",
         ":event_handler",
         ":pw_unit_test",
-        ":unit_test_cc.pwpb",
-        ":unit_test_cc.raw_rpc",
+        ":unit_test_pwpb",
+        ":unit_test_raw_rpc",
         "//pw_log",
     ],
 )
@@ -409,7 +421,7 @@ cc_library(
     testonly = True,
     srcs = ["static_library_support.cc"],
     hdrs = ["public/pw_unit_test/static_library_support.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     # This library only works with the light backend
     target_compatible_with = select({
         ":light_setting": [],
@@ -452,6 +464,7 @@ pw_cc_test(
     deps = [
         ":pw_unit_test",
         "//pw_assert",
+        "//pw_result",
         "//pw_status",
     ],
 )
@@ -480,4 +493,22 @@ filegroup(
     #     "//pw_log",
     #     "//pw_rpc/system_server",
     # ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "light_public_overrides/pw_unit_test/framework_backend.h",
+        "public/pw_unit_test/config.h",
+        "public/pw_unit_test/event_handler.h",
+        "public/pw_unit_test/googletest_handler_adapter.h",
+        "public/pw_unit_test/googletest_style_event_handler.h",
+        "public/pw_unit_test/logging_event_handler.h",
+        "public/pw_unit_test/multi_event_handler.h",
+        "public/pw_unit_test/printf_event_handler.h",
+        "public/pw_unit_test/simple_printing_event_handler.h",
+        "public/pw_unit_test/static_library_support.h",
+        "public/pw_unit_test/status_macros.h",
+        "public/pw_unit_test/test_record_event_handler.h",
+    ],
 )

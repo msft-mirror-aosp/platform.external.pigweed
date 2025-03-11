@@ -31,7 +31,7 @@ BrEdrInterrogator::BrEdrInterrogator(Peer::WeakPtr peer,
       handle_(handle),
       cmd_runner_(std::move(cmd_channel)),
       weak_self_(this) {
-  BT_ASSERT(peer_.is_alive());
+  PW_CHECK(peer_.is_alive());
 }
 
 void BrEdrInterrogator::Start(ResultCallback callback) {
@@ -93,20 +93,20 @@ void BrEdrInterrogator::QueueRemoteNameRequest() {
     mode = *peer_->bredr()->page_scan_repetition_mode();
   }
 
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::RemoteNameRequestCommandWriter>(
       hci_spec::kRemoteNameRequest);
-  auto params = packet.view_t();
-  params.bd_addr().CopyFrom(peer_->address().value().view());
-  params.page_scan_repetition_mode().Write(mode);
+  auto packet_view = packet.view_t();
+  packet_view.bd_addr().CopyFrom(peer_->address().value().view());
+  packet_view.page_scan_repetition_mode().Write(mode);
   if (peer_->bredr()->clock_offset()) {
-    params.clock_offset().valid().Write(true);
+    packet_view.clock_offset().valid().Write(true);
     const uint16_t offset = peer_->bredr()->clock_offset().value();
-    params.clock_offset().clock_offset().Write(offset);
+    packet_view.clock_offset().clock_offset().Write(offset);
   }
 
-  auto cmd_cb = [this](const hci::EmbossEventPacket& event) {
-    if (hci_is_error(event, WARN, "gap-bredr", "remote name request failed")) {
+  auto cmd_cb = [this](const hci::EventPacket& event) {
+    if (HCI_IS_ERROR(event, WARN, "gap-bredr", "remote name request failed")) {
       return;
     }
     bt_log(TRACE,
@@ -137,13 +137,13 @@ void BrEdrInterrogator::QueueRemoteNameRequest() {
 }
 
 void BrEdrInterrogator::QueueReadRemoteFeatures() {
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::ReadRemoteSupportedFeaturesCommandWriter>(
       hci_spec::kReadRemoteSupportedFeatures);
   packet.view_t().connection_handle().Write(handle_);
 
   auto cmd_cb = [this](const hci::EventPacket& event) {
-    if (hci_is_error(event,
+    if (HCI_IS_ERROR(event,
                      WARN,
                      "gap-bredr",
                      "read remote supported features failed")) {
@@ -153,13 +153,9 @@ void BrEdrInterrogator::QueueReadRemoteFeatures() {
            "gap-bredr",
            "remote features request complete (peer id: %s)",
            bt_str(peer_id_));
-    const auto& params =
-        event.view()
-            .payload<
-                hci_spec::ReadRemoteSupportedFeaturesCompleteEventParams>();
-    peer_->SetFeaturePage(0,
-                          pw::bytes::ConvertOrderFrom(cpp20::endian::little,
-                                                      params.lmp_features));
+    auto view = event.view<
+        pw::bluetooth::emboss::ReadRemoteSupportedFeaturesCompleteEventView>();
+    peer_->SetFeaturePage(0, view.lmp_features().BackingStorage().ReadUInt());
 
     if (peer_->features().HasBit(/*page=*/0,
                                  hci_spec::LMPFeature::kExtendedFeatures)) {
@@ -180,15 +176,15 @@ void BrEdrInterrogator::QueueReadRemoteFeatures() {
 }
 
 void BrEdrInterrogator::QueueReadRemoteExtendedFeatures(uint8_t page) {
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::ReadRemoteExtendedFeaturesCommandWriter>(
       hci_spec::kReadRemoteExtendedFeatures);
   auto params = packet.view_t();
   params.connection_handle().Write(handle_);
   params.page_number().Write(page);
 
-  auto cmd_cb = [this, page](const hci::EmbossEventPacket& event) {
-    if (hci_is_error(event,
+  auto cmd_cb = [this, page](const hci::EventPacket& event) {
+    if (HCI_IS_ERROR(event,
                      WARN,
                      "gap-bredr",
                      "read remote extended features failed (peer id: %s)",
@@ -242,17 +238,17 @@ void BrEdrInterrogator::QueueReadRemoteExtendedFeatures(uint8_t page) {
 }
 
 void BrEdrInterrogator::QueueReadRemoteVersionInformation() {
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::ReadRemoteVersionInfoCommandWriter>(
       hci_spec::kReadRemoteVersionInfo);
   packet.view_t().connection_handle().Write(handle_);
 
-  auto cmd_cb = [this](const hci::EmbossEventPacket& event) {
-    if (hci_is_error(event, WARN, "gap", "read remote version info failed")) {
+  auto cmd_cb = [this](const hci::EventPacket& event) {
+    if (HCI_IS_ERROR(event, WARN, "gap", "read remote version info failed")) {
       return;
     }
-    BT_DEBUG_ASSERT(event.event_code() ==
-                    hci_spec::kReadRemoteVersionInfoCompleteEventCode);
+    PW_DCHECK(event.event_code() ==
+              hci_spec::kReadRemoteVersionInfoCompleteEventCode);
     bt_log(TRACE,
            "gap",
            "read remote version info completed (peer id: %s)",

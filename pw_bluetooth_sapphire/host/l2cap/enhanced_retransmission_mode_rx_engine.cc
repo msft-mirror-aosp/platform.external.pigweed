@@ -72,7 +72,7 @@ template <typename T>
 constexpr bool kContainsEnhancedControlField =
     std::is_base_of_v<EnhancedControlField, T>;
 
-bool IsMpsValid(const PDU& pdu) {
+bool IsMpsValid(const PDU&) {
   // TODO(quiche): Check PDU's length against the MPS.
   return true;
 }
@@ -111,25 +111,27 @@ ByteBufferPtr Engine::ProcessPdu(PDU pdu) {
     return nullptr;
   }
 
-  auto header = GetFrameHeaderFromPdu(pdu);
-  auto frame_processor = [this, pdu = std::move(pdu)](auto header) mutable {
-    // Run ProcessFrame first so it can perform the highest-priority actions
-    // like assigning RemoteBusy (Core Spec v5.0, Vol 3, Part A, Sec 8.6.5.9).
-    auto sdu = ProcessFrame(header, std::move(pdu));
+  auto frame_header = GetFrameHeaderFromPdu(pdu);
+  auto frame_processor =
+      [this, pdu_to_process = std::move(pdu)](auto header) mutable {
+        // Run ProcessFrame first so it can perform the highest-priority actions
+        // like assigning RemoteBusy (Core Spec v5.0, Vol 3, Part A,
+        // Sec 8.6.5.9).
+        auto sdu = ProcessFrame(header, std::move(pdu_to_process));
 
-    // This implements the PassToTx action ("Pass the ReqSeq and F-bit value")
-    // per Core Spec v5.0, Vol 3, Part A, 8.6.5.6 and must come after updates to
-    // the RemoteBusy variable in order to avoid transmitting frames when the
-    // peer can't accept them.
-    if constexpr (kContainsEnhancedControlField<decltype(header)>) {
-      if (receive_seq_num_callback_) {
-        receive_seq_num_callback_(header.receive_seq_num(),
-                                  header.is_poll_response());
-      }
-    }
-    return sdu;
-  };
-  return std::visit(std::move(frame_processor), header);
+        // This implements the PassToTx action ("Pass the ReqSeq and F-bit
+        // value") per Core Spec v5.0, Vol 3, Part A, 8.6.5.6 and must come
+        // after updates to the RemoteBusy variable in order to avoid
+        // transmitting frames when the peer can't accept them.
+        if constexpr (kContainsEnhancedControlField<decltype(header)>) {
+          if (receive_seq_num_callback_) {
+            receive_seq_num_callback_(header.receive_seq_num(),
+                                      header.is_poll_response());
+          }
+        }
+        return sdu;
+      };
+  return std::visit(std::move(frame_processor), frame_header);
 }
 
 ByteBufferPtr Engine::ProcessFrame(const SimpleInformationFrameHeader header,
@@ -171,13 +173,12 @@ ByteBufferPtr Engine::ProcessFrame(const SimpleInformationFrameHeader header,
   return sdu;
 }
 
-ByteBufferPtr Engine::ProcessFrame(const SimpleStartOfSduFrameHeader, PDU pdu) {
+ByteBufferPtr Engine::ProcessFrame(const SimpleStartOfSduFrameHeader, PDU) {
   // TODO(quiche): Implement validation and handling of Start-of-SDU frames.
   return nullptr;
 }
 
-ByteBufferPtr Engine::ProcessFrame(const SimpleSupervisoryFrame sframe,
-                                   PDU pdu) {
+ByteBufferPtr Engine::ProcessFrame(const SimpleSupervisoryFrame sframe, PDU) {
   // Core Spec v5, Vol 3, Part A, Sec 8.6.1.5: "S-Frames shall not be
   // transmitted with both the F-bit and the P-bit set to 1 at the same time."
   if (sframe.is_poll_request() && sframe.is_poll_response()) {
@@ -249,7 +250,7 @@ ByteBufferPtr Engine::ProcessFrame(const SimpleSupervisoryFrame sframe,
   return nullptr;
 }
 
-ByteBufferPtr Engine::ProcessFrame(std::monostate, PDU pdu) {
+ByteBufferPtr Engine::ProcessFrame(std::monostate, PDU) {
   // TODO(quiche): Close connection.
   return nullptr;
 }

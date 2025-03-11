@@ -21,9 +21,15 @@
 
 namespace pw::async2 {
 
-void Context::ReEnqueue() { waker_->Clone(WaitReason::Unspecified()).Wake(); }
+void Context::ReEnqueue() {
+  Waker waker;
+  waker_->InternalCloneInto(waker);
+  std::move(waker).Wake();
+}
 
-Waker Context::GetWaker(WaitReason reason) { return waker_->Clone(reason); }
+void Context::InternalStoreWaker(Waker& waker_out) {
+  waker_->InternalCloneInto(waker_out);
+}
 
 void Task::RemoveAllWakersLocked() {
   while (wakers_ != nullptr) {
@@ -137,16 +143,19 @@ void Waker::Wake() && {
   }
 }
 
-Waker Waker::Clone(WaitReason) & {
-  Waker waker;
-  {
-    std::lock_guard lock(dispatcher_lock());
-    if (task_ != nullptr) {
-      waker.task_ = task_;
-      task_->AddWakerLocked(waker);
-    }
+void Waker::InternalCloneInto(Waker& out) & {
+  std::lock_guard lock(dispatcher_lock());
+  // The `out` waker already points to this task, so no work is necessary.
+  if (out.task_ == task_) {
+    return;
   }
-  return waker;
+  // Remove the output waker from its existing task's list.
+  out.RemoveFromTaskWakerListLocked();
+  out.task_ = task_;
+  // Only add if the waker being cloned is actually associated with a task.
+  if (task_ != nullptr) {
+    task_->AddWakerLocked(out);
+  }
 }
 
 bool Waker::IsEmpty() const {
@@ -176,7 +185,7 @@ void Waker::RemoveFromTaskWakerListLocked() {
   }
 }
 
-void DispatcherBase::Deregister() {
+void NativeDispatcherBase::Deregister() {
   std::lock_guard lock(dispatcher_lock());
   UnpostTaskList(first_woken_);
   first_woken_ = nullptr;
@@ -185,7 +194,107 @@ void DispatcherBase::Deregister() {
   sleeping_ = nullptr;
 }
 
-void DispatcherBase::UnpostTaskList(Task* task) {
+void NativeDispatcherBase::Post(Task& task) {
+  bool wake_dispatcher = false;
+  {
+    std::lock_guard lock(dispatcher_lock());
+    PW_DASSERT(task.state_ == Task::State::kUnposted);
+    PW_DASSERT(task.dispatcher_ == nullptr);
+    task.state_ = Task::State::kWoken;
+    task.dispatcher_ = this;
+    AddTaskToWokenList(task);
+    if (wants_wake_) {
+      wake_dispatcher = true;
+      wants_wake_ = false;
+    }
+  }
+  // Note: unlike in ``WakeTask``, here we know that the ``Dispatcher`` will
+  // not be destroyed out from under our feet because we're in a method being
+  // called on the ``Dispatcher`` by a user.
+  if (wake_dispatcher) {
+    DoWake();
+  }
+}
+
+NativeDispatcherBase::SleepInfo NativeDispatcherBase::AttemptRequestWake(
+    bool allow_empty) {
+  std::lock_guard lock(dispatcher_lock());
+  // Don't allow sleeping if there are already tasks waiting to be run.
+  if (first_woken_ != nullptr) {
+    return SleepInfo::DontSleep();
+  }
+  if (!allow_empty && sleeping_ == nullptr) {
+    return SleepInfo::DontSleep();
+  }
+  /// Indicate that the ``Dispatcher`` is sleeping and will need a ``DoWake``
+  /// call once more work can be done.
+  wants_wake_ = true;
+  // Once timers are added, this should check them.
+  return SleepInfo::Indefinitely();
+}
+
+NativeDispatcherBase::RunOneTaskResult NativeDispatcherBase::RunOneTask(
+    Dispatcher& dispatcher, Task* task_to_look_for) {
+  std::lock_guard task_lock(task_execution_lock_);
+  Task* task;
+  {
+    std::lock_guard lock(dispatcher_lock());
+    task = PopWokenTask();
+    if (task == nullptr) {
+      bool all_complete = first_woken_ == nullptr && sleeping_ == nullptr;
+      return RunOneTaskResult(
+          /*completed_all_tasks=*/all_complete,
+          /*completed_main_task=*/false,
+          /*ran_a_task=*/false);
+    }
+    task->state_ = Task::State::kRunning;
+  }
+
+  bool complete;
+  {
+    Waker waker(*task);
+    Context context(dispatcher, waker);
+    complete = task->Pend(context).IsReady();
+  }
+  if (complete) {
+    bool all_complete;
+    {
+      std::lock_guard lock(dispatcher_lock());
+      switch (task->state_) {
+        case Task::State::kUnposted:
+        case Task::State::kSleeping:
+          PW_DASSERT(false);
+          PW_UNREACHABLE;
+        case Task::State::kRunning:
+          break;
+        case Task::State::kWoken:
+          RemoveWokenTaskLocked(*task);
+          break;
+      }
+      task->state_ = Task::State::kUnposted;
+      task->dispatcher_ = nullptr;
+      task->RemoveAllWakersLocked();
+      all_complete = first_woken_ == nullptr && sleeping_ == nullptr;
+    }
+    task->DoDestroy();
+    return RunOneTaskResult(
+        /*completed_all_tasks=*/all_complete,
+        /*completed_main_task=*/task == task_to_look_for,
+        /*ran_a_task=*/true);
+  } else {
+    std::lock_guard lock(dispatcher_lock());
+    if (task->state_ == Task::State::kRunning) {
+      task->state_ = Task::State::kSleeping;
+      AddTaskToSleepingList(*task);
+    }
+    return RunOneTaskResult(
+        /*completed_all_tasks=*/false,
+        /*completed_main_task=*/false,
+        /*ran_a_task=*/true);
+  }
+}
+
+void NativeDispatcherBase::UnpostTaskList(Task* task) {
   while (task != nullptr) {
     task->state_ = Task::State::kUnposted;
     task->dispatcher_ = nullptr;
@@ -197,7 +306,7 @@ void DispatcherBase::UnpostTaskList(Task* task) {
   }
 }
 
-void DispatcherBase::RemoveTaskFromList(Task& task) {
+void NativeDispatcherBase::RemoveTaskFromList(Task& task) {
   if (task.prev_ != nullptr) {
     task.prev_->next_ = task.next_;
   }
@@ -208,7 +317,7 @@ void DispatcherBase::RemoveTaskFromList(Task& task) {
   task.next_ = nullptr;
 }
 
-void DispatcherBase::RemoveWokenTaskLocked(Task& task) {
+void NativeDispatcherBase::RemoveWokenTaskLocked(Task& task) {
   if (first_woken_ == &task) {
     first_woken_ = task.next_;
   }
@@ -218,14 +327,14 @@ void DispatcherBase::RemoveWokenTaskLocked(Task& task) {
   RemoveTaskFromList(task);
 }
 
-void DispatcherBase::RemoveSleepingTaskLocked(Task& task) {
+void NativeDispatcherBase::RemoveSleepingTaskLocked(Task& task) {
   if (sleeping_ == &task) {
     sleeping_ = task.next_;
   }
   RemoveTaskFromList(task);
 }
 
-void DispatcherBase::AddTaskToWokenList(Task& task) {
+void NativeDispatcherBase::AddTaskToWokenList(Task& task) {
   if (first_woken_ == nullptr) {
     first_woken_ = &task;
   } else {
@@ -235,7 +344,7 @@ void DispatcherBase::AddTaskToWokenList(Task& task) {
   last_woken_ = &task;
 }
 
-void DispatcherBase::AddTaskToSleepingList(Task& task) {
+void NativeDispatcherBase::AddTaskToSleepingList(Task& task) {
   if (sleeping_ != nullptr) {
     sleeping_->prev_ = &task;
   }
@@ -243,7 +352,7 @@ void DispatcherBase::AddTaskToSleepingList(Task& task) {
   sleeping_ = &task;
 }
 
-void DispatcherBase::WakeTask(Task& task) {
+void NativeDispatcherBase::WakeTask(Task& task) {
   switch (task.state_) {
     case Task::State::kWoken:
       // Do nothing-- this has already been woken.
@@ -273,7 +382,7 @@ void DispatcherBase::WakeTask(Task& task) {
   }
 }
 
-Task* DispatcherBase::PopWokenTask() {
+Task* NativeDispatcherBase::PopWokenTask() {
   if (first_woken_ == nullptr) {
     return nullptr;
   }

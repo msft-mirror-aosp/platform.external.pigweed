@@ -67,6 +67,13 @@ Message Structures
 The highest level API is based around message structures created through C++
 code generation, integrated with Pigweed's build system.
 
+.. warning::
+
+   Message structures only support a subset of protobuf field types. Before
+   continuing, refer to :ref:`pw_protobuf-message-limitations` to understand
+   what types of protobuf messages can and cannot be represented, and whether
+   or not message structures are a suitable choice.
+
 This results in the following generated structure:
 
 .. code-block:: c++
@@ -260,6 +267,49 @@ from one message type to another:
   encoder's ``status()`` call. Always check the status of calls or the encoder,
   as in the case of error, the encoded data will be invalid.
 
+.. _pw_protobuf-message-limitations:
+
+Limitations
+-----------
+``pw_protobuf``'s message structure API is incomplete. Generally speaking, it is
+reasonable to use for basic messages containing simple inline fields (scalar
+types, bytes, and strings) and nested messages of similar form. Beyond this,
+certain other types of protobuf specifiers can be used, but may be limited in
+how and when they are supported. These cases are described below.
+
+If an object representation of protobuf messages is desired, the Pigweed team
+recommends using `Nanopb`_, which is fully supported within Pigweed's build and
+RPC systems.
+
+Message structures are eventually intended to be replaced with an alternative
+object model. See `SEED-0103 <http://pwrev.dev/133971>`_ for additional
+information about how message structures came to be and our future plans.
+
+Protobuf versioning
+^^^^^^^^^^^^^^^^^^^
+Message structures are generated in accordance to ``proto3`` semantics only.
+Unset fields default to their zero values. Explicit field presence is supported
+through the use of the ``optional`` specifier. Proto2-only keywords such as
+``required`` have no effect.
+
+There is limited preliminary support for Protobuf editions, primarily to allow
+editions-based proto files to compile. At this time, the only editions feature
+supported by the code generator is ``field_presence``.
+
+``oneof`` fields
+^^^^^^^^^^^^^^^^
+``oneof`` protobuf fields cannot be inlined within a message structure: they
+must be encoded and decoded using callbacks.
+
+``optional`` fields
+^^^^^^^^^^^^^^^^^^^
+Only scalar fields generate a ``std::optional`` wrapper in the resulting message
+structure. Optional submessages or variable-length fields
+(``string`` / ``bytes``) must be processed through callbacks, requiring manual
+tracking of presence depending on whether or not the callback is invoked.
+
+.. _pw_protobuf-per-field-apis:
+
 Per-Field Writers and Readers
 =============================
 The middle level API is based around typed methods to write and read each
@@ -449,6 +499,7 @@ complex than encoding or using the message structure.
 
    This support will be removed after downstream projects have been migrated.
 
+.. _module-pw_protobuf-read:
 
 Reading a single field
 ----------------------
@@ -506,12 +557,32 @@ The ``Find`` APIs also work with streamed data, as shown below.
      return pw::OkStatus();
    }
 
+``Find`` APIs can also be used to iterate over occurrences of a repeated field.
+For example, given the protobuf definition:
+
+.. code-block:: proto
+
+   message Samples {
+     repeated uint32 raw_values = 1;
+   }
+
+The ``raw_values`` field can be iterated over as follows:
+
+.. code-block:: c++
+
+   pw::Status ReadSamples(pw::ConstByteSpan serialized_samples) {
+     pw::protobuf::Uint32Finder raw_values =
+         Samples::FindRawValues(serialized_samples);
+     for (Result<int32_t> val = finder.Next(); val.ok(); val = finder.Next()) {
+       ConsumeValue(*val);
+     }
+   }
+
 .. note::
 
    Each call to ``Find*()`` linearly scans through the message. If you have to
    read multiple fields, it is more efficient to instantiate your own decoder as
-   described above. Additionally, to avoid confusion, ``Find*()`` methods are
-   not generated for repeated fields.
+   described above.
 
 
 Direct Writers and Readers
@@ -651,6 +722,17 @@ Codegen
 -------
 pw_protobuf codegen integration is supported in GN, Bazel, and CMake.
 
+``pw_protobuf`` only supports targeting ``proto3`` syntax and its semantics.
+Files which specify ``syntax = "proto2"`` will be treated as proto3, and any
+proto2-specific options will be ignored.
+
+.. admonition:: Protobuf edition support
+
+   `Protobuf editions <https://protobuf.dev/editions/overview>`_ are the future
+   of Protobuf versioning, replacing proto2 and proto3 with more granular code
+   generation options. ``pw_protobuf`` has some basic support for editions, but
+   it is still a work in progress.
+
 This module's codegen is available through the ``*.pwpb`` sub-target of a
 ``pw_proto_library`` in GN, CMake, and Bazel. See :ref:`pw_protobuf_compiler's
 documentation <module-pw_protobuf_compiler>` for more information on build
@@ -738,7 +820,7 @@ messages comply with the specified limitations.
 
 Options Files
 =============
-Code generation can be configured using a separate ``.options`` file placed
+Code generation can be configured using a separate ``.pwpb_options`` file placed
 alongside the relevant ``.proto`` file.
 
 The format of this file is a series of fully qualified field names, or patterns,
@@ -768,7 +850,7 @@ e.g.
        "pet_daycare_protos/client.proto",
      ]
      inputs = [
-       "pet_daycare_protos/client.options",
+       "pet_daycare_protos/client.pwpb_options",
      ]
    }
 
@@ -1028,7 +1110,7 @@ that can hold the set of values encoded by it, following these rules.
      message Store {
        Store nearest_store = 1;
        repeated int32 employee_numbers = 2;
-       string driections = 3;
+       string directions = 3;
        repeated string address = 4;
        repeated Employee employees = 5;
      }
@@ -1049,6 +1131,75 @@ that can hold the set of values encoded by it, following these rules.
 
   A Callback object can be converted to a ``bool`` indicating whether a callback
   is set.
+
+* Fields defined within a ``oneof`` group are represented by a ``OneOf``
+  callback.
+
+  .. code-block:: protobuf
+
+     message OnlineOrder {
+       Product product = 1;
+       Customer customer = 2;
+
+       oneof delivery {
+         Address shipping_address = 3;
+         Date pickup_date = 4;
+       }
+     }
+
+  .. code-block::
+
+     // No options set.
+
+  .. code-block:: c++
+
+     struct OnlineOrder::Message {
+       Product::Message product;
+       Customer::Message customer;
+       pw::protobuf::OneOf<OnlineOrder::StreamEncoder,
+                           OnlineOrder::StreamDecoder,
+                           OnlineOrder::Fields>
+         delivery;
+     };
+
+  Encoding a ``oneof`` field is identical to using a regular field callback.
+  The encode callback will be invoked once when the message is written. Users
+  must ensure that only a single field is written to the encoder within the
+  callback.
+
+  .. code-block:: c++
+
+     OnlineOrder::Message message;
+     message.delivery.SetEncoder(
+         [&pickup_date](OnlineOrder::StreamEncoder& encoder) {
+           return encoder.GetPickupDateEncoder().Write(pickup_date);
+         });
+
+  The ``OneOf`` decoder callback is invoked when reading a message structure
+  when a field within the ``oneof`` group is encountered. The found field is
+  passed to the callback.
+
+  If multiple fields from the ``oneof`` group are encountered within a ``Read``,
+  it will fail with a ``DATA_LOSS`` status.
+
+  .. code-block:: c++
+
+     OnlineOrder::Message message;
+     message.delivery.SetDecoder(
+         [this](OnlineOrder::Fields field, OnlineOrder::StreamDecoder& decoder) {
+           switch (field) {
+             case OnlineOrder::Fields::kShippingAddress:
+               PW_TRY(decoder.GetShippingAddressDecoder().Read(&this->shipping_address));
+               break;
+             case OnlineOrder::Fields::kPickupDate:
+               PW_TRY(decoder.GetPickupDateDecoder().Read(&this->pickup_date));
+               break;
+             default:
+               return pw::Status::DataLoss();
+           }
+
+           return pw::OkStatus();
+         });
 
 Message structures can be copied, but doing so will clear any assigned
 callbacks. To preserve functions applied to callbacks, ensure that the message
@@ -2302,10 +2453,9 @@ allocation, making it unsuitable for many embedded systems.
 
 nanopb
 ======
-`nanopb <https://github.com/nanopb/nanopb>`_ is a commonly used embedded
-protobuf library with very small code size and full code generation. It provides
-both encoding/decoding functionality and in-memory C structs representing
-protobuf messages.
+`Nanopb`_ is a commonly used embedded protobuf library with very small code size
+and full code generation. It provides both encoding/decoding functionality and
+in-memory C structs representing protobuf messages.
 
 nanopb works well for many embedded products; however, using its generated code
 can run into RAM usage issues when processing nontrivial protobuf messages due
@@ -2323,3 +2473,5 @@ intuitive user interface.
 
 Depending on the requirements of a project, either of these libraries could be
 suitable.
+
+.. _Nanopb: https://jpa.kapsi.fi/nanopb/

@@ -11,10 +11,7 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -24,7 +21,7 @@ cc_library(
     name = "pw_i2c_mcuxpresso",
     srcs = ["initiator.cc"],
     hdrs = ["public/pw_i2c_mcuxpresso/initiator.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_chrono:system_clock",
         "//pw_i2c:address",
@@ -49,7 +46,7 @@ cc_library(
     hdrs = [
         "public/pw_i2c_mcuxpresso/i3c_ccc.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 cc_library(
@@ -58,7 +55,7 @@ cc_library(
     hdrs = [
         "public/pw_i2c_mcuxpresso/i3c_initiator.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":i3c_ccc",
         "//pw_bytes",
