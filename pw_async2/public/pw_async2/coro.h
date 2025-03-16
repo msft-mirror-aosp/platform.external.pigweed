@@ -15,6 +15,7 @@
 
 #include <concepts>
 #include <coroutine>
+#include <variant>
 
 #include "pw_allocator/allocator.h"
 #include "pw_allocator/layout.h"
@@ -50,6 +51,31 @@ namespace internal {
 
 void LogCoroAllocationFailure(size_t requested_size);
 
+template <typename T>
+class OptionalWrapper final {
+ public:
+  // Create an empty container for a to-be-provided value.
+  OptionalWrapper() : value_() {}
+
+  // Assign a value.
+  template <typename U>
+  OptionalWrapper& operator=(U&& value) {
+    value_ = std::forward<U>(value);
+    return *this;
+  }
+
+  // Retrieve the inner value.
+  //
+  // This operation will fail if no value was assigned.
+  operator T() {
+    PW_ASSERT(value_.has_value());
+    return *value_;
+  }
+
+ private:
+  std::optional<T> value_;
+};
+
 // A container for a to-be-produced value of type `T`.
 //
 // This is designed to allow avoiding the overhead of `std::optional` when
@@ -59,55 +85,10 @@ void LogCoroAllocationFailure(size_t requested_size);
 // - a default-initialized `T` if `T` is default-initializable or
 // - `std::nullopt`
 template <typename T>
-class OptionalOrDefault final {
- public:
-  // Create an empty container for a to-be-provided value.
-  OptionalOrDefault() : value_() {}
-
-  // Assign a value.
-  template <typename U>
-  OptionalOrDefault& operator=(U&& value) {
-    value_ = std::forward<U>(value);
-    return *this;
-  }
-
-  // Retrieve the inner value.
-  //
-  // This operation will fail if no value was assigned.
-  T& operator*() {
-    PW_ASSERT(value_.has_value());
-    return *value_;
-  }
-
- private:
-  std::optional<T> value_;
-};
-
-// A specialization of `OptionalOrDefault<T>` for `default_initializable`
-// types.
-template <std::default_initializable T>
-class OptionalOrDefault<T> final {
- public:
-  // Create a container for a to-be-provided value by default-initializing.
-  OptionalOrDefault() : value_() {}
-
-  // Assign a value.
-  template <typename U>
-  OptionalOrDefault& operator=(U&& value) {
-    value_ = std::forward<U>(value);
-    return *this;
-  }
-
-  // Retrieve the inner value.
-  //
-  // This operation will return a default-constructed `T` if no value was
-  // assigned. Typical users should not rely on this, and should instead
-  // only retrieve values assigned using `operator=`.
-  T& operator*() { return value_; }
-
- private:
-  T value_;
-};
+using OptionalOrDefault =
+    std::conditional<std::is_default_constructible<T>::value,
+                     T,
+                     OptionalWrapper<T>>::type;
 
 // A wrapper for `std::coroutine_handle` that assumes unique ownership of the
 // underlying `PromiseType`.
@@ -118,7 +99,7 @@ template <typename PromiseType>
 class OwningCoroutineHandle final {
  public:
   // Construct a null (`!IsValid()`) handle.
-  OwningCoroutineHandle(nullptr_t) : promise_handle_(nullptr) {}
+  OwningCoroutineHandle(std::nullptr_t) : promise_handle_(nullptr) {}
 
   /// Take ownership of `promise_handle`.
   OwningCoroutineHandle(std::coroutine_handle<PromiseType>&& promise_handle)
@@ -172,6 +153,7 @@ class OwningCoroutineHandle final {
   // Invokes `destroy()` on the underlying promise and deallocates its
   // associated storage.
   void Release() {
+    // DOCSTAG: [pw_async2-coro-release]
     void* address = promise_handle_.address();
     if (address != nullptr) {
       pw::allocator::Deallocator& dealloc = promise_handle_.promise().dealloc_;
@@ -179,6 +161,7 @@ class OwningCoroutineHandle final {
       promise_handle_ = nullptr;
       dealloc.Deallocate(address);
     }
+    // DOCSTAG: [pw_async2-coro-release]
   }
 
  private:
@@ -272,26 +255,56 @@ class CoroPromiseType final {
 
   // Allocate the space for both this `CoroPromiseType<T>` and the coroutine
   // state.
+  //
+  // This override does not accept alignment.
   template <typename... Args>
-  static void* operator new(std::size_t n,
+  static void* operator new(std::size_t size,
                             CoroContext& coro_cx,
                             const Args&...) noexcept {
-    auto ptr = coro_cx.alloc().Allocate(pw::allocator::Layout(n));
-    if (ptr == nullptr) {
-      internal::LogCoroAllocationFailure(n);
-    }
-    return ptr;
+    return SharedNew(coro_cx, size, alignof(std::max_align_t));
+  }
+
+  // Allocate the space for both this `CoroPromiseType<T>` and the coroutine
+  // state.
+  //
+  // This override accepts alignment.
+  template <typename... Args>
+  static void* operator new(std::size_t size,
+                            std::align_val_t align,
+                            CoroContext& coro_cx,
+                            const Args&...) noexcept {
+    return SharedNew(coro_cx, size, static_cast<size_t>(align));
   }
 
   // Method-receiver form.
+  //
+  // This override does not accept alignment.
   template <typename MethodReceiver, typename... Args>
-  static void* operator new(std::size_t n,
+  static void* operator new(std::size_t size,
                             const MethodReceiver&,
                             CoroContext& coro_cx,
                             const Args&...) noexcept {
-    auto ptr = coro_cx.alloc().Allocate(pw::allocator::Layout(n));
+    return SharedNew(coro_cx, size, alignof(std::max_align_t));
+  }
+
+  // Method-receiver form.
+  //
+  // This accepts alignment.
+  template <typename MethodReceiver, typename... Args>
+  static void* operator new(std::size_t size,
+                            std::align_val_t align,
+                            const MethodReceiver&,
+                            CoroContext& coro_cx,
+                            const Args&...) noexcept {
+    return SharedNew(coro_cx, size, static_cast<size_t>(align));
+  }
+
+  static void* SharedNew(CoroContext& coro_cx,
+                         std::size_t size,
+                         std::size_t align) noexcept {
+    auto ptr = coro_cx.alloc().Allocate(pw::allocator::Layout(size, align));
     if (ptr == nullptr) {
-      internal::LogCoroAllocationFailure(n);
+      internal::LogCoroAllocationFailure(size);
     }
     return ptr;
   }
@@ -439,11 +452,11 @@ class Awaitable final {
 ///
 /// # Example
 /// @rst
-/// .. literalinclude:: examples/coro.cc
+/// .. literalinclude:: examples/basic.cc
 ///    :language: cpp
 ///    :linenos:
-///    :start-after: [pw_async2-examples-coro-injection]
-///    :end-before: [pw_async2-examples-coro-injection]
+///    :start-after: [pw_async2-examples-basic-coro]
+///    :end-before: [pw_async2-examples-basic-coro]
 /// @endrst
 template <std::constructible_from<pw::Status> T>
 class Coro final {
@@ -477,6 +490,7 @@ class Coro final {
         promise_handle_.promise().currently_pending_(cx).IsPending()) {
       return Pending();
     }
+    // DOCSTAG: [pw_async2-coro-resume]
     // Create the arguments (and output storage) for the coroutine.
     internal::InOut<T> in_out;
     internal::OptionalOrDefault<T> return_value;
@@ -497,7 +511,8 @@ class Coro final {
 
     // When the coroutine completed in `resume()` above, it stored its
     // `co_return` value into `return_value`. This retrieves that value.
-    return std::move(*return_value);
+    return return_value;
+    // DOCSTAG: [pw_async2-coro-resume]
   }
 
   /// Used by the compiler in order to create a `Coro<T>` from a coroutine

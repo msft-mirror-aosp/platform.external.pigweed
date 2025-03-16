@@ -74,6 +74,7 @@ declare_args() {
   dir_pw_chrono_threadx = get_path_info("../pw_chrono_threadx", "abspath")
   dir_pw_chrono_zephyr = get_path_info("../pw_chrono_zephyr", "abspath")
   dir_pw_cli = get_path_info("../pw_cli", "abspath")
+  dir_pw_cli_analytics = get_path_info("../pw_cli_analytics", "abspath")
   dir_pw_clock_tree = get_path_info("../pw_clock_tree", "abspath")
   dir_pw_clock_tree_mcuxpresso =
       get_path_info("../pw_clock_tree_mcuxpresso", "abspath")
@@ -97,6 +98,7 @@ declare_args() {
   dir_pw_dma_mcuxpresso = get_path_info("../pw_dma_mcuxpresso", "abspath")
   dir_pw_docgen = get_path_info("../pw_docgen", "abspath")
   dir_pw_doctor = get_path_info("../pw_doctor", "abspath")
+  dir_pw_elf = get_path_info("../pw_elf", "abspath")
   dir_pw_emu = get_path_info("../pw_emu", "abspath")
   dir_pw_env_setup = get_path_info("../pw_env_setup", "abspath")
   dir_pw_env_setup_zephyr = get_path_info("../pw_env_setup_zephyr", "abspath")
@@ -140,6 +142,7 @@ declare_args() {
   dir_pw_module = get_path_info("../pw_module", "abspath")
   dir_pw_multibuf = get_path_info("../pw_multibuf", "abspath")
   dir_pw_multisink = get_path_info("../pw_multisink", "abspath")
+  dir_pw_numeric = get_path_info("../pw_numeric", "abspath")
   dir_pw_package = get_path_info("../pw_package", "abspath")
   dir_pw_perf_test = get_path_info("../pw_perf_test", "abspath")
   dir_pw_persistent_ram = get_path_info("../pw_persistent_ram", "abspath")
@@ -274,6 +277,7 @@ declare_args() {
     dir_pw_chrono_threadx,
     dir_pw_chrono_zephyr,
     dir_pw_cli,
+    dir_pw_cli_analytics,
     dir_pw_clock_tree,
     dir_pw_clock_tree_mcuxpresso,
     dir_pw_compilation_testing,
@@ -292,6 +296,7 @@ declare_args() {
     dir_pw_dma_mcuxpresso,
     dir_pw_docgen,
     dir_pw_doctor,
+    dir_pw_elf,
     dir_pw_emu,
     dir_pw_env_setup,
     dir_pw_env_setup_zephyr,
@@ -333,6 +338,7 @@ declare_args() {
     dir_pw_module,
     dir_pw_multibuf,
     dir_pw_multisink,
+    dir_pw_numeric,
     dir_pw_package,
     dir_pw_perf_test,
     dir_pw_persistent_ram,
@@ -457,6 +463,7 @@ declare_args() {
     "$dir_pw_chrono_threadx:tests",
     "$dir_pw_chrono_zephyr:tests",
     "$dir_pw_cli:tests",
+    "$dir_pw_cli_analytics:tests",
     "$dir_pw_clock_tree:tests",
     "$dir_pw_clock_tree_mcuxpresso:tests",
     "$dir_pw_compilation_testing:tests",
@@ -475,6 +482,7 @@ declare_args() {
     "$dir_pw_dma_mcuxpresso:tests",
     "$dir_pw_docgen:tests",
     "$dir_pw_doctor:tests",
+    "$dir_pw_elf:tests",
     "$dir_pw_emu:tests",
     "$dir_pw_env_setup:tests",
     "$dir_pw_env_setup_zephyr:tests",
@@ -516,6 +524,7 @@ declare_args() {
     "$dir_pw_module:tests",
     "$dir_pw_multibuf:tests",
     "$dir_pw_multisink:tests",
+    "$dir_pw_numeric:tests",
     "$dir_pw_package:tests",
     "$dir_pw_perf_test:tests",
     "$dir_pw_persistent_ram:tests",
@@ -640,6 +649,7 @@ declare_args() {
     "$dir_pw_chrono_threadx:docs",
     "$dir_pw_chrono_zephyr:docs",
     "$dir_pw_cli:docs",
+    "$dir_pw_cli_analytics:docs",
     "$dir_pw_clock_tree:docs",
     "$dir_pw_clock_tree_mcuxpresso:docs",
     "$dir_pw_compilation_testing:docs",
@@ -658,6 +668,7 @@ declare_args() {
     "$dir_pw_dma_mcuxpresso:docs",
     "$dir_pw_docgen:docs",
     "$dir_pw_doctor:docs",
+    "$dir_pw_elf:docs",
     "$dir_pw_emu:docs",
     "$dir_pw_env_setup:docs",
     "$dir_pw_env_setup_zephyr:docs",
@@ -699,6 +710,7 @@ declare_args() {
     "$dir_pw_module:docs",
     "$dir_pw_multibuf:docs",
     "$dir_pw_multisink:docs",
+    "$dir_pw_numeric:docs",
     "$dir_pw_package:docs",
     "$dir_pw_perf_test:docs",
     "$dir_pw_persistent_ram:docs",

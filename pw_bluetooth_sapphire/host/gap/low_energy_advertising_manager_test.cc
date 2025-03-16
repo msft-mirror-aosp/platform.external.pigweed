@@ -25,7 +25,7 @@
 #include "pw_bluetooth_sapphire/internal/host/hci/fake_low_energy_connection.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/controller_test.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/fake_controller.h"
-#include "pw_bluetooth_sapphire/internal/host/transport/emboss_control_packets.h"
+#include "pw_bluetooth_sapphire/internal/host/transport/control_packets.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/error.h"
 
 namespace bt {
@@ -40,6 +40,8 @@ constexpr size_t kDefaultMaxAdSize = 23;
 constexpr size_t kDefaultFakeAdSize = 20;
 constexpr AdvertisingInterval kTestInterval = AdvertisingInterval::FAST1;
 
+const DeviceAddress kPublicAddress(DeviceAddress::Type::kLEPublic,
+                                   {0x01, 0, 0, 0, 0, 0});
 const DeviceAddress kRandomAddress(DeviceAddress::Type::kLERandom,
                                    {0x55, 0x44, 0x33, 0x22, 0x11, 0x00});
 
@@ -66,7 +68,7 @@ class FakeLowEnergyAdvertiser final : public hci::LowEnergyAdvertiser {
       : hci::LowEnergyAdvertiser(hci, kDefaultMaxAdSize),
         ads_(ad_store),
         hci_(hci) {
-    BT_ASSERT(ads_);
+    PW_CHECK(ads_);
   }
 
   ~FakeLowEnergyAdvertiser() override = default;
@@ -106,16 +108,14 @@ class FakeLowEnergyAdvertiser final : public hci::LowEnergyAdvertiser {
     result_callback(fit::ok());
   }
 
-  void StopAdvertising(const DeviceAddress& address,
-                       bool extended_pdu) override {
+  void StopAdvertising(const DeviceAddress& address, bool) override {
     ads_->erase(address);
   }
 
-  void OnIncomingConnection(
-      hci_spec::ConnectionHandle handle,
-      pwemb::ConnectionRole role,
-      const DeviceAddress& peer_address,
-      const hci_spec::LEConnectionParameters& conn_params) override {
+  void OnIncomingConnection(hci_spec::ConnectionHandle handle,
+                            pwemb::ConnectionRole role,
+                            const DeviceAddress& peer_address,
+                            const hci_spec::LEConnectionParameters&) override {
     // Right now, we call the first callback, because we can't call any other
     // ones.
     // TODO(jamuraa): make this send it to the correct callback once we can
@@ -134,69 +134,62 @@ class FakeLowEnergyAdvertiser final : public hci::LowEnergyAdvertiser {
   }
 
  private:
-  hci::EmbossCommandPacket BuildEnablePacket(
-      const DeviceAddress& address,
-      pw::bluetooth::emboss::GenericEnableParam enable,
-      bool extended_pdu) override {
-    return hci::EmbossCommandPacket::New<
+  hci::CommandPacket BuildEnablePacket(
+      const DeviceAddress&,
+      pw::bluetooth::emboss::GenericEnableParam,
+      bool) override {
+    return hci::CommandPacket::New<
         pwemb::LESetExtendedAdvertisingEnableDataWriter>(
         hci_spec::kLESetExtendedAdvertisingEnable);
   }
 
-  std::optional<hci::EmbossCommandPacket> BuildSetAdvertisingParams(
-      const DeviceAddress& address,
-      const AdvertisingEventProperties& properties,
-      pwemb::LEOwnAddressType own_address_type,
-      const hci::AdvertisingIntervalRange& interval,
-      bool extended_pdu) override {
+  std::optional<hci::CommandPacket> BuildSetAdvertisingParams(
+      const DeviceAddress&,
+      const AdvertisingEventProperties&,
+      pwemb::LEOwnAddressType,
+      const hci::AdvertisingIntervalRange&,
+      bool) override {
     return std::nullopt;
   }
 
-  std::vector<hci::EmbossCommandPacket> BuildSetAdvertisingData(
-      const DeviceAddress& address,
-      const AdvertisingData& data,
-      AdvFlags flags,
-      bool extended_pdu) override {
-    hci::EmbossCommandPacket packet =
-        hci::EmbossCommandPacket::New<pwemb::LESetAdvertisingDataCommandWriter>(
+  std::vector<hci::CommandPacket> BuildSetAdvertisingData(
+      const DeviceAddress&, const AdvertisingData&, AdvFlags, bool) override {
+    hci::CommandPacket packet =
+        hci::CommandPacket::New<pwemb::LESetAdvertisingDataCommandWriter>(
             hci_spec::kLESetAdvertisingData);
 
-    std::vector<hci::EmbossCommandPacket> packets;
+    std::vector<hci::CommandPacket> packets;
     packets.push_back(std::move(packet));
     return packets;
   }
 
-  hci::EmbossCommandPacket BuildUnsetAdvertisingData(
-      const DeviceAddress& address, bool extended_pdu) override {
-    return hci::EmbossCommandPacket::New<
-        pwemb::LESetAdvertisingDataCommandWriter>(
+  hci::CommandPacket BuildUnsetAdvertisingData(const DeviceAddress&,
+                                               bool) override {
+    return hci::CommandPacket::New<pwemb::LESetAdvertisingDataCommandWriter>(
         hci_spec::kLESetAdvertisingData);
   }
 
-  std::vector<hci::EmbossCommandPacket> BuildSetScanResponse(
-      const DeviceAddress& address,
-      const AdvertisingData& scan_rsp,
-      bool extended_pdu) override {
-    hci::EmbossCommandPacket packet = hci::EmbossCommandPacket::New<
-        pwemb::LESetScanResponseDataCommandWriter>(
-        hci_spec::kLESetScanResponseData);
+  std::vector<hci::CommandPacket> BuildSetScanResponse(const DeviceAddress&,
+                                                       const AdvertisingData&,
+                                                       bool) override {
+    hci::CommandPacket packet =
+        hci::CommandPacket::New<pwemb::LESetScanResponseDataCommandWriter>(
+            hci_spec::kLESetScanResponseData);
 
-    std::vector<hci::EmbossCommandPacket> packets;
+    std::vector<hci::CommandPacket> packets;
     packets.push_back(std::move(packet));
     return packets;
   }
 
-  hci::EmbossCommandPacket BuildUnsetScanResponse(const DeviceAddress& address,
-                                                  bool extended_pdu) override {
-    return hci::EmbossCommandPacket::New<
-        pwemb::LESetScanResponseDataCommandWriter>(
+  hci::CommandPacket BuildUnsetScanResponse(const DeviceAddress&,
+                                            bool) override {
+    return hci::CommandPacket::New<pwemb::LESetScanResponseDataCommandWriter>(
         hci_spec::kLESetScanResponseData);
   }
 
-  hci::EmbossCommandPacket BuildRemoveAdvertisingSet(
-      const DeviceAddress& address, bool extended_pdu) override {
-    return hci::EmbossCommandPacket::New<
-        pwemb::LERemoveAdvertisingSetCommandWriter>(
+  hci::CommandPacket BuildRemoveAdvertisingSet(const DeviceAddress&,
+                                               bool) override {
+    return hci::CommandPacket::New<pwemb::LERemoveAdvertisingSetCommandWriter>(
         hci_spec::kLERemoveAdvertisingSet);
   }
 
@@ -217,6 +210,8 @@ class LowEnergyAdvertisingManagerTest : public TestingBase {
     TestingBase::SetUp();
     InitializeACLDataChannel();
 
+    fake_address_delegate_.EnablePrivacy(true);
+    fake_address_delegate_.set_identity_address(kPublicAddress);
     fake_address_delegate_.set_local_address(kRandomAddress);
     MakeFakeAdvertiser();
     MakeAdvertisingManager();
@@ -323,6 +318,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, Success) {
                               /*extended_pdu=*/false,
                               /*anonymous=*/false,
                               /*include_tx_power_level=*/false,
+                              /*address_type=*/std::nullopt,
                               GetSuccessCallback());
 
   RunUntilIdle();
@@ -343,6 +339,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, DataSize) {
                               /*extended_pdu=*/true,
                               /*anonymous=*/false,
                               /*include_tx_power_level=*/false,
+                              /*address_type=*/std::nullopt,
                               GetSuccessCallback());
 
   RunUntilIdle();
@@ -357,6 +354,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, DataSize) {
                               /*extended_pdu=*/true,
                               /*anonymous=*/false,
                               /*include_tx_power_level=*/false,
+                              /*address_type=*/std::nullopt,
                               GetErrorCallback());
 
   RunUntilIdle();
@@ -365,8 +363,8 @@ TEST_F(LowEnergyAdvertisingManagerTest, DataSize) {
   EXPECT_EQ(1u, ad_store().size());
 }
 
-// TODO(fxbug.dev/42083437): Revise this test to use multiple advertising
-// instances when multi-advertising is supported.
+// TODO: https://fxbug.dev/42083437 - Revise this test to use multiple
+// advertising instances when multi-advertising is supported.
 //  - Stopping one that is registered stops it in the advertiser
 //    (and stops the right address)
 //  - Stopping an advertisement that isn't registered returns false
@@ -380,6 +378,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, RegisterUnregister) {
                               /*extended_pdu=*/false,
                               /*anonymous=*/false,
                               /*include_tx_power_level=*/false,
+                              /*address_type=*/std::nullopt,
                               GetSuccessCallback());
 
   RunUntilIdle();
@@ -409,6 +408,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, AdvertiserError) {
                               /*extended_pdu=*/false,
                               /*anonymous=*/false,
                               /*include_tx_power_level=*/false,
+                              /*address_type=*/std::nullopt,
                               GetErrorCallback());
   RunUntilIdle();
 
@@ -433,6 +433,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, ConnectCallback) {
                               /*extended_pdu=*/false,
                               /*anonymous=*/false,
                               /*include_tx_power_level=*/false,
+                              /*address_type=*/std::nullopt,
                               GetSuccessCallback());
 
   RunUntilIdle();
@@ -457,8 +458,8 @@ TEST_F(LowEnergyAdvertisingManagerTest, ConnectCallback) {
 
 //  - Error: Connectable and Anonymous at the same time
 TEST_F(LowEnergyAdvertisingManagerTest, ConnectAdvertiseError) {
-  auto connect_cb = [](AdvertisementId connected_id,
-                       std::unique_ptr<hci::LowEnergyConnection> conn) {};
+  auto connect_cb = [](AdvertisementId,
+                       std::unique_ptr<hci::LowEnergyConnection>) {};
 
   adv_mgr()->StartAdvertising(CreateFakeAdvertisingData(),
                               AdvertisingData(),
@@ -467,6 +468,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, ConnectAdvertiseError) {
                               /*extended_pdu=*/false,
                               /*anonymous=*/true,
                               /*include_tx_power_level=*/false,
+                              /*address_type=*/std::nullopt,
                               GetErrorCallback());
 
   EXPECT_TRUE(last_status());
@@ -481,6 +483,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, SendsCorrectData) {
                               /*extended_pdu=*/false,
                               /*anonymous=*/false,
                               /*include_tx_power_level=*/false,
+                              /*address_type=*/std::nullopt,
                               GetSuccessCallback());
 
   RunUntilIdle();
@@ -511,6 +514,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, ConnectableAdvertisingIntervals) {
                               /*extended_pdu=*/false,
                               /*anonymous=*/false,
                               /*include_tx_power_level=*/false,
+                              /*address_type=*/std::nullopt,
                               GetSuccessCallback());
   RunUntilIdle();
   ASSERT_TRUE(last_status());
@@ -526,6 +530,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, ConnectableAdvertisingIntervals) {
                               /*extended_pdu=*/false,
                               /*anonymous=*/false,
                               /*include_tx_power_level=*/false,
+                              /*address_type=*/std::nullopt,
                               GetSuccessCallback());
   RunUntilIdle();
   ASSERT_TRUE(last_status());
@@ -541,6 +546,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, ConnectableAdvertisingIntervals) {
                               /*extended_pdu=*/false,
                               /*anonymous=*/false,
                               /*include_tx_power_level=*/false,
+                              /*address_type=*/std::nullopt,
                               GetSuccessCallback());
   RunUntilIdle();
   ASSERT_TRUE(last_status());
@@ -564,6 +570,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, NonConnectableAdvertisingIntervals) {
                               /*extended_pdu=*/false,
                               /*anonymous=*/false,
                               /*include_tx_power_level=*/false,
+                              /*address_type=*/std::nullopt,
                               GetSuccessCallback());
   RunUntilIdle();
   ASSERT_TRUE(last_status());
@@ -579,6 +586,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, NonConnectableAdvertisingIntervals) {
                               /*extended_pdu=*/false,
                               /*anonymous=*/false,
                               /*include_tx_power_level=*/false,
+                              /*address_type=*/std::nullopt,
                               GetSuccessCallback());
   RunUntilIdle();
   ASSERT_TRUE(last_status());
@@ -594,6 +602,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, NonConnectableAdvertisingIntervals) {
                               /*extended_pdu=*/false,
                               /*anonymous=*/false,
                               /*include_tx_power_level=*/false,
+                              /*address_type=*/std::nullopt,
                               GetSuccessCallback());
   RunUntilIdle();
   ASSERT_TRUE(last_status());
@@ -601,6 +610,44 @@ TEST_F(LowEnergyAdvertisingManagerTest, NonConnectableAdvertisingIntervals) {
   EXPECT_EQ(kLEAdvertisingSlowIntervalMin, current_adv()->interval_min);
   EXPECT_EQ(kLEAdvertisingSlowIntervalMax, current_adv()->interval_max);
   ASSERT_TRUE(adv_mgr()->StopAdvertising(last_ad_id()));
+}
+
+TEST_F(LowEnergyAdvertisingManagerTest, AdvertisePublicAddress) {
+  adv_mgr()->StartAdvertising(CreateFakeAdvertisingData(),
+                              CreateFakeAdvertisingData(/*packed_size=*/21),
+                              NopConnectCallback,
+                              AdvertisingInterval::FAST1,
+                              /*extended_pdu=*/false,
+                              /*anonymous=*/false,
+                              /*include_tx_power_level=*/false,
+                              DeviceAddress::Type::kLEPublic,
+                              GetSuccessCallback());
+  RunUntilIdle();
+  ASSERT_TRUE(last_status());
+  ASSERT_EQ(1u, ad_store().size());
+  EXPECT_TRUE(adv_mgr()->advertising());
+
+  // Verify that the advertiser uses the requested local address.
+  EXPECT_EQ(kPublicAddress, ad_store().begin()->first);
+}
+
+TEST_F(LowEnergyAdvertisingManagerTest, AdvertiseRandomAddress) {
+  adv_mgr()->StartAdvertising(CreateFakeAdvertisingData(),
+                              CreateFakeAdvertisingData(/*packed_size=*/21),
+                              NopConnectCallback,
+                              AdvertisingInterval::FAST1,
+                              /*extended_pdu=*/false,
+                              /*anonymous=*/false,
+                              /*include_tx_power_level=*/false,
+                              /*address_type=*/std::nullopt,
+                              GetSuccessCallback());
+  RunUntilIdle();
+  ASSERT_TRUE(last_status());
+  ASSERT_EQ(1u, ad_store().size());
+  EXPECT_TRUE(adv_mgr()->advertising());
+
+  // Verify that the advertiser uses the requested local address.
+  EXPECT_EQ(kRandomAddress, ad_store().begin()->first);
 }
 
 TEST_F(LowEnergyAdvertisingManagerTest, DestroyingInstanceStopsAdvertisement) {
@@ -613,6 +660,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, DestroyingInstanceStopsAdvertisement) {
                                 /*extended_pdu=*/false,
                                 /*anonymous=*/false,
                                 /*include_tx_power_level=*/false,
+                                /*address_type=*/std::nullopt,
                                 [&](AdvertisementInstance i, auto status) {
                                   ASSERT_EQ(fit::ok(), status);
                                   instance = std::move(i);
@@ -636,6 +684,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, MovingIntoInstanceStopsAdvertisement) {
                               /*extended_pdu=*/false,
                               /*anonymous=*/false,
                               /*include_tx_power_level=*/false,
+                              /*address_type=*/std::nullopt,
                               [&](AdvertisementInstance i, auto status) {
                                 ASSERT_EQ(fit::ok(), status);
                                 instance = std::move(i);
@@ -660,6 +709,7 @@ TEST_F(LowEnergyAdvertisingManagerTest,
                               /*extended_pdu=*/false,
                               /*anonymous=*/false,
                               /*include_tx_power_level=*/false,
+                              /*address_type=*/std::nullopt,
                               [&](AdvertisementInstance i, auto status) {
                                 ASSERT_EQ(fit::ok(), status);
                                 *instance = std::move(i);

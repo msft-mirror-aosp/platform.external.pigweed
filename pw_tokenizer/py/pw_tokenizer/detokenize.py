@@ -102,7 +102,9 @@ def _token_regex(prefix: str) -> Pattern[bytes]:
         # Brackets ({}) specifies domain string
         + rb'(?P<domainspec>('
         + NESTED_DOMAIN_START_PREFIX
-        + rb'(?P<domain>.*)'
+        + rb'(?P<domain>[^'
+        + NESTED_DOMAIN_END_PREFIX
+        + rb']*)'
         + NESTED_DOMAIN_END_PREFIX
         + rb'))?'
         # Optional; no base specifier defaults to BASE64.
@@ -431,6 +433,7 @@ class Detokenizer:
         if not base:
             base = b'16'
 
+        domain = ''.join(domain.split())
         return self._detokenize_once(match, base, domain)
 
     def _detokenize_once(
@@ -477,27 +480,6 @@ class Detokenizer:
         return original
 
 
-# TODO: b/265334753 - Reuse this function in database.py:LoadTokenDatabases
-def _parse_domain(path: Path | str) -> tuple[Path, Pattern[str] | None]:
-    """Extracts an optional domain regex pattern suffix from a path"""
-
-    if isinstance(path, Path):
-        path = str(path)
-
-    delimiters = path.count('#')
-
-    if delimiters == 0:
-        return Path(path), None
-
-    if delimiters == 1:
-        path, domain = path.split('#')
-        return Path(path), re.compile(domain)
-
-    raise ValueError(
-        f'Too many # delimiters. Expected 0 or 1, found {delimiters}'
-    )
-
-
 class AutoUpdatingDetokenizer(Detokenizer):
     """Loads and updates a detokenizer from database paths."""
 
@@ -505,7 +487,7 @@ class AutoUpdatingDetokenizer(Detokenizer):
         """Tracks the modified time of a path or file object."""
 
         def __init__(self, path: Path | str) -> None:
-            self.path, self.domain = _parse_domain(path)
+            self.path, self.domain = database.parse_domain(path)
             self._modified_time: float | None = self._last_modified_time()
 
         def updated(self) -> bool:
@@ -544,6 +526,7 @@ class AutoUpdatingDetokenizer(Detokenizer):
         *paths_or_files: Path | str,
         min_poll_period_s: float = 1.0,
         pool: Executor = ThreadPoolExecutor(max_workers=1),
+        prefix: str | bytes = encode.NESTED_TOKEN_PREFIX,
     ) -> None:
         self.paths = tuple(self._DatabasePath(path) for path in paths_or_files)
         self.min_poll_period_s = min_poll_period_s
@@ -551,7 +534,7 @@ class AutoUpdatingDetokenizer(Detokenizer):
         # Thread pool to use for loading the databases. Limit to a single
         # worker since this is low volume and not time critical.
         self._pool = pool
-        super().__init__(*(path.load() for path in self.paths))
+        super().__init__(*(path.load() for path in self.paths), prefix=prefix)
 
     def __del__(self) -> None:
         self._pool.shutdown(wait=False)

@@ -326,8 +326,7 @@ class FakeController final : public ControllerTestDoubleBase,
   void SendEvent(hci_spec::EventCode event_code, const ByteBuffer& payload);
 
   // Sends an HCI event, filling in the parameters in a provided event packet.
-  void SendEvent(hci_spec::EventCode event_code,
-                 hci::EmbossEventPacket* packet);
+  void SendEvent(hci_spec::EventCode event_code, hci::EventPacket* packet);
 
   // Sends a LE Meta event with the given parameters.
   void SendLEMetaEvent(hci_spec::EventCode subevent_code,
@@ -480,9 +479,9 @@ class FakeController final : public ControllerTestDoubleBase,
     return num_supported_advertising_sets_;
   }
   void set_num_supported_advertising_sets(uint8_t value) {
-    BT_ASSERT(value >= extended_advertising_states_.size());
-    BT_ASSERT(value <= hci_spec::kAdvertisingHandleMax +
-                           1);  // support advertising handle of 0
+    PW_CHECK(value >= extended_advertising_states_.size());
+    PW_CHECK(value <= hci_spec::kAdvertisingHandleMax +
+                          1);  // support advertising handle of 0
     num_supported_advertising_sets_ = value;
   }
 
@@ -571,22 +570,17 @@ class FakeController final : public ControllerTestDoubleBase,
   void RespondWithCommandComplete(hci_spec::OpCode opcode,
                                   pw::bluetooth::emboss::StatusCode status);
 
-  // Sends a HCI_Command_Complete event in response to the command with
-  // |opcode| and using the given data as the parameter payload.
-  void RespondWithCommandComplete(hci_spec::OpCode opcode,
-                                  const ByteBuffer& params);
-
   // Sends an HCI_Command_Complete event in response to the command with
   // |opcode| and using the provided event packet, filling in the event header
   // fields.
   void RespondWithCommandComplete(hci_spec::OpCode opcode,
-                                  hci::EmbossEventPacket* packet);
+                                  hci::EventPacket* packet);
 
   // Sends an HCI_Command_Complete event in response to the command with
   // |opcode| and using the provided event packet, filling in the event header
   // fields.
   void RespondWithCommandComplete(pw::bluetooth::emboss::OpCode opcode,
-                                  hci::EmbossEventPacket* packet);
+                                  hci::EventPacket* packet);
 
   // Sends a HCI_Command_Status event in response to the command with |opcode|
   // and using the given data as the parameter payload.
@@ -982,8 +976,7 @@ class FakeController final : public ControllerTestDoubleBase,
   // been called for that command's opcode.
   void HandleReceivedCommandPacket(
       const PacketView<hci_spec::CommandHeader>& command_packet);
-  void HandleReceivedCommandPacket(
-      const hci::EmbossCommandPacket& command_packet);
+  void HandleReceivedCommandPacket(const hci::CommandPacket& command_packet);
 
   void OnCommandPacketReceived(
       const PacketView<hci_spec::CommandHeader>& command_packet);

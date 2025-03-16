@@ -12,10 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -26,7 +23,7 @@ cc_library(
     hdrs = [
         "public/pw_spi/initiator.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_assert",
         "//pw_bytes",
@@ -39,7 +36,7 @@ cc_library(
     hdrs = [
         "public/pw_spi/responder.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_bytes",
         "//pw_function",
@@ -52,7 +49,7 @@ cc_library(
     hdrs = [
         "public/pw_spi/chip_selector.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_status",
     ],
@@ -63,7 +60,7 @@ cc_library(
     hdrs = [
         "public/pw_spi/chip_selector_digital_out.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":chip_selector",
         "//pw_digital_io",
@@ -79,7 +76,7 @@ cc_library(
         "public/pw_spi/chip_selector_mock.h",
         "public/pw_spi/initiator_mock.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":chip_selector",
         ":initiator",
@@ -108,7 +105,7 @@ cc_library(
     hdrs = [
         "public/pw_spi/device.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":chip_selector",
         ":initiator",
@@ -129,5 +126,13 @@ pw_cc_test(
         ":responder",
         "//pw_sync:mutex",
         "//pw_unit_test",
+    ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_spi/chip_selector.h",
+        "public/pw_spi/chip_selector_digital_out.h",
     ],
 )

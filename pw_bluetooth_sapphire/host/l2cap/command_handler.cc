@@ -95,8 +95,8 @@ bool CommandHandler::SendDisconnectionRequest(
 }
 
 void CommandHandler::ServeDisconnectionRequest(
-    DisconnectionRequestCallback cb) {
-  auto on_discon_req = [cb = std::move(cb)](
+    DisconnectionRequestCallback callback) {
+  auto on_discon_req = [cb = std::move(callback)](
                            const ByteBuffer& request_payload,
                            SignalingChannel::Responder* sig_responder) {
     if (request_payload.size() != sizeof(DisconnectionRequestPayload)) {
@@ -123,7 +123,7 @@ void CommandHandler::ServeDisconnectionRequest(
 CommandHandler::CommandHandler(SignalingChannelInterface* sig,
                                fit::closure request_fail_callback)
     : sig_(sig), request_fail_callback_(std::move(request_fail_callback)) {
-  BT_ASSERT(sig_);
+  PW_CHECK(sig_);
 }
 
 }  // namespace bt::l2cap::internal

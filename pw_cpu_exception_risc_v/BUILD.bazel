@@ -13,7 +13,7 @@
 # the License.
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
-load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_library")
+load("//pw_protobuf_compiler:pw_proto_library.bzl", "pwpb_proto_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -38,7 +38,7 @@ label_flag(
 cc_library(
     name = "cpu_state",
     hdrs = ["public/pw_cpu_exception_risc_v/cpu_state.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_preprocessor",
     ],
@@ -66,7 +66,7 @@ cc_library(
     name = "proto_dump",
     srcs = ["proto_dump.cc"],
     hdrs = ["public/pw_cpu_exception_risc_v/proto_dump.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":config",
         ":cpu_state",
@@ -90,8 +90,8 @@ py_proto_library(
     deps = [":cpu_state_protos"],
 )
 
-pw_proto_library(
-    name = "cpu_state_protos_cc",
+pwpb_proto_library(
+    name = "cpu_state_protos_pwpb",
     deps = [":cpu_state_protos"],
 )
 
@@ -102,12 +102,12 @@ cc_library(
     deps = [
         ":config",
         ":cpu_state",
-        ":cpu_state_protos_cc.pwpb",
+        ":cpu_state_protos_pwpb",
         ":proto_dump",
         "//pw_log",
         "//pw_protobuf",
         "//pw_status",
         "//pw_thread:snapshot",
-        "//pw_thread:thread_cc.pwpb",
+        "//pw_thread:thread_pwpb",
     ],
 )

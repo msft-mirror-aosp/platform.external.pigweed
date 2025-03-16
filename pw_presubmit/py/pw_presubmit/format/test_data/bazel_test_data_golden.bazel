@@ -15,7 +15,7 @@
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//pw_protobuf_compiler:pw_proto_library.bzl",
-    "pw_proto_library",
+    "pwpb_proto_library",
 )
 
 package(
@@ -25,7 +25,7 @@ package(
 cc_library(
     name = "pw_my_module",
     hdrs = ["public/pw_my_module/standing_screeb.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 proto_library(
@@ -43,7 +43,7 @@ py_proto_library(
     deps = [":foo_proto"],
 )
 
-pw_proto_library(
-    name = "foo_proto_cc",
+pwpb_proto_library(
+    name = "foo_proto_pwpb",
     deps = [":foo_proto"],
 )

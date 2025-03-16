@@ -30,7 +30,7 @@ pw_unit_test
 
       .. code-block:: python
 
-         load("@pigweed//pw_build:pigweed.bzl", "pw_cc_test")
+         load("@pigweed//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
          cc_library(
              name = "mylib",
@@ -159,7 +159,7 @@ Set up your build system
 
       .. code-block:: python
 
-         load("@pigweed//pw_build:pigweed.bzl", "pw_cc_test")
+         load("@pigweed//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
          cc_library(
              name = "mylib",
@@ -390,7 +390,7 @@ skipped when :ref:`using upstream GoogleTest <module-pw_unit_test-upstream>`:
 
 .. code-block::
 
-   load("//pw_build:pigweed.bzl", "pw_cc_test")
+   load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
    pw_cc_test(
        name = "no_upstream_test",
@@ -541,6 +541,13 @@ To set up RPC-based unit tests in your application:
 C++ API reference
 -----------------
 
+``pw_status`` Helpers
+=====================
+Both the light and GoogleTest backends of ``pw_unit_test`` expose some matchers
+for dealing with Pigweed ``pw::Status`` and ``pw::Result`` values. See
+:ref:`module-pw_unit_test-api-expect` and :ref:`module-pw_unit_test-api-assert`
+for details.
+
 .. _module-pw_unit_test-compatibility:
 
 ``pw_unit_test:light`` API compatibility
@@ -551,9 +558,9 @@ assertion, event handlers, and configuration.
 .. note::
 
    The ``googletest_test_matchers`` target which provides Pigweed-specific
-   ``StatusIs``, ``IsOkAndHolds``, ``ASSERT_OK``, and ``ASSERT_OK_AND_ASSIGN``
-   isn't part of the ``pw_unit_test:light`` backend. These matchers are only
-   usable when including the full upstream GoogleTest backend.
+   ``StatusIs``, ``IsOkAndHolds`` isn't part of the ``pw_unit_test:light``
+   backend. These matchers are only usable when including the full upstream
+   GoogleTest backend.
 
 Missing features include:
 
@@ -587,13 +594,13 @@ that enough space is available to store these variables.
 Test control
 ============
 
+.. doxygenfunction:: RUN_ALL_TESTS
 .. doxygendefine:: FAIL
 .. doxygendefine:: GTEST_FAIL
 .. doxygendefine:: SUCCEED
 .. doxygendefine:: GTEST_SUCCEED
 .. doxygendefine:: GTEST_SKIP
 .. doxygendefine:: ADD_FAILURE
-.. doxygendefine:: RUN_ALL_TESTS
 .. doxygendefine:: GTEST_HAS_DEATH_TEST
 .. doxygendefine:: EXPECT_DEATH_IF_SUPPORTED
 .. doxygendefine:: ASSERT_DEATH_IF_SUPPORTED
@@ -620,6 +627,7 @@ same time.
 .. doxygendefine:: EXPECT_DOUBLE_EQ
 .. doxygendefine:: EXPECT_STREQ
 .. doxygendefine:: EXPECT_STRNE
+.. doxygendefine:: PW_TEST_EXPECT_OK
 
 .. _module-pw_unit_test-api-assert:
 
@@ -641,6 +649,8 @@ test as soon as a failed condition is met.
 .. doxygendefine:: ASSERT_DOUBLE_EQ
 .. doxygendefine:: ASSERT_STREQ
 .. doxygendefine:: ASSERT_STRNE
+.. doxygendefine:: PW_TEST_ASSERT_OK
+.. doxygendefine:: PW_TEST_ASSERT_OK_AND_ASSIGN
 
 .. _module-pw_unit_test-api-event-handlers:
 

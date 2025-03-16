@@ -15,13 +15,18 @@
 #include "pw_rpc/internal/call.h"
 
 #include "pw_assert/check.h"
+#include "pw_bytes/span.h"
 #include "pw_log/log.h"
 #include "pw_preprocessor/util.h"
+#include "pw_rpc/channel.h"
 #include "pw_rpc/client.h"
 #include "pw_rpc/internal/encoding_buffer.h"
 #include "pw_rpc/internal/endpoint.h"
 #include "pw_rpc/internal/method.h"
+#include "pw_rpc/internal/packet.pwpb.h"
 #include "pw_rpc/server.h"
+#include "pw_status/status_with_size.h"
+#include "pw_status/try.h"
 
 // If the callback timeout is enabled, count the number of iterations of the
 // waiting loop and crash if it exceeds PW_RPC_CALLBACK_TIMEOUT_TICKS.
@@ -49,6 +54,20 @@
 namespace pw::rpc::internal {
 
 using pwpb::PacketType;
+
+Result<ConstByteSpan> EncodeCallbackToPayloadBuffer(
+    const Function<StatusWithSize(ByteSpan)>& callback)
+    PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
+  if (callback == nullptr) {
+    return Status::InvalidArgument();
+  }
+
+  ByteSpan payload_buffer =
+      encoding_buffer.AllocatePayloadBuffer(MaxSafePayloadSize());
+  PW_TRY_ASSIGN(const size_t payload_size, callback(payload_buffer));
+
+  return payload_buffer.first(payload_size);
+}
 
 // Creates an active server-side Call.
 Call::Call(const LockedCallContext& context, CallProperties properties)
@@ -125,13 +144,9 @@ void Call::MoveFrom(Call& other) {
   PW_DCHECK(!active_locked());
   PW_DCHECK(!awaiting_cleanup() && !other.awaiting_cleanup());
 
-  if (!other.active_locked()) {
-    return;  // Nothing else to do; this call is already closed.
-  }
-
   // An active call with an executing callback cannot be moved. Derived call
   // classes must wait for callbacks to finish before calling MoveFrom.
-  PW_DCHECK(!other.CallbacksAreRunning());
+  PW_DCHECK(!other.active_locked() || !other.CallbacksAreRunning());
 
   // Copy all members from the other call.
   endpoint_ = other.endpoint_;
@@ -152,11 +167,12 @@ void Call::MoveFrom(Call& other) {
   on_error_ = std::move(other.on_error_);
   on_next_ = std::move(other.on_next_);
 
-  // Mark the other call inactive, unregister it, and register this one.
-  other.MarkClosed();
-
-  endpoint().UnregisterCall(other);
-  endpoint().RegisterUniqueCall(*this);
+  if (other.active_locked()) {
+    // Mark the other call inactive, unregister it, and register this one.
+    other.MarkClosed();
+    endpoint().UnregisterCall(other);
+    endpoint().RegisterUniqueCall(*this);
+  }
 }
 
 void Call::WaitUntilReadyForMove(Call& destination, Call& source) {
@@ -212,6 +228,20 @@ Status Call::SendPacket(PacketType type, ConstByteSpan payload, Status status) {
   return channel->Send(MakePacket(type, payload, status));
 }
 
+Status Call::CloseAndSendResponseCallbackLocked(
+    const Function<StatusWithSize(ByteSpan)>& callback, Status status) {
+  PW_TRY_ASSIGN(ConstByteSpan payload, EncodeCallbackToPayloadBuffer(callback));
+  return CloseAndSendFinalPacketLocked(
+      pwpb::PacketType::RESPONSE, payload, status);
+}
+
+Status Call::TryCloseAndSendResponseCallbackLocked(
+    const Function<StatusWithSize(ByteSpan)>& callback, Status status) {
+  PW_TRY_ASSIGN(ConstByteSpan payload, EncodeCallbackToPayloadBuffer(callback));
+  return TryCloseAndSendFinalPacketLocked(
+      pwpb::PacketType::RESPONSE, payload, status);
+}
+
 Status Call::CloseAndSendFinalPacketLocked(PacketType type,
                                            ConstByteSpan response,
                                            Status status) {
@@ -232,6 +262,15 @@ Status Call::TryCloseAndSendFinalPacketLocked(PacketType type,
 }
 
 Status Call::WriteLocked(ConstByteSpan payload) {
+  return SendPacket(properties_.call_type() == kServerCall
+                        ? PacketType::SERVER_STREAM
+                        : PacketType::CLIENT_STREAM,
+                    payload);
+}
+
+Status Call::WriteCallbackLocked(
+    const Function<StatusWithSize(ByteSpan)>& callback) {
+  PW_TRY_ASSIGN(ConstByteSpan payload, EncodeCallbackToPayloadBuffer(callback));
   return SendPacket(properties_.call_type() == kServerCall
                         ? PacketType::SERVER_STREAM
                         : PacketType::CLIENT_STREAM,
@@ -289,8 +328,15 @@ void Call::HandlePayload(ConstByteSpan payload) {
     on_next_ = std::move(on_next_local);
   }
 
-  // Clean up calls in case decoding failed.
-  endpoint_->CleanUpCalls();
+  // The call could have been reinitialized and cleaned up already by another
+  // thread that acquired the rpc_lock() while on_next_local was executing
+  // without lock held.
+  if (endpoint_ != nullptr) {
+    // Clean up calls in case decoding failed.
+    endpoint_->CleanUpCalls();
+  } else {
+    rpc_lock().unlock();
+  }
 }
 
 void Call::CloseClientCall() {

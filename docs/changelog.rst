@@ -12,6 +12,1947 @@ Talk to the team at Pigweed Live
 .. pigweed-live::
 
 .. _docs-changelog-latest:
+.. _docs-changelog-2024-11-27:
+
+------------
+Nov 27, 2024
+------------
+.. changelog_highlights_start
+
+Highlights (Nov 15, 2024 to Nov 27, 2024):
+
+* **pw_allocator updates**: The :ref:`module-pw_allocator-api-bucket` class
+  has been refactored to be more flexible and the :ref:`block API
+  <module-pw_allocator-api-block>` has been refactored to support static
+  polymorphism.
+
+.. changelog_highlights_end
+
+.. _docs-changelog-2024-11-27-Modules:
+
+Modules
+=======
+
+.. _docs-changelog-2024-11-27-Modules-pw_allocator:
+
+pw_allocator
+------------
+Changes:
+
+.. 0942b69025f2987ca9512141fe3cf3a7046f042c
+
+* ``BestFitBlockAllocator`` was renamed to ``BestFitAllocator`` and
+  ``WorstFitBlockAllocator`` was renamed to ``WorstFitAllocator``. These
+  classes have been refactored to use :ref:`buckets
+  <module-pw_allocator-api-bucket>`. Commit: `Refactor best- and worst-fit
+  allocators to use buckets <https://pwrev.dev/234817>`__.
+
+.. 0766dbaf5305202c6f67e18184bb165df8426713
+
+* ``FirstFitBlockAllocator``, ``LastFitBlockAllocator``, and
+  ``DualFirstFitBlockAllocator`` were merged into a single class:
+  :ref:`module-pw_allocator-api-first_fit_allocator`. Commit: `Refactor
+  first fit allocators <https://pwrev.dev/234816>`__.
+
+.. 3bfdac7a7826a4e2a1dc7a7174fd8d6276546c26
+
+* The :ref:`module-pw_allocator-api-bucket` class has been refactored to
+  be more flexible. Commit: `Refactor Bucket
+  <https://pwrev.dev/234815>`__.
+
+.. 65b5e336df018fbc9d124ca09d71a5dcccd1a8c0
+
+* Metric calculation for blocks that shift bytes has changed. Commit:
+  `Fix metrics for blocks that shift bytes <https://pwrev.dev/249372>`__.
+  Bug: :bug:`378743727`.
+
+.. 33d00a77472a6ff545032b213aa24dfe6a39d606
+
+* :cpp:class:`pw::allocator::BlockAllocator` now returns
+  :cpp:class:`pw::allocator::BlockResult`. Commit: `Use BlockResult in
+  BlockAllocator <https://pwrev.dev/234811>`__.
+
+.. 6417a523b06e03dce3453e96c3a1bec6ab511768
+
+* The :ref:`block API <module-pw_allocator-api-block>` has been
+  refactored to support static polymorphism. Commit: `Add static
+  polymorphism to Block <https://pwrev.dev/232214>`__.
+
+.. _docs-changelog-2024-11-27-Modules-pw_bytes:
+
+pw_bytes
+--------
+New features:
+
+.. a287811e5e99eab8d4ddfcaf9f1a505fd1e3eb17
+
+* The new :cpp:func:`pw::IsAlignedAs` utility functions make it easier
+  to check alignment. Commit: `Add utility for checking alignment
+  <https://pwrev.dev/248192>`__.
+
+.. _docs-changelog-2024-11-27-Modules-pw_presubmit:
+
+pw_presubmit
+------------
+New features:
+
+.. e278ead3bfe1361c3ff08e5329636a35abbcef6c
+
+* The new ``includes_presubmit_check`` verifies that ``cc_library``
+  Bazel targets don't use the ``includes`` attribute. Commit: `Add check
+  for cc_library includes <https://pwrev.dev/251172>`__. Bug:
+  :bug:`380934893`.
+
+.. _docs-changelog-2024-11-27-Modules-pw_protobuf:
+
+pw_protobuf
+-----------
+New features:
+
+.. f776679bbea5f4ae376ab924d80760bb2f1e69a0
+
+* :ref:`pw_protobuf-message-limitations` now has more guidance around
+  protobuf versioning and ``optional`` fields. Commit: `Expand message
+  structure limitations docs section <https://pwrev.dev/249072>`__.
+
+.. _docs-changelog-2024-11-27-Modules-pw_transfer:
+
+pw_transfer
+-----------
+Changes:
+
+.. 1c771e0fd88511ef3550108572572db1f036d0a5
+
+* Warnings logs are now emitted when client or server streams close
+  unexpectedly. Commit: `Log when streams close unexpectedly
+  <https://pwrev.dev/249912>`__.
+
+.. 48712ad0655654b4dcc9b62085a58445fe0af696
+
+* The window size on retried data now shrinks in an attempt to reduce
+  network congestion. Commit: `Shrink window size on retried data
+  <https://pwrev.dev/249532>`__.
+
+.. _docs-changelog-2024-11-27-Modules-pw_unit_test:
+
+pw_unit_test
+------------
+Changes:
+
+.. c4d59ce4d011e11781bcb6dc6660ad947a7ee8df
+
+* Successful expectations are no longer stringified by default. Commit:
+  `Stop stringifying successful expectations
+  <https://pwrev.dev/248693>`__.
+
+.. _docs-changelog-2024-11-27-Modules-pw_rpc:
+
+pw_rpc
+------
+Changes:
+
+.. 92e854a4d179f0b340a0f8b5a662012ea4b8635c
+
+* A warning log is now emitted when a server receives a completion
+  request but client completion callbacks have been disabled. Commit:
+  `Warn when client completion callback is disabled
+  <https://pwrev.dev/249414>`__.
+
+.. _docs-changelog-2024-11-14:
+
+------------
+Nov 14, 2024
+------------
+.. changelog_highlights_start
+
+Highlights (Nov 1, 2024 to Nov 14, 2024):
+
+* **ELF API**: The new :cpp:class:`pw::elf::ElfReader` class is a
+  basic reader for ELF files.
+* **Updated Bluetooth APIs**: There's a new low energy
+  connection-oriented channels API and the :ref:`module-pw_bluetooth`
+  API has been modernized.
+* **Updated SEED process**: "Intent Approved" and "On Hold" statuses
+  were added to the SEED lifecycle.
+
+.. changelog_highlights_end
+
+.. _docs-changelog-2024-11-14-Modules:
+
+Modules
+=======
+
+.. _docs-changelog-2024-11-14-Modules-pw_allocator:
+
+pw_allocator
+------------
+Changes:
+
+.. 1dcac6a863b8adfc930de769ec56fd44f1e4448f
+
+* ``pw::allocator::AsPmrAllocator`` was renamed to
+  :cpp:class:`pw::allocator::PmrAllocator`. Commit: `Separate PMR from
+  Allocator <https://pwrev.dev/246412>`__.
+
+.. _docs-changelog-2024-11-14-Modules-pw_async2:
+
+pw_async2
+---------
+New features:
+
+.. 21933c60384c25d73dba60c90e74cc44d2a446de
+
+* The ``new`` operator for coroutines now accepts an optional alignment
+  argument. Commit: `Accept alignment in CoroPromiseType::operator new
+  <https://pwrev.dev/248638>`__. Bug: :bug:`378929156`.
+
+.. d20009a8e35dfdb881f77b6d171c697b61dba5c3
+
+* The new :c:macro:`PW_TRY_READY` and :c:macro:`PW_TRY_READY_ASSIGN`
+  helper macros reduce boilerplate in non-coroutine async code. Commit:
+  `Add PW_TRY_READY_* control flow macros <https://pwrev.dev/243818>`__.
+
+.. _docs-changelog-2024-11-14-Modules-pw_bluetooth:
+
+pw_bluetooth
+------------
+New features:
+
+.. c9ad96cf7be8a05a7d1bf6ec933114c7cc39f012
+
+* The new :cpp:class:`pw::bluetooth::low_energy::Channel`,
+  :cpp:class:`pw::bluetooth::low_energy::ChannelListener`, and
+  :cpp:class:`pw::bluetooth::low_energy::ChannelListenerRegistry` classes
+  provide a low energy connection-oriented channels API. Commit: `Add LE
+  Connection-Oriented Channels API <https://pwrev.dev/227371>`__. Bug:
+  :bug:`357142749`.
+
+Changes:
+
+.. a615b8bf5234f48b8a33e6c837aa7521fa80d92a
+
+* The :ref:`module-pw_bluetooth` API has been modernized. Commit:
+  `Modernize APIs <https://pwrev.dev/219393>`__. Bug: :bug:`350994818`.
+
+.. _docs-changelog-2024-11-14-Modules-pw_bluetooth_proxy:
+
+pw_bluetooth_proxy
+------------------
+New features:
+
+.. b8ee89e76ff4e8c467ea35291b2a141175c737e9
+
+* :cpp:class:`pw::bluetooth::proxy::L2capCoc` now supports reading.
+  Commit: `L2CAP CoC supports reading <https://pwrev.dev/232172>`__. Bug:
+  :bug:`360934032`.
+
+.. _docs-changelog-2024-11-14-Modules-pw_channel:
+
+pw_channel
+----------
+New features:
+
+.. 0a4e6db6ad35d0bf062c22b471fef2a66948a90f
+
+* The new :cpp:func:`pw::Channel::PendAllocateWriteBuffer` method
+  simplifies the allocation of write buffers that need small
+  modifications. Commit: `Move to PendAllocateWriteBuffer
+  <https://pwrev.dev/246239>`__.
+
+Changes:
+
+.. bd17ed6971f608e2d66da8b2954bc13ad3e2c664
+
+* The ``pw::channel::WriteToken`` method was removed. Commit: `Remove
+  WriteToken <https://pwrev.dev/245932>`__.
+
+.. 0422de1761e52ad5d1fad821880025fc27facf1c
+
+* ``pw_channel`` inheritance has been refactored
+  to ensure that conversions between compatible variants are valid.
+  Commit: `Rework inheritance to avoid SiblingCast
+  <https://pwrev.dev/247732>`__.
+
+.. _docs-changelog-2024-11-14-Modules-pw_elf:
+
+pw_elf
+------
+New features:
+
+.. 8ee78791500354f85df94b228f63b3a42a882040
+
+* The new :cpp:class:`pw::elf::ElfReader` class is a basic reader for
+  ELF files. Commit: `Add ElfReader <https://pwrev.dev/244893>`__.
+
+.. _docs-changelog-2024-11-14-Modules-pw_i2c:
+
+pw_i2c
+------
+Bug fixes:
+
+.. 6165aa470b35106b79b2e57ecec9951cff30acdc
+
+* I2C flags are now correctly set for transactions that occur on an I3C
+  bus. Commit: `Set the i2c flags correctly for transactions on an i3c bus
+  <https://pwrev.dev/245754>`__. Bug: :bug:`373451623`.
+
+.. _docs-changelog-2024-11-14-Modules-pw_metric:
+
+pw_metric
+---------
+New features:
+
+.. a751fa9bd38a30f08a14c336e7bc77878a5d60c5
+
+* ``pwpb`` now prioritizes the ``.pwpb_options`` for protobuf codegen.
+  Commit: `Add metrics_service.pwpb_options to BUILD.gn
+  <https://pwrev.dev/246112>`__.
+
+.. aacf94efb59dac4a661e88e2ba95acda20c5ccb1
+
+* The new :cpp:func:`PW_METRIC_TOKEN` makes it easier for tests to
+  create tokens for metrics. Commit: `Expose metric token format via
+  PW_METRIC_TOKEN <https://pwrev.dev/244332>`__.
+
+.. _docs-changelog-2024-11-14-Modules-pw_protobuf:
+
+pw_protobuf
+-----------
+New features:
+
+.. acbeaab3d280f748d235a31025d7a35dd38fa516
+
+* The ``Find*()`` methods have been extended to support iterating over
+  repeated fields. See :ref:`module-pw_protobuf-read`. Commit:
+  `Extend Find() APIs to support repeated fields <https://pwrev.dev/248432>`__.
+
+Changes:
+
+.. 6a16fab34795f2976e04457d099a05c671b79b54
+
+* It's no longer necessary to set a callback for every possible field in
+  a message when you're only interested in a few fields. Commit: `Allow
+  unset oneof callbacks <https://pwrev.dev/246692>`__.
+
+.. _docs-changelog-2024-11-14-Modules-pw_protobuf_compiler:
+
+pw_protobuf_compiler
+--------------------
+Changes:
+
+.. cd0b4fb52d8fb2012fbd8483f66a48d593e83bb9
+
+* ``pwpb_options`` files are now explicitly processed first, followed by
+  regular ``.options`` files. Commit: `Don't rely on options file ordering
+  <https://pwrev.dev/247472>`__.
+
+.. _docs-changelog-2024-11-14-Modules-pw_rpc:
+
+pw_rpc
+------
+Changes:
+
+.. f0ba9b05187506d7526ca3585401c8df7b4e9d4d
+
+* The Python client previously reused call IDs after ``16384``. The limit
+  has been increased to ``2097152``. Commit: `Allocate more call IDs in
+  the Python client <https://pwrev.dev/245067>`__. Bug: :bug:`375658481`.
+
+.. _docs-changelog-2024-11-14-Modules-pw_rpc_transport:
+
+pw_rpc_transport
+----------------
+New features:
+
+.. 18d5fbfb289c8675dd683d62ab69b83147e9d70e
+
+* The new ``pw::rpc::RpcIngress::num_total_packets`` method tracks how
+  many packets an ingress RPC handler has received. Commit: `Track number
+  of RPC packets received <https://pwrev.dev/247194>`__. Bug:
+  :bug:`373449543`.
+
+.. _docs-changelog-2024-11-14-Modules-pw_sensor:
+
+pw_sensor
+---------
+New features:
+
+.. b7246bf88df6aa030dec7b9510e7015b5035616c
+
+* The new ``extras`` key lets applications specify additional metadata
+  that's not supported or used by Pigweed. Commit: `Add freeform extras
+  field to sensor.yaml <https://pwrev.dev/248195>`__.
+
+.. _docs-changelog-2024-11-14-Modules-pw_spi:
+
+pw_spi
+------
+Changes:
+
+.. 6aadd54afb308c09edb833985b387442df732fef
+
+* :cpp:class:`pw::spi::Initiator` is now a `non-virtual interface
+  <https://en.wikibooks.org/wiki/More_C%2B%2B_Idioms/Non-Virtual_Interface>`__.
+  Commit: `Finalize non-Virtual interface on
+  Initiator <https://pwrev.dev/236236>`__. Bug: :bug:`308479791`.
+
+.. _docs-changelog-2024-11-14-Modules-pw_spi_linux:
+
+pw_spi_linux
+------------
+Bug fixes:
+
+.. d17b5acd42c6e983ce4b12a7ebc3184205a06d45
+
+* The ``pw::Spi::Initiator::DoWriteRead()`` method now correctly handles
+  transfers where either the write buffer or the read buffer is empty.
+  Commit: `Fix read/write-only transfers <https://pwrev.dev/246053>`__.
+
+.. _docs-changelog-2024-11-14-Modules-pw_stream:
+
+pw_stream
+---------
+New features:
+
+.. b2c1616caaff13d41e434cbcb8ae0530a20962ca
+
+* The new :cpp:func:`pw::stream::Stream::ReadExact` method reads exactly
+  the number of bytes requested into a provided buffer, if supported.
+  Commit: `Add ReadExact() wrapper <https://pwrev.dev/243552>`__.
+
+.. _docs-changelog-2024-11-14-Modules-pw_tokenizer:
+
+pw_tokenizer
+------------
+New features:
+
+.. 94e2314ddea1499a7868bd3d30621b709e25f7d4
+
+* The new :cpp:func:`pw::tokenizer::Detokenizer::FromElfFile` method
+  constructs a detokenizer from the ``.pw_tokenizer.entries`` section of
+  an ELF binary. Commit: `Add Detokenizer::FromElfFile
+  <https://pwrev.dev/243532>`__. Bug: :bug:`374367947`.
+
+Bug fixes:
+
+.. 7fb7bb1dc5d69c79de1b0b72316a34a800f2d5b0
+
+* The Python detokenizer now correctly handles multiple nested tokens in
+  one log string. Commit: `Update regex for nested args
+  <https://pwrev.dev/248232>`__.
+
+.. _docs-changelog-2024-11-14-SEEDs:
+
+SEEDs
+=====
+New features:
+
+.. a1acd00d02ebe42116a4982ad809264f3c673021
+
+* "Intent Approved" and "On Hold" statuses were added to the SEED
+  lifecycle. Commit: `(SEED-0001) Add "Intent Approved" and "On Hold"
+  states to lifecycle <https://pwrev.dev/248692>`__.
+
+.. _docs-changelog-2024-10-31:
+
+------------
+Oct 31, 2024
+------------
+Highlights (Oct 18, 2024 to Oct 31, 2024):
+
+* The new :c:macro:`PW_TEST_EXPECT_OK`, :c:macro:`PW_TEST_ASSERT_OK`,
+  and :c:macro:`PW_TEST_ASSERT_OK_AND_ASSIGN` macros provide test matchers
+  for :ref:`module-pw_status` and :ref:`module-pw_result` values.
+* The Sense tutorial has expanded guidance around :ref:`handling crashes
+  and viewing snapshots <showcase-sense-tutorial-crash-handler>`.
+* The new :cpp:class:`pw::LinkerSymbol` class represents a symbol
+  provided by a linker.
+* The new ``extra_frame_handlers`` parameter lets you add custom HDLC frame
+  handlers when using the Python-based :ref:`module-pw_system` console.
+
+.. _docs-changelog-2024-10-31-Modules:
+
+Modules
+=======
+
+.. _docs-changelog-2024-10-31-Modules-pw_allocator:
+
+pw_allocator
+------------
+New features:
+
+.. 6fd4792308999b9c5949e9b778994d064a80a8b7
+
+* The new :c:macro:`PW_ALLOCATOR_ENABLE_PMR` macro lets you disable the
+  ability to use an allocator with the polymorphic versions of standard
+  library containers. Commit: `Make pw::Allocator::as_pmr optional
+  <https://pwrev.dev/245254>`__.
+
+Changes:
+
+.. c3c61885927ee9e8fac187a52b1ab139919fe5e7
+
+* Multiple methods were renamed or removed in preparation for upcoming
+  work to split up :cpp:class:`pw::allocator::Block`. Commit: `Streamline
+  Block API <https://pwrev.dev/232213>`__.
+
+.. _docs-changelog-2024-10-31-Modules-pw_assert:
+
+pw_assert
+---------
+Changes:
+
+.. 673e56ac476a345a0f25319633d8ce0ad0c0cd93
+
+* ``pw_assert`` now verifies whether ``PW_CHECK`` message arguments are
+  valid, regardless of what ``pw_assert`` backend is being used. Commit:
+  `Verify PW_CHECK message arguments in the API
+  <https://pwrev.dev/244744>`__.
+
+.. _docs-changelog-2024-10-31-Modules-pw_assert_tokenized:
+
+pw_assert_tokenized
+-------------------
+New features:
+
+.. ef5f6bf505343c0926532f53dc788b26c3640048
+
+* :c:macro:`pw_assert_HandleFailure` is now supported. Commit: `Support
+  pw_assert_HandleFailure <https://pwrev.dev/244793>`__.
+
+.. _docs-changelog-2024-10-31-Modules-pw_async2:
+
+pw_async2
+---------
+New features:
+
+.. cec451dc5c2cb132717068d686e4e034b06762c9
+
+* :cpp:class:`pw::async2::Join` lets you join several separate pendable
+  values. Commit: `Add Join combinator <https://pwrev.dev/244612>`__.
+
+.. 0945ffb46234253d08467adebd8869ebb39234fa
+
+* The new :cpp:func:`pw::async2::TimeFuture::Reset` method resets a
+  ``TimeFuture`` instance to expire at a specified time. Commit: `Add
+  TimerFuture::Reset <https://pwrev.dev/243993>`__.
+
+Changes:
+
+.. 9528eac2b6c6243dc5fb6a4d72f33d8d7e0d573c
+
+* Waker storage has moved to a macro-based API. See
+  :c:macro:`PW_ASYNC_STORE_WAKER` and :c:macro:`PW_ASYNC_CLONE_WAKER`.
+  Commit: `Move to macro-based Waker API <https://pwrev.dev/245068>`__.
+  Bug: :bug:`376123061`.
+
+.. _docs-changelog-2024-10-31-Modules-pw_bluetooth_proxy:
+
+pw_bluetooth_proxy
+------------------
+New features:
+
+.. a8c756860ae104ef5e87439ef4f8cc4fbbb2fab7
+
+* Bazel builds are now supported. Commit: `Add bazel build support
+  <https://pwrev.dev/243874>`__.
+
+.. _docs-changelog-2024-10-31-Modules-pw_build:
+
+pw_build
+--------
+New features:
+
+.. 170f745d98d101d73564fa61420f1a0836053033
+
+* The new :cpp:class:`pw::LinkerSymbol` class represents a symbol
+  provided by a linker. Commit: `Add LinkerSymbol
+  <https://pwrev.dev/242635>`__.
+
+.. _docs-changelog-2024-10-31-Modules-pw_channel:
+
+pw_channel
+----------
+Changes:
+
+.. 5f2649a6e5afdecd7b5d59aab06f59bb4d73d9f3
+
+* ``pw::channel::AnyChannel::Write`` was renamed to
+  :cpp:func:`pw::channel::AnyChannel::StageWrite` and
+  ``pw::channel::AnyChannel::PendFlush`` was renamed to
+  :cpp:func:`pw::channel::AnyChannel::PendWrite`. Commit: `Rename
+  {Write->StageWrite, PendFlush->PendWrite} <https://pwrev.dev/245539>`__.
+
+.. _docs-changelog-2024-10-31-Modules-pw_containers:
+
+pw_containers
+-------------
+New features:
+
+.. afb18a6ded0c43e91ce85e5ec97ae0206c4873ca
+
+* :cpp:class:`pw::IntrusiveSet` is a new class like ``std::set<Key,
+  Compare>`` that uses intrusive items as keys and
+  :cpp:class:`pw::IntrusiveMultiSet` is a new class like
+  ``std::multiset<Key, Compare>`` that uses intrusive items. Commit: `Add
+  IntrusiveSet and IntrusiveMultiSet <https://pwrev.dev/240053>`__.
+
+Changes:
+
+.. bde3f80e6e038cebe264283af625faf06a64d8d0
+
+* The ``erase`` methods of
+  :cpp:class:`pw::containers::future::IntrusiveList`,
+  :cpp:class:`pw::IntrusiveMap`, and :cpp:class:`pw::IntrusiveMultiMap`
+  have been overloaded to make them easier to use. Commit: `Add methods to
+  erase by item <https://pwrev.dev/243257>`__.
+
+.. _docs-changelog-2024-10-31-Modules-pw_log:
+
+pw_log
+------
+Changes:
+
+.. 661bf47f06e604384a4c7eb7bf79d2f3da71ee74
+
+* The signature for :c:macro:`PW_LOG` macro changed. A ``verbosity``
+  level must now always be passed as the second argument when invoking
+  ``PW_LOG``. Commit: `Explicitly pass verbosity to PW_LOG
+  <https://pwrev.dev/239035>`__.
+
+.. _docs-changelog-2024-10-31-Modules-pw_multibuf:
+
+pw_multibuf
+-----------
+New features:
+
+.. 9ab6e749821eddb8a82f7724c1af10ef6accc016
+
+* The new :cpp:func:`pw::multibuf::FromSpan` function creates a multibuf from
+  an existing span and a ``deleter`` callback. Commit: `Add FromSpan
+  <https://pwrev.dev/245132>`__. Bug: :bug:`373725545`.
+
+.. _docs-changelog-2024-10-31-Modules-pw_multisink:
+
+pw_multisink
+------------
+New features:
+
+.. 773331a904413e92d86c6e4cb658af77cf889d76
+
+* The new :cpp:func:`pw::multisink::UnsafeDumpMultiSinkLogsFromEnd`
+  utilitiy function dumps contents as a series of log entries. Commit:
+  `Add UnsafeForEachEntryFromEnd() <https://pwrev.dev/244556>`__. Bug:
+  :bug:`375653884`.
+
+.. _docs-changelog-2024-10-31-Modules-pw_polyfill:
+
+pw_polyfill
+-----------
+Changes:
+
+.. d3e10fad55171d8cdce399916acbf37b2dec732b
+
+* :c:macro:`PW_CONSTINIT` now fails when used without compiler support.
+  Commit: `Make PW_CONSTINIT support mandatory
+  <https://pwrev.dev/243892>`__.
+
+.. _docs-changelog-2024-10-31-Modules-pw_protobuf:
+
+pw_protobuf
+-----------
+Bug fixes:
+
+.. 368cf8be3cb1909453c9c2cc67ec951517943086
+
+* ``pw_protobuf`` now fails when the ``max_count`` or ``fixed_count``
+  options of ``pwpb`` are used on unsupported field types. Commit: `Fail
+  when a max count is set with an unsupported type
+  <https://pwrev.dev/236816>`__.
+
+Changes:
+
+.. 9525d75843cede1c67f78de7c2f86bb30ac98efe
+
+* Code generator options can now be specified in files ending with
+  ``.pwpb_options``. This is useful for projects that wish to strictly
+  separate Nanopb and ``pw_protobuf`` options. Commit: `Allow
+  .pwpb_options as an options file extension
+  <https://pwrev.dev/241137>`__.
+
+.. _docs-changelog-2024-10-31-Modules-pw_ring_buffer:
+
+pw_ring_buffer
+--------------
+New features:
+
+.. b90180561658453318c36b125fd8af37de713a3f
+
+* ``pw_ring_buffer`` readers now support the ``--`` decrement operator.
+  Commit: `Add a decrement operator <https://pwrev.dev/244555>`__. Bug:
+  :bug:`375653884`.
+
+.. _docs-changelog-2024-10-31-Modules-pw_system:
+
+pw_system
+---------
+New features:
+
+.. 1f2341cd64eaacb9de474510293397b50165b3b5
+
+* The new ``extra_frame_handlers`` parameter lets you add custom HDLC
+  frame handlers when using the Python-based ``pw_system`` console.
+  Commit: `Make console support extra hdlc frame handlers
+  <https://pwrev.dev/245192>`__.
+
+Bug fixes:
+
+.. 9b2dd9ccb35a49f57c053e88a55da35ad24fc93d
+
+* A bug was fixed where the latest logs were not being captured in crash
+  snapshots. Commit: `Ensure latest logs are captured in crash snapshot
+  <https://pwrev.dev/244557>`__. Bug: :bug:`375653884`.
+
+.. 0aa57cea2e06c48a24266b21d472155c2379189f
+
+* The ``pw_system`` crash dump now includes a main stack thread
+  backtrace. Commit: `Add main stack thread backtrace capture to crash
+  dump <https://pwrev.dev/242337>`__. Bug: :bug:`354767156`.
+
+.. ed55dbc3fa5eb05e2b557fad0eff2b1bf1f93751
+
+* The ``pw_system`` crash dump now includes FreeRTOS thread backtraces.
+  Commit: `Add freertos thread backtrace capture to crash dump
+  <https://pwrev.dev/234155>`__. Bug: :bug:`354767156`.
+
+.. _docs-changelog-2024-10-31-Modules-pw_thread:
+
+pw_thread
+---------
+Changes:
+
+.. e5db91d7df18444134ce4fede3a1a0c3a9f5c1fc
+
+* The legacy ``thread::Id`` alias has been migrated to
+  ``pw::Thread::id``. Commit: `Migrate to Thread::id
+  <https://pwrev.dev/238432>`__. Bug: :bug:`373524945`.
+
+.. _docs-changelog-2024-10-31-Modules-pw_tokenizer:
+
+pw_tokenizer
+------------
+New features:
+
+.. 4b7733f3f0c9e010ccd6bee3ff45d64b92e65fa7
+
+* :c:macro:`PW_APPLY` is a new general macro that supports macro
+  expansion and makes tokenizing enums easier. Commit: `Create generic
+  macro for tokenizing enums <https://pwrev.dev/242715>`__. Bug:
+  :bug:`3627557773`.
+
+.. _docs-changelog-2024-10-31-Modules-pw_toolchain:
+
+pw_toolchain
+------------
+New features:
+
+.. b40ecc98b47a37b187f40408ae0c3d89ef9b5f79
+
+* ``pw_toolchain`` now supports the Arm Cortex-M55F GCC toolchain.
+  Commit: `Add ARM Cortex-M55F GCC toolchain
+  <https://pwrev.dev/244672>`__. Bug: :bug:`375562597`.
+
+.. _docs-changelog-2024-10-31-Modules-pw_unit_test:
+
+pw_unit_test
+------------
+New features:
+
+.. ce0e3e2d1b7eec7cdf59fbb2ceed2b1cb3edd1ec
+
+* The new :c:macro:`PW_TEST_EXPECT_OK`, :c:macro:`PW_TEST_ASSERT_OK`,
+  and :c:macro:`PW_TEST_ASSERT_OK_AND_ASSIGN` macros provide test matchers
+  for :ref:`module-pw_status` and :ref:`module-pw_result` values. Commit:
+  `Define pw::Status matchers <https://pwrev.dev/243615>`__. Bugs:
+  :bug:`338094795`, :bug:`315370328`.
+
+Changes:
+
+.. 618eaa4f4c1ee0357bdfba85290a9a6e8c9aee71
+
+* :cpp:func:`RUN_ALL_TESTS` is now a function. Previously it was a
+  macro. Commit: `Use a function for RUN_ALL_TESTS()
+  <https://pwrev.dev/243889>`__.
+
+.. _docs-changelog-2024-10-31-Modules-pw_watch:
+
+pw_watch
+--------
+New features:
+
+.. 5e7d1a0fddab1204d94ff43cee833431eda75af8
+
+* ``pw_watch`` can now be invoked through ``bazelisk``. Commit: `Bazel
+  run support <https://pwrev.dev/242094>`__. Bug: :bug:`360140397`.
+
+.. _docs-changelog-2024-10-31-Docs:
+
+Docs
+====
+New features:
+
+.. c5e6cab3b190f4cdc32e3209582a7697f2992a85
+
+* The Sense tutorial has expanded guidance around :ref:`handling crashes
+  and viewing snapshots <showcase-sense-tutorial-crash-handler>`. Commit:
+  `Add crash handler section to sense tutorial
+  <https://pwrev.dev/242735>`__. Bug: :bug:`354767156`.
+
+.. _docs-changelog-2024-10-31-Targets:
+
+Targets
+=======
+
+.. _docs-changelog-2024-10-31-Targets-RP2350:
+
+RP2350
+------
+New features:
+
+.. 892394fe74db6decd3799873f910862cef6a182d
+
+* ``MemManage``, ``BusFault``, and ``UsageFault`` exception handlers are
+  now enabled on the RP2350 target. Commit: `Add MemManage, BusFault &
+  UsageFault exception handler <https://pwrev.dev/242336>`__. Bug:
+  :bug:`354767156`.
+
+.. _docs-changelog-2024-10-17:
+
+------------
+Oct 17, 2024
+------------
+Highlights (Oct 04, 2024 to Oct 17, 2024):
+
+* **Math module**: The new :ref:`module-pw_numeric` module is a collection of
+  mathematical utilities optimized for embedded systems.
+* **C++ Coroutines**: The new :ref:`docs-blog-05-coroutines` blog post
+  discusses the nuances of using coroutines in embedded systems.
+* **New SEEDs**: SEEDs :ref:`seed-0103` and :ref:`seed-0128` were accepted.
+
+.. _docs-changelog-2024-10-17-Modules:
+
+Modules
+=======
+
+.. _docs-changelog-2024-10-17-Modules-pw_allocator:
+
+pw_allocator
+------------
+New features:
+
+.. 9aae89c7bab1de5a914c462f814fec6528e27a0f
+
+* The new :cpp:func:`pw::Allocator::MakeUniqueArray` template function
+  allows a ``UniquePtr`` to hold an array of elements. Commit: `Add
+  UniquePtr::MakeUniqueArray <https://pwrev.dev/239913>`__.
+
+.. d3a6358972d5897266e2b5ecf50681a8e8456e5b
+
+* The new :cpp:class:`pw::allocator::BlockResult` class communicates the
+  results and side effects of allocation requests. Commit: `Add
+  BlockResult <https://pwrev.dev/232212>`__.
+
+Bug fixes:
+
+.. 57183dee645126c67dcccbb479c730492ef168f6
+
+* A data race was fixed. Commit: `Fix data race
+  <https://pwrev.dev/242736>`__. Bug: :bug:`372446436`.
+
+.. _docs-changelog-2024-10-17-Modules-pw_async2:
+
+pw_async2
+---------
+New features:
+
+.. 068949bbe9f8a5a03d9b44ae740461c4c01691ca
+
+* The new :cpp:func:`pw::async2::EnqueueHeapFunc` function heap-allocates
+  space for a function and enqueues it to run on a dispatcher.
+  Commit: `Add EnqueueHeapFunc <https://pwrev.dev/242035>`__.
+
+Changes:
+
+.. eb03d32b80c25d59000d86fc8417cce91cbc243a
+
+* :cpp:class:`pw::async2::PendFuncTask` now has a default template type
+  of :cpp:type:`pw::Function`. Commit: `Provide default template type for
+  PendFuncTask <https://pwrev.dev/242918>`__.
+
+.. _docs-changelog-2024-10-17-Modules-pw_build:
+
+pw_build
+--------
+New features:
+
+.. 7698704f57a69ff5a913f0b2d43d3cc419d10446
+
+* The newly relanded ``pw_copy_and_patch_file`` feature provides the
+  ability to patch a file during a Bazel or GN build. Commit: `Add
+  pw_copy_and_patch_file <https://pwrev.dev/240832>`__.
+
+.. _docs-changelog-2024-10-17-Modules-pw_cli_analytics:
+
+pw_cli_analytics
+----------------
+New features:
+
+.. 6ae64ef2889810d43682b85e0c793018ae9a507c
+
+* The new :ref:`module-pw_cli_analytics` module collects and transmits
+  analytics on usage of the ``pw`` command line interface. Commit:
+  `Initial commit <https://pwrev.dev/188432>`__. Bug: :bug:`319320838`.
+
+.. _docs-changelog-2024-10-17-Modules-pw_console:
+
+pw_console
+----------
+Bug fixes:
+
+.. 8bd77aba07ab3dce5220b23994cd3ecfbcefda10
+
+* A divide-by-zero error in the ``pw_console`` progress bar was fixed.
+  Commit: `Fix progress bar division by zero
+  <https://pwrev.dev/233033>`__.
+
+.. _docs-changelog-2024-10-17-Modules-pw_env_setup:
+
+pw_env_setup
+------------
+Changes:
+
+.. a789e9c308f3b289c950e8afb3d891fa5b7b39ac
+
+* ``//pw_env_setup/py/pw_env_setup/cipd_setup/black.json`` has been
+  removed. Commit: `Remove black.json <https://pwrev.dev/241359>`__.
+
+.. c42ec10b3824a5e15bc4e92d2065bd95143e9aad
+
+* Python 2 support has been removed from ``pw_env_setup``. Commit: `Drop
+  Python 2 support <https://pwrev.dev/242713>`__. Bug: :bug:`373905972`.
+
+.. _docs-changelog-2024-10-17-Modules-pw_numeric:
+
+pw_numeric
+----------
+New features:
+
+.. 0c98e51f046d2de13e5ea8509452b99beb6776ec
+
+* The new :ref:`module-pw_numeric` module is a collection of
+  mathematical utilities optimized for embedded systems. Commit: `New
+  module for mathematical utilities <https://pwrev.dev/240655>`__.
+
+.. 1eadbb9e0d8de149ee300c9f60933878498b3544
+
+* The new :cpp:func:`pw::IntegerDivisionRoundNearest` function performs
+  integer division and rounds to the nearest integer. It gives the same
+  result as ``std::round(static_cast<double>(dividend) /
+  static_cast<double>(divisor))`` but requires no floating point
+  operations and is ``constexpr``. Commit: `Rounded integer division
+  <https://pwrev.dev/240656>`__.
+
+.. _docs-changelog-2024-10-17-Modules-pw_protobuf:
+
+pw_protobuf
+-----------
+Changes:
+
+.. 205570386eac8fe6e0269b7fbbab1449eb565036
+
+* ``oneof`` protobuf fields can't be inlined within a message structure.
+  They must be encoded and decoded using callbacks. See
+  :ref:`pw_protobuf-per-field-apis`. Commit: `Force use of callbacks for oneof
+  <https://pwrev.dev/242392>`__. Bug: :bug:`373693434`.
+
+.. 6efc99b3ee854dd54a0b1465d9014c54e01b21b9
+
+* The ``import_prefix`` parameter in the
+  ``pw_protobuf.options.load_options`` Python function was replaced with
+  an ``options_files`` parameter that lets you directly specify the
+  location of ``.options`` files. Commit: `Support directly specifying
+  options file locations <https://pwrev.dev/240833>`__. Bug:
+  :bug:`253068333`.
+
+.. _docs-changelog-2024-10-17-Modules-pw_rpc:
+
+pw_rpc
+------
+Bug fixes:
+
+.. 05e93dadc080e45d624d92b80879297cfade417c
+
+* A bug was fixed where previously ``Call`` objects were not getting
+  reinitialized correctly. Commit: `Fix Call not getting reset on default
+  constructor assignment <https://pwrev.dev/239718>`__. Bug:
+  :bug:`371211198`.
+
+.. _docs-changelog-2024-10-17-Modules-pw_spi:
+
+pw_spi
+------
+Changes:
+
+.. 4321a46654fae21df8e8fb971cd5c618b8b73d3f
+
+* :cpp:class:`pw::spi::Initiator` now uses a non-virtual interface (NVI)
+  pattern. Commit: `Use non-virtual interface (NVI) pattern on
+  pw::spi::Initiator <https://pwrev.dev/236234>`__. Bug: :bug:`308479791`.
+
+.. _docs-changelog-2024-10-17-Modules-pw_stream_uart_mcuxpresso:
+
+pw_stream_uart_mcuxpresso
+-------------------------
+Changes:
+
+.. d08c60cad881afa835a22d2bbfe36a0d6f018c1c
+
+* :ref:`module-pw_stream_uart_mcuxpresso` is being merged into
+  :ref:`module-pw_uart_mcuxpresso`. Commit: `Remove dma_stream
+  <https://pwrev.dev/241201>`__. Bug: :bug:`331617914`.
+
+.. _docs-changelog-2024-10-17-Modules-pw_system:
+
+pw_system
+---------
+New features:
+
+.. fd6b7a96cd142fcfbf979c2ebf3ea4ac2e342612
+
+* The new ``--debugger-listen`` and ``--debugger-wait-for-client``
+  options make it easier to debug the ``pw_system`` console. Commit: `Add
+  \`debugger-listen\` and \`debugger-wait-for-client\` options
+  <https://pwrev.dev/233752>`__.
+
+.. _docs-changelog-2024-10-17-Modules-pw_tokenizer:
+
+pw_tokenizer
+------------
+New features:
+
+.. be439834757b0abcd0e81a77a0c8c39beca2d4db
+
+* All domains from ELF files are now loaded by default. Commit: `Load
+  all domains from ELF files by default <https://pwrev.dev/239509>`__.
+  Bugs: :bug:`364955916`, :bug:`265334753`.
+
+.. 56aa667aaa527d86241d27c5361e0d27f5aed06d
+
+* CSV databases now include the token's domain as the third column.
+  Commit: `Include the domain in CSV databases
+  <https://pwrev.dev/234414>`__. Bug: :bug:`364955916`.
+
+.. 9c37b722d9a807222c289069967222166c8613f5
+
+* Tokenizing enums is now supported. Commit: `Add support for tokenizing
+  enums <https://pwrev.dev/236262>`__. Bug: :bug:`362753838`.
+
+Changes:
+
+.. 17df82d4c2b77d1667f24f5b27a256dbab31686f
+
+* When a domain is specified, any whitespace will be ignored in domain
+  names and removed from the database. Commit: `Ignore whitespace in
+  domain values <https://pwrev.dev/241212>`__. Bug: :bug:`362753840`.
+
+.. _docs-changelog-2024-10-17-Modules-pw_toolchain:
+
+pw_toolchain
+------------
+New features:
+
+.. 0125f4a94c827612f1ae863b60d3fa301fbd773c
+
+* The new :ref:`module-pw_toolchain-bazel-compiler-specific-logic`
+  documentation provides guidance on how to handle
+  logic that differs between compilers. Commit: `Add Bazel mechansim for
+  clang/gcc-specific flags <https://pwrev.dev/238429>`__. Bug:
+  :bug:`361229275`.
+
+.. _docs-changelog-2024-10-17-Modules-pw_uart:
+
+pw_uart
+-------
+New features:
+
+.. b39ad5c71df860223a8f908219bfdcfbdda1e5f5
+
+* The new :cpp:class:`pw::uart::UartStream` class implements the
+  :cpp:class:`pw::stream::NonSeekableReaderWriter` interface on top of a
+  UART device. Commit: `Add pw::uart::UartStream
+  <https://pwrev.dev/241200>`__. Bug: :bug:`331603164`.
+
+.. f6a7bb781754447aa9eea82af60962070815b4f8
+
+* The new :cpp:class:`pw::uart::UartBlockingAdapter` class provides a
+  blocking UART interface on top of a
+  :cpp:class:`pw::uart::UartNonBlocking` device. Commit: `Add
+  UartBlockingAdapter <https://pwrev.dev/238393>`__. Bug:
+  :bug:`369679732`.
+
+.. bdcf65850213372533c9422fdec0a199af112161
+
+* The new :cpp:func:`pw::uart::UartNonBlocking::FlushOutput` function
+  ensures that all enqueued data has been transmitted. Commit: `Add
+  UartNonBlocking::FlushOutput() <https://pwrev.dev/238572>`__. Bug:
+  :bug:`370051726`.
+
+.. _docs-changelog-2024-10-17-Modules-pw_web:
+
+pw_web
+------
+Changes:
+
+.. c4ea179e91c6aee6b9d41b9fe301269189970850
+
+* The ``device`` RPC APIs now support creating request messages for RPCs
+  and calling the ``device`` API with those request messages. Commit:
+  `Improvements to \`device\` RPC APIs <https://pwrev.dev/238052>`__.
+
+.. _docs-changelog-2024-10-17-Docs:
+
+Docs
+====
+New features:
+
+.. 91d4349e08e22c50e5a738dee31cc95724eab50d
+
+* The new :ref:`docs-blog-05-coroutines` blog post discusses the nuances
+  of using coroutines in embedded systems. Commit: `Add coroutine blog
+  post <https://pwrev.dev/216111>`__.
+
+Changes:
+
+.. 84375274c2a7dbc0fc29cb1e718d8cdfa05085fa
+
+* Guides for contributing ``pigweed.dev`` documentation have been
+  consolidated into :ref:`contrib-docs-guides`. Commit: `Consolidate
+  content for pigweed.dev contributors <https://pwrev.dev/242192>`__.
+
+.. _docs-changelog-2024-10-17-SEEDs:
+
+SEEDs
+=====
+New features:
+
+.. 385019a0292797dd63f00f008efe36d52d4d698a
+
+* SEED :ref:`seed-0103` was accepted. Commit: `(SEED-0103) pw_protobuf:
+  Past, present, and future <https://pwrev.dev/133971>`__.
+
+.. ec62be9c7c9e28c8bae26d9e73f1ce341e5e5cd5
+
+* :ref:`seed-0128` was accepted. Commit: `(SEED-0128) Abstracting thread
+  creation <https://pwrev.dev/206670>`__.
+
+.. _docs-changelog-2024-10-17-Targets:
+
+Targets
+=======
+
+.. _docs-changelog-2024-10-17-Targets-rp2040:
+
+RP2040
+------
+New features:
+
+.. 8e0d91c3f7da31448419584ae9287de57ed5452f
+
+* A new helper, ``flash_rp2350``, was added to
+  ``//targets/rp2040/flash.bzl``. Commit: `Update \`flash_rp2040\` helper
+  with --chip argument <https://pwrev.dev/242917>`__.
+
+.. _docs-changelog-2024-10-03:
+
+-----------
+Oct 3, 2024
+-----------
+
+Highlights (Sep 20, 2024 to Oct 3, 2024):
+
+* The :ref:`module-pw_async2` and :ref:`module-pw_containers` docs
+  now contain code examples that are built and tested alongside the rest
+  of Pigweed, minimizing the chance that they bit rot over time.
+* The new :cpp:class:`pw::async2::Dispatcher` class is a single-
+  threaded, cooperatively scheduled runtime for async tasks.
+* The new :cpp:class:`pw::uart::UartBase` class provides a common
+  abstract base class for UART interfaces.
+* :cpp:class:`pw::rpc::RawServerReaderWriter` and
+  :cpp:class:`pw::rpc::RawClientReaderWriter` have new methods that let
+  you directly serialize RPC payloads to the RPC system's encoding buffer
+  instead of requiring a copy from an externally managed buffer.
+
+.. _docs-changelog-2024-10-03-Modules:
+
+Modules
+=======
+
+.. _docs-changelog-2024-10-03-Modules-pw_allocator:
+
+pw_allocator
+------------
+New features:
+
+.. 020780642847dba69a9b2025f1f698fe3d8e4801
+
+* The new :cpp:func:`pw::allocator::CalculateFragmentation` method
+  calculates a fragmentation metric. This should not be invoked on-device
+  unless the device has robust floating-point support. Commit: `Add
+  MeasureFragmentation <https://pwrev.dev/238417>`__.
+
+.. _docs-changelog-2024-10-03-Modules-pw_async2:
+
+pw_async2
+---------
+New features:
+
+.. 801fb32919777aefd7a734ce9c2c1e6aec782ab7
+
+* The new :cpp:class:`pw::async2::Dispatcher` class is a single-
+  threaded, cooperatively scheduled runtime for async tasks. Commit:
+  `Refactor Dispatcher to raise top-level API out of CRTP
+  <https://pwrev.dev/237972>`__. Bug: :bug:`342000726`.
+
+.. 846bb7d3672e94c13451bec81098d3304d8395a9
+
+* The :ref:`module-pw_async2` docs now have examples. Commit: `Expand
+  docs with examples <https://pwrev.dev/234095>`__.
+
+.. _docs-changelog-2024-10-03-Modules-pw_boot:
+
+pw_boot
+-------
+Changes:
+
+.. fba0833c176a79ec83403fa9d48407c5ddebb99f
+
+* The ``main()`` function forward declaration has been moved out of an
+  explicit ``extern C`` block to prevent pedantic warnings in newer Clang
+  toolchains. Commit: `Move main forward declaration out of extern "C"
+  block <https://pwrev.dev/237333>`__. Bug: :bug:`366374135`.
+
+.. _docs-changelog-2024-10-03-Modules-pw_build:
+
+pw_build
+--------
+Changes:
+
+.. 53b16cd8d2907855b13bec9159286927de602a72
+
+* The rules that previously existed in ``//pw_build/pigweed.bzl`` have
+  been split into separate files. If you relied on
+  ``//pw_build/pigweed.bzl`` you may need to update some ``load()``
+  statements in your Bazel files. Commit: `Break apart pigweed.bzl
+  <https://pwrev.dev/239133>`__. Bug: :bug:`370792896`.
+
+.. _docs-changelog-2024-10-03-Modules-pw_chrono:
+
+pw_chrono
+---------
+New features:
+
+.. 279ab4a35543900b62e674d14c2e663532ad5a18
+
+* The new ``--stamp`` Bazel flag ensures that Bazel builds properly
+  record the actual build time as opposed to a cached value. Commit:
+  `Properly stamp build time in Bazel <https://pwrev.dev/237809>`__. Bug:
+  :bug:`367739962`.
+
+.. _docs-changelog-2024-10-03-Modules-pw_containers:
+
+pw_containers
+-------------
+New features:
+
+.. 819dd2ceb430eae53909bea7d5a23c7743ef0fc2
+
+* The ``pw_containers`` docs now provides examples on how to add
+  intrusive items to multiple containers. See
+  :ref:`module-pw_containers-intrusive_list-example`. Commit:
+  `Multiple container example <https://pwrev.dev/237472>`__.
+
+.. 85469bdd7f4b8eea95fad4514002383e09210a6f
+
+* The :ref:`module-pw_containers` docs now have code examples that are
+  built and tested as part of the normal upstream Pigweed build, which
+  helps ensure that they don't bit rot. Commit: `Add examples
+  <https://pwrev.dev/236612>`__.
+
+Bug fixes:
+
+.. 92ab0326113d1d6732a6d81dcc25abb330053b22
+
+* A bug was fixed where nodes in an ``AATreeItem`` could become
+  orphaned. Commit: `Fix tree rebalancing <https://pwrev.dev/237415>`__.
+
+.. _docs-changelog-2024-10-03-Modules-pw_log:
+
+pw_log
+------
+Changes:
+
+.. 5d9a1e84e7c55a7b194a8bf459b720cbba220d0c
+
+* The ``PW_MODULE_LOG_NAME_DEFINED`` macro has been removed. Commit:
+  `Remove unused macro PW_MODULE_LOG_NAME_DEFINED
+  <https://pwrev.dev/238554>`__.
+
+.. _docs-changelog-2024-10-03-Modules-pw_metric:
+
+pw_metric
+---------
+Bug fixes:
+
+.. 30dcf2b202c792599151e7b09699e836e3cc44a3
+
+* A bug causing ``pw::metric::Metric::Dump()`` and
+  ``pw::metric::Group::Dump()`` to log invalid JSON objects was fixed.
+  Commit: `Emit valid JSON from Metric::Dump
+  <https://pwrev.dev/237933>`__.
+
+.. _docs-changelog-2024-10-03-Modules-pw_preprocessor:
+
+pw_preprocessor
+---------------
+Changes:
+
+.. 92438518417d49c3457090c1b3c57f71007743e8
+
+* ``PW_MACRO_ARG_COUNT`` now supports up to 256 arguments. Commit:
+  `Expand PW_MACRO_ARG_COUNT to 256 arguments
+  <https://pwrev.dev/237993>`__.
+
+.. _docs-changelog-2024-10-03-Modules-pw_presubmit:
+
+pw_presubmit
+------------
+Bug fixes:
+
+.. 6422c9ae137ad37a9ec172dcd95f294ce5631f82
+
+* A bug was fixed that was causing Pigweed's auto-generated ``rustdoc``
+  API references to not be built. ``rustdoc`` documentation at
+  ``pigweed.dev/rustdoc/*`` should be working again. Commit: `Have
+  docs_build check rust docs <https://pwrev.dev/238189>`__. Bug:
+  :bug:`369864378`.
+
+.. _docs-changelog-2024-10-03-Modules-pw_rpc:
+
+pw_rpc
+------
+New features:
+
+.. 8e2fc6cfe825631416043a972cdd93875562a4fd
+
+* :cpp:class:`pw::rpc::RawServerReaderWriter` and
+  :cpp:class:`pw::rpc::RawClientReaderWriter` have new methods that let
+  you directly serialize RPC payloads to the RPC system's encoding buffer
+  instead of requiring a copy from an externally managed buffer. Commit:
+  `Add callback writes to raw RPC call objects
+  <https://pwrev.dev/239353>`__.
+
+.. _docs-changelog-2024-10-03-Modules-pw_spi:
+
+pw_spi
+------
+New features:
+
+.. c25923e13c339cc678e8900770a512b85064f99a
+
+* ``operator!=`` is now implemented. Commit: `Minor enhancements to
+  pw::spi::Config <https://pwrev.dev/238932>`__.
+
+Changes:
+
+.. c25923e13c339cc678e8900770a512b85064f99a
+
+* ``operator()``, ``operator==``, and ``operator!=`` are now marked
+  ``constexpr`` to enable compile-time equality checking. Commit: `Minor
+  enhancements to pw::spi::Config <https://pwrev.dev/238932>`__.
+
+.. _docs-changelog-2024-10-03-Modules-pw_spi_rp2040:
+
+pw_spi_rp2040
+-------------
+Changes:
+
+.. 783b29c23dd865fde344501c1b99adba4c956479
+
+* ``spi_init()`` from the Pico SDK must be called before using the
+  ``pw_spi`` initiator. Commit: `Minor cleanup
+  <https://pwrev.dev/236233>`__.
+
+.. _docs-changelog-2024-10-03-Modules-pw_thread:
+
+pw_thread
+---------
+Changes:
+
+.. 30bdace4866039e26a05f8baa379630e066ad660
+
+* The old ``pw::Thread`` constructor that takes ``void(void*)`` has been
+  removed from the public API. This is a breaking change. Constructor
+  usage should be migrated to the new constructor that takes
+  ``pw::Function<void()>``. Commit: `Make the deprecated Thread
+  constructor private <https://pwrev.dev/236435>`__. Bug:
+  :bug:`367786892`.
+
+.. 2a0f0dfccc19b86a686777afa647b0c75a87c863
+
+* The ``pw::thread::Thread`` class was renamed to
+  :cpp:type:`pw::Thread`. Commit: `Migrate from pw::thread::Thread to
+  pw::Thread <https://pwrev.dev/236723>`__.
+
+.. f1070484e7d2f4e429332c6d8520a3676b8cb965
+
+* ``pw::thread::Id`` has been renamed to ``pw::Thread::id``. Commit:
+  `Introduce pw::Thread and pw::Thread::id <https://pwrev.dev/236796>`__.
+
+.. _docs-changelog-2024-10-03-Modules-pw_tokenizer:
+
+pw_tokenizer
+------------
+New features:
+
+.. e26be58d6db0215e6a762a5a28ad74584e9a0482
+
+* The new :c:macro:`PW_TOKENIZER_DEFINE_TOKEN` macro makes it easier to
+  support tokenized enums and domains. Commit: `Expose API to define new
+  token entry <https://pwrev.dev/238272>`__. Bug: :bug:`369881416`.
+
+Changes:
+
+.. 02a68bb680ebddeba8f0ad6cbbc6bb81d7568759
+
+* CSV databases now have 4 columns: token, date removed, domain, and
+  string. The domain column was added as part of :ref:`seed-0105`. Legacy
+  databases that only support the other 3 columns continue to be
+  supported. Tokens in legacy databases are always in the default domain
+  ``""``. Commit: `Support CSV databases with the domain
+  <https://pwrev.dev/234413>`__. Bug: :bug:`364955916`.
+
+.. _docs-changelog-2024-10-03-Modules-pw_toolchain:
+
+pw_toolchain
+------------
+Changes:
+
+.. bf7078a044353df9683ecb65561a0edca45a4f95
+
+* The ``pw_toolchain`` docs were refactored. Bazel-specific guidance is
+  now in :ref:`module-pw_toolchain-bazel` and GN-specific guidance is now
+  in :ref:`module-pw_toolchain-gn`. Commit: `Split out build-system
+  specific docs <https://pwrev.dev/238816>`__.
+
+.. 3d0fac908c139ce83eed93727601d13747b03bf7
+
+* The Bazel rules at ``//pw_toolchain/args/BUILD.bazel`` moved to
+  ``//pw_toolchain/cc/args/BUILD.bazel``. If you rely on these rules you
+  may need to update your ``load()`` statements. Commit: `Move
+  pw_toolchain/args to pw_toolchain/cc/args <https://pwrev.dev/238817>`__.
+
+.. _docs-changelog-2024-10-03-Modules-pw_transfer:
+
+pw_transfer
+-----------
+Bug fixes:
+
+.. da9a7e7cc2bd983d428949a6f5d85b9757b5178f
+
+* A bug was fixed where resumed transfers would send a window of ``0``
+  repeatedly. Commit: `Fix offset receive transfer startup
+  <https://pwrev.dev/237095>`__. Bug: :bug:`368620868`.
+
+.. _docs-changelog-2024-10-03-Modules-pw_uart:
+
+pw_uart
+-------
+New features:
+
+.. 7dc3b1b2a69972ae19bbe43f922aefd6dda73a3e
+
+* The new :cpp:class:`pw::uart::UartBase` class provides a common
+  abstract base class for UART interfaces. Commit: `Add UartBase class
+  <https://pwrev.dev/238092>`__. Bug: :bug:`369678735`.
+
+.. b4e75393442526d409968e4aac685515944b3e3e
+
+* The new :cpp:func:`pw::uart::Uart::ReadAtLeast` method reads data from
+  the UART and blocks until at least the specified number of bytes have
+  been received. The new :cpp:func:`pw::uart::Uart::ReadExactly` method
+  reads data from the UART and blocks until the entire buffer has been
+  filled. Commit: `Add ReadAtLeast and ReadExactly methods
+  <https://pwrev.dev/236268>`__. Bug: :bug:`368149122`.
+
+.. f946f6ae13c3bbc2a648b36f9ff55642e9d23b34
+
+* The new :cpp:class:`pw::uart::UartNonBlocking` class provides a
+  callback-based interface for performing non-blocking UART communication.
+  It defines the interface that concrete UART implementations must adhere
+  to. Commit: `Add uart_non_blocking.h API <https://pwrev.dev/210371>`__.
+  Bugs: :bug:`341356437`, :bug:`331617095`.
+
+.. 1dc9a789f52aad1f0e738a1cfd5993e2272c38d2
+
+* The new :cpp:func:`pw::uart::Uart::SetFlowControl` method lets
+  applications configure hardware flow control on UART devices. Commit:
+  `Add method to set flow control <https://pwrev.dev/237953>`__.
+
+Changes:
+
+.. d31705b84d24f0ef17e6b8eef6cae13f96f942e4
+
+* ``pw::uart::Uart::ConservativeReadAvailable()`` was moved to
+  :cpp:func:`pw::uart::UartBase::ConservativeReadAvailable()` and
+  ``pw::uart::Uart::ClearPendingReceiveBytes()`` was moved to
+  :cpp:func:`pw::uart::UartBase::ClearPendingReceiveBytes()`. Commit:
+  `Move non-blocking methods from Uart to UartBase
+  <https://pwrev.dev/238533>`__. Bug: :bug:`369679732`.
+
+.. _docs-changelog-2024-10-03-Modules-pw_uart_mcuxpresso:
+
+pw_uart_mcuxpresso
+------------------
+Bug fixes:
+
+.. 94d2c3995c8a14995490ef7de015e933a960c2d5
+
+* A bug was fixed where the ``pw::uart::DmaUartMcuxpresso::Deinit()``
+  method didn't clear an initialization flag, which caused the
+  ``pw::uart::DmaUartMcuxpresso::Init()`` method to be skipped on
+  subsequent enables. Commit: `Fix disable bug
+  <https://pwrev.dev/237394>`__.
+
+.. _docs-changelog-2024-10-03-Docs:
+
+Docs
+====
+New features:
+
+.. 2ef99131bbb73e475f64281b6515eedba4a8cb79
+
+* The Pigweed blog now has an `RSS feed <https://pigweed.dev/rss.xml>`_.
+  Commit: `Create RSS feed for blog <https://pwrev.dev/225491>`__. Bug:
+  :bug:`345857642`.
+
+.. 8f18755dc9a225caacf2b190d1114ebfda4a2642
+
+* The new blog post :ref:`blog-04-fixed-point` outlines how replacing
+  soft floats with fixed-point arithmetic can result in speed improvements
+  and binary size reductions without sacrificing correctness. Commit: `Add
+  fixed point blog <https://pwrev.dev/234312>`__.
+
+Bug fixes:
+
+.. e81cd5e642a0c92264caafb14a2f4931cb14fced
+
+* When a Pigweed module is listed as supporting Rust in
+  ``//docs/module_metadata.json``, a link to that module's ``rustdoc`` API
+  reference is now auto-generated in the ``pigweed.dev`` site nav. Commit:
+  `Auto-link to Rust API references <https://pwrev.dev/237934>`__. Bug:
+  :bug:`328503976`.
+
+.. _docs-changelog-2024-10-03-SEEDs:
+
+SEEDs
+=====
+Changes:
+
+.. 905bce3bd61280a8254ac5b3b2f78e2d3059faa0
+
+* SEED-0123 was rejected because Pigweed ended up upstreaming the
+  relevant APIs to ``rules_cc`` instead of sprouting them into a separate
+  repo. Commit: `(SEED-123) Reject the SEED <https://pwrev.dev/236453>`__.
+
+.. _docs-changelog-2024-10-03-Targets:
+
+Targets
+=======
+.. a5a199593f1375177d5805f882f303d4c8b8cea2
+
+* The ``main()`` forward declaration for ``emcraft_sf2_som``,
+  ``host_device_simulator``, and ``stm32f429i_disc1_stm32cube`` are no
+  longer explicitly marked ``extern C`` to prevent pedantic warnings in
+  newer Clang toolchains. Commit: `Remove implicit extern C
+  <https://pwrev.dev/237092>`__. Bug: :bug:`366374135`.
+
+.. _docs-changelog-2024-09-19:
+
+------------
+Sep 19, 2024
+------------
+Highlights (Sep 06, 2024 to Sep 19, 2024):
+
+* **New container classes**: The new :cpp:class:`pw::IntrusiveMap` and
+  :cpp:class:`pw::IntrusiveMultiMap` classes can be used for associative
+  dictionaries, sorted lists, and more.
+* **Protobuf Editions**: Initial support for `Protobuf Editions
+  <https://protobuf.dev/editions/overview>`__ was added for GN-based and
+  CMake-based projects.
+* **Token domains**: The :ref:`Detokenizer
+  <module-pw_tokenizer-detokenization>` now supports
+  :ref:`token domains <seed-0105>`.
+
+.. _docs-changelog-2024-09-19-Modules:
+
+Modules
+=======
+
+.. _docs-changelog-2024-09-19-Modules-pw_allocator:
+
+pw_allocator
+------------
+New features:
+
+.. d5fcc90b39ee7568855390535fa854cea8f33c95
+
+* The new :c:macro:`PW_ALLOCATOR_STRICT_VALIDATION` option lets you
+  enable more expensive checks to aggressively enforce invariants when
+  testing. The new :c:macro:`PW_ALLOCATOR_BLOCK_POISON_INTERVAL` option
+  allows setting the poisoning rate more easily from the build rather than
+  in code via template parameters. See
+  :ref:`module-pw_allocator-module-configuration`. Commit: `Add module config
+  <https://pwrev.dev/232211>`__.
+
+Bug fixes:
+
+.. 82759ccb711c3f34320ae9ae37bf70a029baec57
+
+* A bug was fixed where ``pw_allocator`` always split the first block
+  even if there was not enough room for the first block to be split into
+  two, which could cause heap corruption and crashes. Commit: `Check for
+  room to split the first block <https://pwrev.dev/235312>`__. Bug:
+  :bug:`366175024`.
+
+.. _docs-changelog-2024-09-19-Modules-pw_assert:
+
+pw_assert
+---------
+Changes:
+
+.. cfcf0059926589e26f318e29df8733e5a09c2928
+
+* :c:macro:`PW_CHECK_OK` now accepts any expression that's convertible
+  to :cpp:class:`pw::Status`. Commit: `Update PW_CHECK_OK() to handle any
+  expr convertible to Status <https://pwrev.dev/234820>`__. Bugs:
+  :bug:`357682413`, :bug:`365592494`.
+
+.. _docs-changelog-2024-09-19-Modules-pw_async2:
+
+pw_async2
+---------
+New features:
+
+.. cfcbaf5bbc67288b5e8954f22528c4de9312effe
+
+* The new
+  :cpp:func:`pw::async2::SimulatedTimeProvider::AdvanceUntilNextExpiration`
+  utility method is useful for advancing test time without
+  random periods or endless iterations. Commit: `Add more
+  SimulatedTimeProvider utilities <https://pwrev.dev/234929>`__.
+
+Changes:
+
+.. ed0fd1f45a3a137965dbb2075227b8ef0e91f935
+
+* Coroutines now log the requested size when an allocation fails.
+  Commit: `Log size of failed coroutine allocations
+  <https://pwrev.dev/234801>`__.
+
+.. _docs-changelog-2024-09-19-Modules-pw_build:
+
+pw_build
+--------
+Bug fixes:
+
+.. 3919d9638b6454512595c8ad39fb8806d4ac9629
+
+* An issue was fixed where bootstrap failed when
+  ``pw_rust_static_library`` was used. Commit: `Fix Undefined identifier
+  <https://pwrev.dev/232371>`__.
+
+.. _docs-changelog-2024-09-19-Modules-pw_bytes:
+
+pw_bytes
+--------
+New features:
+
+.. cda5ba673366d189e0ea326a0fa808df181730a7
+
+* The new :cpp:class:`pw::PackedPtr` template class provides a way to
+  store extra data in the otherwise unused least significant bits of a
+  pointer. Commit: `Add PackedPtr <https://pwrev.dev/235104>`__.
+
+.. _docs-changelog-2024-09-19-Modules-pw_containers:
+
+pw_containers
+-------------
+New features:
+
+.. df3b7ba1f94902e81e375ce9935749163c411515
+
+* ``pw::IntrusiveList`` now has a :ref:`size report
+  <module-pw_containers-intrusivelist-size-report>`. Commit:
+  `Add IntrusiveForwardList size report to the docs
+  <https://pwrev.dev/233651>`__.
+
+.. 8a3250d2f4287c2f66c4afd7679f9b10f789e764
+
+* The new :cpp:class:`pw::IntrusiveMap` and
+  :cpp:class:`pw::IntrusiveMultiMap` classes can be used for associative
+  dictionaries, sorted lists, and more. Commit: `Add IntrusiveMap and
+  IntrusiveMultiMap <https://pwrev.dev/216828>`__.
+
+Changes:
+
+.. 314e457eaf3a801115542d777e2157e6df85fb31
+
+* ``pw::IntrusiveList<T>`` was renamed to
+  ``pw::IntrusiveForwardList<T>`` and a new doubly-linked intrusive list
+  was added as ``pw::containers::future::IntrusiveList<T>``. An alias,
+  ``pw::IntrusiveList<T>``, was added to maintain compatibility with
+  existing code and will be removed in the future. The original
+  implementation can still be temporarily enabled by setting
+  ``PW_CONTAINERS_USE_LEGACY_INTRUSIVE_LIST``. Commit: `Add doubly linked
+  list <https://pwrev.dev/230811>`__. Bug: :bug:`362348318`.
+
+.. _docs-changelog-2024-09-19-Modules-pw_env_setup:
+
+pw_env_setup
+------------
+Changes:
+
+.. 16f0f6387505dc27e7c1a76387b05524752b4602
+
+* The Git submodule check is now skipped when no ``.git`` file or
+  directory is detected. Commit: `Add check for git in
+  _check_submodule_presence <https://pwrev.dev/234212>`__. Bug:
+  :bug:`365557573`.
+
+.. _docs-changelog-2024-09-19-Modules-pw_ide:
+
+pw_ide
+------
+Bug fixes:
+
+.. 145b45747105fb95e5625c00a7533e5375d124ea
+
+* When ``clangd`` is not found, ``pw ide sync`` now cleanly handles the
+  lack of ``clangd`` and successfully completes the rest of the sync.
+  Commit: `Don't fail sync on missing clangd
+  <https://pwrev.dev/236475>`__. Bug: :bug:`349189723`.
+
+.. _docs-changelog-2024-09-19-Modules-pw_protobuf:
+
+pw_protobuf
+-----------
+New features:
+
+.. b299522cffb0a18e07528e923f376ceee3e9c188
+
+* Initial support for `Protobuf Editions
+  <https://protobuf.dev/editions/overview>`__ was added for GN-based and
+  CMake-based projects. Commit: `Basic edition support
+  <https://pwrev.dev/235873>`__.
+
+.. _docs-changelog-2024-09-19-Modules-pw_spi_linux:
+
+pw_spi_linux
+------------
+Bug fixes:
+
+.. eefd313bdb13098552cd713598b937debe80d3d4
+
+* A performance issue was fixed where ``Configure()`` was being called
+  on each ``pw::spi::Device::WriteRead()`` call. Commit: `Avoid
+  unnecessary ioctl()s in Configure() <https://pwrev.dev/235877>`__. Bug:
+  :bug:`366541694`.
+
+.. _docs-changelog-2024-09-19-Modules-pw_spi_mcuxpresso:
+
+pw_spi_mcuxpresso
+-----------------
+Changes:
+
+.. 9d175062d56972f082ce99753092b75419a228ce
+
+* ``pw::spi::McuxpressoInitiator::DoConfigure()`` was renamed to
+  ``pw::spi::McuxpressoInitiator::DoConfigureLocked()``. Commit: `Rename
+  DoConfigure() to DoConfigureLocked() <https://pwrev.dev/236232>`__.
+
+.. _docs-changelog-2024-09-19-Modules-pw_sys_io_stm32cube:
+
+pw_sys_io_stm32cube
+-------------------
+Bug fixes:
+
+.. b0f73feb04effde3b7751c53c21b7a163f234eb8
+
+* A bug was fixed where the GPIO mode of the UART RX GPIO pin on
+  STM32F1XX devices was not being correctly set. Commit: `Fix UART RX GPIO
+  mode for f1xx family <https://pwrev.dev/235332>`__.
+
+.. _docs-changelog-2024-09-19-Modules-pw_system:
+
+pw_system
+---------
+New features:
+
+.. 5e148c19477521afbbedcc8a91a2c5b2a07bc334
+
+* The console's new ``timestamp_decoder`` constructor parameter lets
+  applications provide custom timestamp parsers. Commit: `Support
+  timestamp parser as an argument <https://pwrev.dev/234931>`__. Bug:
+  :bug:`344606797`.
+
+Changes:
+
+.. faac61757b5428be3787729d328f6f2f3ebfa9f1
+
+* The log library header (``pw_system/log.h``) of ``pw_system`` is now
+  public and can be used outside of ``pw_system``. Commit: `Make log
+  library header public <https://pwrev.dev/233411>`__.
+
+.. _docs-changelog-2024-09-19-Modules-pw_thread:
+
+pw_thread
+---------
+Changes:
+
+.. 8a67d6b57b526757ffa010be2be402c42cd13ac4
+
+* ``pw::thread::Thread`` now takes ``pw::Function<void()>``, which
+  should be used in place of the ``void(void*)`` function pointer and
+  ``void*`` argument. Commit: `Mark legacy function* / void* constructor
+  as deprecated <https://pwrev.dev/236454>`__. Bug: :bug:`367786892`.
+
+.. _docs-changelog-2024-09-19-Modules-pw_tokenizer:
+
+pw_tokenizer
+------------
+New features:
+
+.. 9fb87e78e4c41778fc950714d58e6602f63d27e6
+
+* The :ref:`Detokenizer <module-pw_tokenizer-detokenization>` now
+  supports :ref:`token domains <seed-0105>`. Commit:
+  `Add token domain support to Detokenizer <https://pwrev.dev/234968>`__.
+  Bug: :bug:`362752722`.
+
+.. 08ff555993b8ab250ea03a9f12aaf5c2d1c9c705
+
+* :py:class:`pw_tokenizer.tokens.Database` now supports :ref:`token
+  domains <seed-0105>`. Commit: `Use domains in the Python tokens.Database
+  class <https://pwrev.dev/234412>`__.
+
+.. _docs-changelog-2024-09-19-Modules-pw_toolchain:
+
+pw_toolchain
+------------
+New features:
+
+.. 40f756e2d3c40eeb32832309dbcae989fb750268
+
+* ``WORKSPACE`` toolchain registration is now configurable so that
+  downstream projects can manually control which toolchains get
+  registered. Commit: `Make toolchain registration configurable
+  <https://pwrev.dev/235712>`__. Bug: :bug:`346388161`.
+
+.. _docs-changelog-2024-09-19-Modules-pw_transfer:
+
+pw_transfer
+-----------
+Bug fixes:
+
+.. f1f654a15a3adce476c2d68643eee56f3c225dd4
+
+* A bug was fixed where a handshake timeout was not set after
+  ``START_ACK`` is processed. Commit: `Bugfix for start handshake, and
+  rate limit logs <https://pwrev.dev/236572>`__. Bug: :bug:`361281209`.
+
+Changes:
+
+.. 2496aee1a4ab3d98526a7357943b69347a39903a
+
+* When a receiver receives a chunk of data it already has the receiver
+  now sends a ``PARAMETERS_CONTINUE`` chunk instead of requesting
+  retransmission. Commit: `Send continue parameters for already received
+  chunks <https://pwrev.dev/235100>`__.
+
+.. f1f654a15a3adce476c2d68643eee56f3c225dd4
+
+* TX data chunk logs have been rate-limited to only send once every 3
+  seconds. Commit: `Bugfix for start handshake, and rate limit logs
+  <https://pwrev.dev/236572>`__. Bug: :bug:`361281209`.
+
+.. _docs-changelog-2024-09-19-Modules-pw_uart_mcuxpresso:
+
+pw_uart_mcuxpresso
+------------------
+New features:
+
+.. e8ab2b0ac31c0dde6febd0d384c0ea7d688f6803
+
+* Flow control can now be configured. Commit: `Add support for
+  configuring flow control <https://pwrev.dev/236896>`__. Bug:
+  :bug:`368150004`.
+
+Changes:
+
+.. e8ab2b0ac31c0dde6febd0d384c0ea7d688f6803
+
+* Flow control, parity mode, and stop bits now have default values.
+  Commit: `Add support for configuring flow control
+  <https://pwrev.dev/236896>`__. Bug: :bug:`368150004`.
+
+.. _docs-changelog-2024-09-19-Build-systems:
+
+Build systems
+=============
+
+.. _docs-changelog-2024-09-19-Build-systems-Bazel:
+
+Bazel
+-----
+New features:
+
+.. 4ceb5b8bf0faf75c0b051114abf85a2ea73ca39c
+
+* The new ``do_not_build`` tag specifies targets that should be excluded
+  from wildcard builds. The new ``do_not_run_test`` tag specifies test
+  targets that should be built but not executed. Commit: `Introduce
+  do_not_build, do_no_run_test tags <https://pwrev.dev/223492>`__. Bug:
+  :bug:`353531487`.
+
+.. 54679d205e4888302ab24882e6fb64bf8ba964c6
+
+* `Platform-based flags <https://github.com/bazelbuild/proposals/blob/ma
+  in/designs/2023-06-08-platform-based-flags.md>`__ have been re-enabled.
+  Commit: `Re-enable platform-based flags <https://pwrev.dev/234135>`__.
+  Bug: :bug:`301334234`.
+
+.. _docs-changelog-2024-09-19-Miscellaneous:
+
+Miscellaneous
+=============
+Bug fixes:
+
+.. 982c7f42878871e7f85dbc5420ff17f0b8ede237
+
+* An issue was fixed where the Fuchsia SDK was always fetched during
+  Bazel workspace initialization and caused unnecessary downloads. Commit:
+  `Use @fuchsia_clang as a cipd repository <https://pwrev.dev/233531>`__.
+  Bug: :bug:`346416385`.
 
 -----------
 Sep 5, 2024
@@ -22,8 +1963,6 @@ Sep 5, 2024
    experimenting with only showing user-facing new features, changes,
    and bug fixes. I.e. we're omitting commits that don't affect
    downstream Pigweed projects.
-
-.. changelog_highlights_start
 
 Highlights (Aug 24, 2024 to Sep 5, 2024):
 
@@ -46,8 +1985,6 @@ Highlights (Aug 24, 2024 to Sep 5, 2024):
   <showcase-sense-tutorial-bazel_cloud>`
   page in the Sense tutorial shows you how to use BuildBuddy
   to share logs and speed up builds with remote caching.
-
-.. changelog_highlights_end
 
 Modules
 =======
@@ -4306,7 +6243,7 @@ May 16, 2024
 Highlights (May 2, 2024 to May 16, 2024):
 
 * **Coroutines**: You can now create asynchronous tasks using C++20
-  :ref:`coroutines <module-pw_async2-coroutines>`.
+  :ref:`coroutines <module-pw_async2-guides-coroutines>`.
 * **Rust with Bazel**: The Rust toolchain can now be used by downstream projects
   using Bazel.
 * **More MCUXpresso support**: Several modules have additional support for
@@ -4351,7 +6288,7 @@ pw_assert
 pw_async2
 ---------
 C++20 users can now define asynchronous tasks using
-:ref:`module-pw_async2-coroutines`.
+:ref:`module-pw_async2-guides-coroutines`.
 
 * `Move PW_CO_TRY functions
   <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/209911>`__

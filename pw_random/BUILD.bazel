@@ -12,10 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -27,7 +24,7 @@ cc_library(
         "public/pw_random/random.h",
         "public/pw_random/xor_shift.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_assert",
         "//pw_bytes",
@@ -39,7 +36,7 @@ cc_library(
 cc_library(
     name = "fuzzer_generator",
     hdrs = ["public/pw_random/fuzzer.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":pw_random",
         "//pw_bytes",
@@ -55,5 +52,13 @@ pw_cc_test(
         "//pw_assert",
         "//pw_bytes",
         "//pw_unit_test",
+    ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_random/random.h",
+        "public/pw_random/xor_shift.h",
     ],
 )

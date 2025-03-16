@@ -35,6 +35,7 @@
 #include "pw_bluetooth_sapphire/internal/host/hci/local_address_delegate.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/channel_manager.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/error.h"
+#include "pw_bluetooth_sapphire/internal/host/sm/security_manager.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/smp.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/types.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/util.h"
@@ -130,12 +131,12 @@ LowEnergyConnectionManager::LowEnergyConnectionManager(
       hci_connector_(connector),
       local_address_delegate_(addr_delegate),
       weak_self_(this) {
-  BT_DEBUG_ASSERT(peer_cache_);
-  BT_DEBUG_ASSERT(l2cap_);
-  BT_DEBUG_ASSERT(gatt_.is_alive());
-  BT_DEBUG_ASSERT(hci_.is_alive());
-  BT_DEBUG_ASSERT(hci_connector_);
-  BT_DEBUG_ASSERT(local_address_delegate_);
+  PW_DCHECK(peer_cache_);
+  PW_DCHECK(l2cap_);
+  PW_DCHECK(gatt_.is_alive());
+  PW_DCHECK(hci_.is_alive());
+  PW_DCHECK(hci_connector_);
+  PW_DCHECK(local_address_delegate_);
 }
 
 LowEnergyConnectionManager::~LowEnergyConnectionManager() {
@@ -247,7 +248,7 @@ bool LowEnergyConnectionManager::Disconnect(PeerId peer_id,
 
   auto request_iter = pending_requests_.find(peer_id);
   if (request_iter != pending_requests_.end()) {
-    BT_ASSERT(current_request_->request.peer_id() != peer_id);
+    PW_CHECK(current_request_->request.peer_id() != peer_id);
     request_iter->second.NotifyCallbacks(fit::error(HostError::kCanceled));
     pending_requests_.erase(request_iter);
   }
@@ -384,7 +385,7 @@ void LowEnergyConnectionManager::RegisterRemoteInitiatedLink(
     std::unique_ptr<hci::LowEnergyConnection> link,
     sm::BondableMode bondable_mode,
     ConnectionResultCallback callback) {
-  BT_ASSERT(link);
+  PW_CHECK(link);
 
   Peer* peer = UpdatePeerWithLink(*link);
   auto peer_id = peer->identifier();
@@ -464,6 +465,58 @@ void LowEnergyConnectionManager::SetPairingDelegate(
   }
 }
 
+void LowEnergyConnectionManager::OpenL2capChannel(
+    PeerId peer_id,
+    l2cap::Psm psm,
+    l2cap::ChannelParameters params,
+    sm::SecurityLevel security_level,
+    l2cap::ChannelCallback cb) {
+  auto connection_iterator = connections_.find(peer_id);
+  if (connection_iterator == connections_.end()) {
+    bt_log(INFO,
+           "gap-le",
+           "can't open l2cap channel: connection not found (peer: %s)",
+           bt_str(peer_id));
+    cb(l2cap::Channel::WeakPtr());
+    return;
+  }
+
+  auto& connection = connection_iterator->second;
+  PW_DCHECK(connection);
+
+  auto pairing_cb = [connection_weak = connection->GetWeakPtr(),
+                     open_l2cap_cb = std::move(cb),
+                     peer_id,
+                     psm,
+                     params](sm::Result<> result) mutable {
+    if (!connection_weak.is_alive()) {
+      bt_log(INFO,
+             "gap-le",
+             "can't open l2cap channel: connection destroyed before pairing "
+             "completed (peer: %s)",
+             bt_str(peer_id));
+      open_l2cap_cb(l2cap::Channel::WeakPtr());
+      return;
+    }
+
+    if (result.is_error()) {
+      bt_log(
+          WARN,
+          "gap-le",
+          "can't open l2cap channel: pairing failed with error: %s (peer: %s)",
+          bt_str(result.error_value()),
+          bt_str(peer_id));
+      open_l2cap_cb(l2cap::Channel::WeakPtr());
+      return;
+    }
+
+    connection_weak->OpenL2capChannel(psm, params, std::move(open_l2cap_cb));
+  };
+
+  connection->UpgradeSecurity(
+      security_level, connection->bondable_mode(), std::move(pairing_cb));
+}
+
 void LowEnergyConnectionManager::SetDisconnectCallbackForTesting(
     DisconnectCallback callback) {
   test_disconn_cb_ = std::move(callback);
@@ -471,10 +524,10 @@ void LowEnergyConnectionManager::SetDisconnectCallbackForTesting(
 
 void LowEnergyConnectionManager::ReleaseReference(
     LowEnergyConnectionHandle* handle) {
-  BT_ASSERT(handle);
+  PW_CHECK(handle);
 
   auto iter = connections_.find(handle->peer_identifier());
-  BT_ASSERT(iter != connections_.end());
+  PW_CHECK(iter != connections_.end());
 
   iter->second->DropRef(handle);
   if (iter->second->ref_count() != 0u)
@@ -553,7 +606,7 @@ void LowEnergyConnectionManager::TryCreateNextConnection() {
 
 void LowEnergyConnectionManager::OnLocalInitiatedConnectResult(
     hci::Result<std::unique_ptr<internal::LowEnergyConnection>> result) {
-  BT_ASSERT(current_request_.has_value());
+  PW_CHECK(current_request_.has_value());
 
   internal::LowEnergyConnectionRequest request =
       std::move(current_request_->request);
@@ -582,7 +635,7 @@ void LowEnergyConnectionManager::OnRemoteInitiatedConnectResult(
     PeerId peer_id,
     hci::Result<std::unique_ptr<internal::LowEnergyConnection>> result) {
   auto remote_connector_node = remote_connectors_.extract(peer_id);
-  BT_ASSERT(!remote_connector_node.empty());
+  PW_CHECK(!remote_connector_node.empty());
 
   internal::LowEnergyConnectionRequest request =
       std::move(remote_connector_node.mapped().request);
@@ -645,7 +698,7 @@ void LowEnergyConnectionManager::ProcessConnectResult(
 bool LowEnergyConnectionManager::InitializeConnection(
     std::unique_ptr<internal::LowEnergyConnection> connection,
     internal::LowEnergyConnectionRequest request) {
-  BT_ASSERT(connection);
+  PW_CHECK(connection);
 
   auto peer_id = connection->peer_id();
 
@@ -666,7 +719,7 @@ bool LowEnergyConnectionManager::InitializeConnection(
   }
 
   Peer* peer = peer_cache_->FindById(peer_id);
-  BT_ASSERT(peer);
+  PW_CHECK(peer);
 
   connection->AttachInspect(
       inspect_connections_node_,
@@ -682,7 +735,7 @@ bool LowEnergyConnectionManager::InitializeConnection(
 
   auto [conn_iter, inserted] =
       connections_.try_emplace(peer_id, std::move(connection));
-  BT_ASSERT(inserted);
+  PW_CHECK(inserted);
 
   conn_iter->second->set_peer_conn_token(peer->MutLe().RegisterConnection());
 
@@ -705,13 +758,13 @@ bool LowEnergyConnectionManager::InitializeConnection(
 
 void LowEnergyConnectionManager::CleanUpConnection(
     std::unique_ptr<internal::LowEnergyConnection> conn) {
-  BT_ASSERT(conn);
+  PW_CHECK(conn);
 
   // Mark the peer peer as no longer connected.
   Peer* peer = peer_cache_->FindById(conn->peer_id());
-  BT_ASSERT_MSG(peer,
-                "A connection was active for an unknown peer! (id: %s)",
-                bt_str(conn->peer_id()));
+  PW_CHECK(peer,
+           "A connection was active for an unknown peer! (id: %s)",
+           bt_str(conn->peer_id()));
   conn.reset();
 }
 
@@ -729,8 +782,7 @@ Peer* LowEnergyConnectionManager::UpdatePeerWithLink(
 }
 
 void LowEnergyConnectionManager::OnPeerDisconnect(
-    const hci::Connection* connection,
-    pw::bluetooth::emboss::StatusCode reason) {
+    const hci::Connection* connection, pw::bluetooth::emboss::StatusCode) {
   auto handle = connection->handle();
   if (test_disconn_cb_) {
     test_disconn_cb_(handle);

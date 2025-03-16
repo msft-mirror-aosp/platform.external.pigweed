@@ -11,212 +11,106 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
+#include <pw_bluetooth/hci_android.emb.h>
+#include <pw_bluetooth/hci_commands.emb.h>
+#include <pw_bluetooth/hci_test.emb.h>
 
-#include <array>
-#include <cstdint>
-
+#include "pw_bluetooth_sapphire/internal/host/common/byte_buffer.h"
+#include "pw_bluetooth_sapphire/internal/host/hci-spec/vendor_protocol.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/test_helpers.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/acl_data_packet.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/control_packets.h"
+#include "pw_bluetooth_sapphire/internal/host/transport/emboss_packet.h"
 #include "pw_unit_test/framework.h"
 
 using bt::ContainersEqual;
-using bt::StaticByteBuffer;
 
-namespace bt::hci::test {
+namespace bt::hci {
 namespace {
 
-constexpr hci_spec::EventCode kTestEventCode = 0xFF;
+namespace android_hci = hci_spec::vendor::android;
+namespace android_emb = pw::bluetooth::vendor::android_hci;
 
-struct TestPayload {
-  uint8_t foo;
-} __attribute__((packed));
+TEST(StaticPacketTest, StaticPacketBasic) {
+  StaticPacket<pw::bluetooth::emboss::TestCommandPacketWriter> packet;
+  packet.view().header().opcode_bits().BackingStorage().WriteUInt(1234);
+  packet.view().header().parameter_total_size().Write(1);
+  packet.view().payload().Write(13);
 
-TEST(PacketTest, EventPacket) {
-  constexpr size_t kPayloadSize = sizeof(TestPayload);
-  auto packet = EventPacket::New(kPayloadSize);
-  uint8_t foo = 0x7F;
+  EXPECT_EQ(packet.data(), BufferView({0xD2, 0x04, 0x01, 0x0D}));
 
-  // clang-format off
- StaticByteBuffer bytes(
-      0xFF,  // event code
-      0x01,  // parameter_total_size
-      foo   // foo
-  );
-  packet->mutable_view()->mutable_data().Write(bytes);
-  packet->InitializeFromBuffer();
-  // clang-format on
-
-  EXPECT_EQ(kTestEventCode, packet->event_code());
-  EXPECT_EQ(kPayloadSize, packet->view().payload_size());
-  EXPECT_EQ(foo, packet->params<TestPayload>().foo);
+  packet.SetToZeros();
+  EXPECT_EQ(packet.data(), BufferView({0, 0, 0, 0}));
 }
 
-TEST(PacketTest, EventPacketReturnParams) {
-  uint8_t return_parameter = 0x7F;
+TEST(CommandPacketTest, CommandPacketBasic) {
+  auto packet =
+      CommandPacket::New<pw::bluetooth::emboss::TestCommandPacketWriter>(1234);
+  packet.view_t().payload().Write(13);
 
-  // clang-format off
- StaticByteBuffer correct_size_bad_event_code(
-      // Event header
-      0xFF, 0x04,  // (event_code is not CommandComplete)
-
-      // hci_spec::CommandCompleteEventParams
-      0x01, 0xFF, 0x07,
-
-      return_parameter);
-  auto cmd_complete_small_payload = StaticByteBuffer(
-      // Event header
-      0x0E, 0x03,
-
-      // hci_spec::CommandCompleteEventParams
-      0x01, 0xFF, 0x07);
-  auto valid = StaticByteBuffer(
-      // Event header
-      0x0E, 0x04,
-
-      // hci_spec::CommandCompleteEventParams
-      0x01, 0xFF, 0x07,
-
-      return_parameter);
-  // clang-format on
-
-  // Allocate a large enough packet which we'll reuse for the 3 payloads.
-  auto packet = EventPacket::New(valid.size());
-
-  // If the event code or the payload size don't match, then return_params()
-  // should return nullptr.
-  packet->mutable_view()->mutable_data().Write(correct_size_bad_event_code);
-  packet->InitializeFromBuffer();
-  EXPECT_EQ(nullptr, packet->return_params<TestPayload>());
-
-  packet->mutable_view()->mutable_data().Write(cmd_complete_small_payload);
-  packet->InitializeFromBuffer();
-  EXPECT_EQ(nullptr, packet->return_params<TestPayload>());
-
-  // Reset packet size to the original so that |valid| can fit.
-  packet->mutable_view()->Resize(valid.size());
-
-  // Valid case
-  packet->mutable_view()->mutable_data().Write(valid);
-  packet->InitializeFromBuffer();
-  ASSERT_NE(nullptr, packet->return_params<TestPayload>());
-  EXPECT_EQ(return_parameter, packet->return_params<TestPayload>()->foo);
+  EXPECT_EQ(packet.size(), 4u);
+  EXPECT_EQ(packet.data(), BufferView({0xD2, 0x04, 0x01, 0x0D}));
+  EXPECT_EQ(packet.mutable_data(), packet.data());
+  EXPECT_EQ(packet.opcode(), 1234);
+  EXPECT_EQ(packet.ocf(), 1234 & 0x3FF);
+  EXPECT_EQ(packet.ogf(), 1234 >> 10);
+  EXPECT_EQ(packet.view_t().payload().Read(), 13);
 }
 
-TEST(PacketTest, EventPacketStatus) {
-  // clang-format off
-  auto evt = StaticByteBuffer(
-      // Event header
-      0x05, 0x04,  // (event_code is DisconnectionComplete)
+TEST(CommandPacketTest, CommandPacketDeathTest) {
+  CommandPacket packet =
+      CommandPacket::New<pw::bluetooth::emboss::TestCommandPacketView>(1234);
 
-      // Disconnection Complete event parameters
-      0x03,        // status: hardware failure
-      0x01, 0x00,  // handle: 0x0001
-      0x16         // reason: terminated by local host
-  );
-  // clang-format on
-
-  auto packet = EventPacket::New(evt.size());
-  packet->mutable_view()->mutable_data().Write(evt);
-  packet->InitializeFromBuffer();
-
-  Result<> status = packet->ToResult();
-  EXPECT_EQ(ToResult(pw::bluetooth::emboss::StatusCode::HARDWARE_FAILURE),
-            status);
+  // Try and fail to request view for struct larger than TestCommandPacket.
+  EXPECT_DEATH_IF_SUPPORTED(
+      packet.view<pw::bluetooth::emboss::InquiryCommandView>(), "IsComplete");
+  // Try and fail to allocate 0 length packet (needs at least 3 bytes for the
+  // header).
+  EXPECT_DEATH_IF_SUPPORTED(
+      CommandPacket::New<pw::bluetooth::emboss::CommandHeaderView>(1234, 0),
+      "command packet size must be at least 3 bytes");
 }
 
-TEST(PacketTest, CommandCompleteEventStatus) {
-  // clang-format off
-  auto evt = StaticByteBuffer(
-      // Event header
-      0x0E, 0x04,  // (event code is CommandComplete)
+TEST(EventPacketTest, EventPacketBasic) {
+  auto packet =
+      EventPacket::New<pw::bluetooth::emboss::TestEventPacketWriter>(123);
+  packet.view_t().payload().Write(13);
 
-      // hci_spec::CommandCompleteEventParams
-      0x01, 0xFF, 0x07,
-
-      // Return parameters (status: hardware failure)
-      0x03);
-  // clang-format on
-
-  auto packet = EventPacket::New(evt.size());
-  packet->mutable_view()->mutable_data().Write(evt);
-  packet->InitializeFromBuffer();
-
-  Result<> status = packet->ToResult();
-  EXPECT_EQ(ToResult(pw::bluetooth::emboss::StatusCode::HARDWARE_FAILURE),
-            status);
+  EXPECT_EQ(packet.size(), 3u);
+  EXPECT_EQ(packet.data(), BufferView({0x7B, 0x01, 0x0D}));
+  EXPECT_EQ(packet.mutable_data(), packet.data());
+  EXPECT_EQ(packet.event_code(), 123);
+  EXPECT_EQ(packet.view_t().payload().Read(), 13);
 }
 
-TEST(PacketTest, EventPacketMalformed) {
-  // clang-format off
-  auto evt = StaticByteBuffer(
-      // Event header
-      0x05, 0x03,  // (event_code is DisconnectionComplete)
+TEST(EventPacketTest, EventPacketDeathTest) {
+  EventPacket packet =
+      EventPacket::New<pw::bluetooth::emboss::TestEventPacketView>(123);
 
-      // Disconnection Complete event parameters
-      0x03,        // status: hardware failure
-      0x01, 0x00   // handle: 0x0001
-      // event is one byte too short
-  );
-  // clang-format on
-
-  auto packet = EventPacket::New(evt.size());
-  packet->mutable_view()->mutable_data().Write(evt);
-  packet->InitializeFromBuffer();
-
-  Result<> status = packet->ToResult();
-  EXPECT_EQ(ToResult(HostError::kPacketMalformed), status);
+  // Try and fail to allocate 0 length packet (needs at least 2 bytes for the
+  // header).
+  EXPECT_DEATH_IF_SUPPORTED(EventPacket::New(0),
+                            "event packet size must be at least 2 bytes");
 }
 
-TEST(PacketTest, LEEventParams) {
-  uint8_t subevent_payload = 0x7F;
+TEST(EventPacketTest, StatusCode) {
+  // Confirm status can be read from vendor subevent.
+  auto packet =
+      EventPacket::New<android_emb::LEMultiAdvtStateChangeSubeventWriter>(
+          hci_spec::kVendorDebugEventCode);
+  auto view = packet.view_t();
+  view.status().Write(hci_spec::StatusCode::OPERATION_CANCELLED_BY_HOST);
+  view.vendor_event().subevent_code().Write(
+      android_hci::kLEMultiAdvtStateChangeSubeventCode);
 
-  // clang-format off
-  auto correct_size_bad_event_code = StaticByteBuffer(
-      // Event header
-      0xFE, 0x02,  // (event_code is not hci_spec::kLEMetaEventCode)
-
-      // Subevent code
-      0xFF,
-
-      subevent_payload);
-  auto payload_too_small = StaticByteBuffer(
-      0x3E, 0x01,
-
-      // Subevent code
-      0xFF);
-  auto valid = StaticByteBuffer(
-      // Event header
-      0x3E, 0x02,
-
-      // Subevent code
-      0xFF,
-
-      subevent_payload);
-  // clang-format on
-
-  auto packet = EventPacket::New(valid.size());
-
-  // If the event code or the payload size don't match, then return_params()
-  // should return nullptr.
-  packet->mutable_view()->mutable_data().Write(correct_size_bad_event_code);
-  packet->InitializeFromBuffer();
-  EXPECT_EQ(nullptr, packet->subevent_params<TestPayload>());
-
-  packet->mutable_view()->mutable_data().Write(payload_too_small);
-  packet->InitializeFromBuffer();
-  EXPECT_EQ(nullptr, packet->subevent_params<TestPayload>());
-
-  // Valid case
-  packet->mutable_view()->Resize(valid.size());
-  packet->mutable_view()->mutable_data().Write(valid);
-  packet->InitializeFromBuffer();
-
-  EXPECT_NE(nullptr, packet->subevent_params<TestPayload>());
-  EXPECT_EQ(subevent_payload, packet->subevent_params<TestPayload>()->foo);
+  ASSERT_TRUE(packet.StatusCode().has_value());
+  EXPECT_EQ(packet.StatusCode().value(),
+            hci_spec::StatusCode::OPERATION_CANCELLED_BY_HOST);
+  EXPECT_EQ(packet.ToResult(),
+            ToResult(hci_spec::StatusCode::OPERATION_CANCELLED_BY_HOST));
 }
 
-TEST(PacketTest, ACLDataPacketFromFields) {
+TEST(EmbossPacketTest, ACLDataPacketFromFields) {
   constexpr size_t kLargeDataLength = 10;
   constexpr size_t kSmallDataLength = 1;
 
@@ -271,7 +165,7 @@ TEST(PacketTest, ACLDataPacketFromFields) {
                                                        0x00}}));
 }
 
-TEST(PacketTest, ACLDataPacketFromBuffer) {
+TEST(EmbossPacketTest, ACLDataPacketFromBuffer) {
   constexpr size_t kLargeDataLength = 256;
   constexpr size_t kSmallDataLength = 1;
 
@@ -319,4 +213,4 @@ TEST(PacketTest, ACLDataPacketFromBuffer) {
 }
 
 }  // namespace
-}  // namespace bt::hci::test
+}  // namespace bt::hci

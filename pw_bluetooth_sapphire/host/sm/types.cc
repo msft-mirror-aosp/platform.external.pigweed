@@ -104,9 +104,8 @@ SecurityProperties::SecurityProperties(hci_spec::LinkKeyType lk_type)
                          IsAuthenticatedKey(lk_type),
                          IsSecureConnectionsKey(lk_type),
                          kMaxEncryptionKeySize) {
-  BT_DEBUG_ASSERT_MSG(
-      lk_type != hci_spec::LinkKeyType::kChangedCombination,
-      "Can't infer security information from a Changed Combination Key");
+  PW_DCHECK(lk_type != hci_spec::LinkKeyType::kChangedCombination,
+            "Can't infer security information from a Changed Combination Key");
 }
 
 SecurityProperties::SecurityProperties(const SecurityProperties& other) {
@@ -166,7 +165,7 @@ std::string SecurityProperties::ToString() const {
   }
   // inclusive-language: disable
   return bt_lib_cpp_string::StringPrintf(
-      "[%s%s%skey size: %lu]",
+      "[%s%s%skey size: %zu]",
       encrypted() ? "encrypted " : "",
       authenticated() ? "authenticated (MITM) " : "",
       secure_connections() ? "secure connections " : "legacy authentication ",

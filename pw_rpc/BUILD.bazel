@@ -14,22 +14,42 @@
 
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
-load("//pw_build:pigweed.bzl", "pw_cc_test")
-load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_filegroup", "pw_proto_library")
+load(
+    "//pw_protobuf_compiler:pw_proto_library.bzl",
+    "nanopb_proto_library",
+    "nanopb_rpc_proto_library",
+    "pw_proto_filegroup",
+    "pwpb_proto_library",
+    "pwpb_rpc_proto_library",
+    "raw_rpc_proto_library",
+)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-proto_library(
-    name = "benchmark_proto",
-    srcs = [
-        "benchmark.proto",
+pw_proto_filegroup(
+    name = "benchmark_proto_and_options",
+    srcs = ["benchmark.proto"],
+    options_files = [
+        "benchmark.options",
+        "benchmark.pwpb_options",
     ],
 )
 
-pw_proto_library(
-    name = "benchmark_cc",
+proto_library(
+    name = "benchmark_proto",
+    srcs = [":benchmark_proto_and_options"],
+)
+
+pwpb_proto_library(
+    name = "benchmark_pwpb",
+    deps = [":benchmark_proto"],
+)
+
+raw_rpc_proto_library(
+    name = "benchmark_raw_rpc",
     deps = [":benchmark_proto"],
 )
 
@@ -37,10 +57,10 @@ cc_library(
     name = "benchmark",
     srcs = ["benchmark.cc"],
     hdrs = ["public/pw_rpc/benchmark.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
-        ":benchmark_cc.pwpb",
-        ":benchmark_cc.raw_rpc",
+        ":benchmark_pwpb",
+        ":benchmark_raw_rpc",
     ],
 )
 
@@ -59,6 +79,7 @@ cc_library(
     name = "client_server",
     srcs = ["client_server.cc"],
     hdrs = ["public/pw_rpc/client_server.h"],
+    strip_include_prefix = "public",
     deps = [":pw_rpc"],
 )
 
@@ -94,22 +115,6 @@ cc_library(
         "endpoint.cc",
         "packet.cc",
         "packet_meta.cc",
-        "public/pw_rpc/internal/call.h",
-        "public/pw_rpc/internal/call_context.h",
-        "public/pw_rpc/internal/channel_list.h",
-        "public/pw_rpc/internal/client_call.h",
-        "public/pw_rpc/internal/encoding_buffer.h",
-        "public/pw_rpc/internal/endpoint.h",
-        "public/pw_rpc/internal/grpc.h",
-        "public/pw_rpc/internal/hash.h",
-        "public/pw_rpc/internal/lock.h",
-        "public/pw_rpc/internal/log_config.h",
-        "public/pw_rpc/internal/method.h",
-        "public/pw_rpc/internal/method_union.h",
-        "public/pw_rpc/internal/packet.h",
-        "public/pw_rpc/internal/server_call.h",
-        "public/pw_rpc/method_info.h",
-        "public/pw_rpc/writer.h",
         "server.cc",
         "server_call.cc",
         "service.cc",
@@ -117,9 +122,23 @@ cc_library(
     hdrs = [
         "public/pw_rpc/channel.h",
         "public/pw_rpc/client.h",
+        "public/pw_rpc/internal/call.h",
+        "public/pw_rpc/internal/call_context.h",
+        "public/pw_rpc/internal/channel_list.h",
+        "public/pw_rpc/internal/client_call.h",
         "public/pw_rpc/internal/config.h",
+        "public/pw_rpc/internal/encoding_buffer.h",
+        "public/pw_rpc/internal/endpoint.h",
+        "public/pw_rpc/internal/grpc.h",
+        "public/pw_rpc/internal/hash.h",
+        "public/pw_rpc/internal/lock.h",
+        "public/pw_rpc/internal/log_config.h",
+        "public/pw_rpc/internal/method.h",
         "public/pw_rpc/internal/method_info.h",
         "public/pw_rpc/internal/method_lookup.h",
+        "public/pw_rpc/internal/method_union.h",
+        "public/pw_rpc/internal/packet.h",
+        "public/pw_rpc/internal/server_call.h",
         "public/pw_rpc/internal/service_client.h",
         "public/pw_rpc/method_id.h",
         "public/pw_rpc/method_info.h",
@@ -128,6 +147,7 @@ cc_library(
         "public/pw_rpc/server.h",
         "public/pw_rpc/service.h",
         "public/pw_rpc/service_id.h",
+        "public/pw_rpc/writer.h",
     ],
     # LINT.IfChange
     defines = select({
@@ -136,10 +156,10 @@ cc_library(
         ":yield_mode_yield": ["PW_RPC_YIELD_MODE=PW_RPC_YIELD_MODE_YIELD"],
     }),
     # LINT.ThenChange(//pw_rpc/public/pw_rpc/internal/config.h)
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":config_override",
-        ":internal_packet_cc.pwpb",
+        ":internal_packet_pwpb",
         "//pw_assert",
         "//pw_bytes",
         "//pw_containers:intrusive_list",
@@ -181,12 +201,12 @@ config_setting(
 
 cc_library(
     name = "synchronous_client_api",
-    srcs = ["public/pw_rpc/internal/synchronous_call_impl.h"],
     hdrs = [
+        "public/pw_rpc/internal/synchronous_call_impl.h",
         "public/pw_rpc/synchronous_call.h",
         "public/pw_rpc/synchronous_call_result.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":pw_rpc",
         "//pw_chrono:system_clock",
@@ -197,7 +217,7 @@ cc_library(
 cc_library(
     name = "client_server_testing",
     hdrs = ["public/pw_rpc/internal/client_server_testing.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":client_server",
         ":internal_test_utils",
@@ -209,7 +229,7 @@ cc_library(
 cc_library(
     name = "client_server_testing_threaded",
     hdrs = ["public/pw_rpc/internal/client_server_testing_threaded.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":client_server_testing",
         "//pw_bytes",
@@ -224,7 +244,7 @@ cc_library(
 cc_library(
     name = "test_helpers",
     hdrs = ["public/pw_rpc/test_helpers.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":internal_test_utils",
         ":pw_rpc",
@@ -241,7 +261,7 @@ cc_library(
 cc_library(
     name = "thread_testing",
     hdrs = ["public/pw_rpc/thread_testing.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [":test_helpers"],
 )
 
@@ -286,6 +306,7 @@ cc_library(
         "public/pw_rpc/integration_test_socket_client.h",
         "public/pw_rpc/integration_testing.h",
     ],
+    strip_include_prefix = "public",
     deps = [
         ":pw_rpc",
         "//pw_assert",
@@ -321,7 +342,7 @@ pw_cc_test(
     srcs = ["callback_test.cc"],
     deps = [
         ":pw_rpc",
-        ":pw_rpc_test_cc.raw_rpc",
+        ":pw_rpc_test_raw_rpc",
         "//pw_rpc/raw:client_testing",
         "//pw_sync:binary_semaphore",
         "//pw_thread:non_portable_test_thread_options",
@@ -430,7 +451,6 @@ pw_cc_test(
 proto_library(
     name = "internal_packet_proto",
     srcs = ["internal/packet.proto"],
-    visibility = [":__subpackages__"],
 )
 
 java_proto_library(
@@ -448,8 +468,8 @@ py_proto_library(
     deps = [":internal_packet_proto"],
 )
 
-pw_proto_library(
-    name = "internal_packet_cc",
+pwpb_proto_library(
+    name = "internal_packet_pwpb",
     deps = [":internal_packet_proto"],
 )
 
@@ -462,15 +482,40 @@ proto_library(
     strip_import_prefix = "/pw_rpc",
 )
 
-pw_proto_library(
-    name = "pw_rpc_test_cc",
+nanopb_proto_library(
+    name = "pw_rpc_test_nanopb",
+    deps = [":pw_rpc_test_proto"],
+)
+
+nanopb_rpc_proto_library(
+    name = "pw_rpc_test_nanopb_rpc",
+    nanopb_proto_library_deps = [":pw_rpc_test_nanopb"],
+    deps = [":pw_rpc_test_proto"],
+)
+
+pwpb_proto_library(
+    name = "pw_rpc_test_pwpb",
+    deps = [":pw_rpc_test_proto"],
+)
+
+pwpb_rpc_proto_library(
+    name = "pw_rpc_test_pwpb_rpc",
+    pwpb_proto_library_deps = [":pw_rpc_test_pwpb"],
+    deps = [":pw_rpc_test_proto"],
+)
+
+raw_rpc_proto_library(
+    name = "pw_rpc_test_raw_rpc",
     deps = [":pw_rpc_test_proto"],
 )
 
 pw_proto_filegroup(
     name = "echo_proto_and_options",
     srcs = ["echo.proto"],
-    options_files = ["echo.options"],
+    options_files = [
+        "echo.options",
+        "echo.pwpb_options",
+    ],
 )
 
 proto_library(
@@ -483,7 +528,33 @@ py_proto_library(
     deps = [":echo_proto"],
 )
 
-pw_proto_library(
-    name = "echo_cc",
+nanopb_proto_library(
+    name = "echo_nanopb",
     deps = [":echo_proto"],
+)
+
+nanopb_rpc_proto_library(
+    name = "echo_nanopb_rpc",
+    nanopb_proto_library_deps = [":echo_nanopb"],
+    deps = [":echo_proto"],
+)
+
+pwpb_proto_library(
+    name = "echo_pwpb",
+    deps = [":echo_proto"],
+)
+
+pwpb_rpc_proto_library(
+    name = "echo_pwpb_rpc",
+    pwpb_proto_library_deps = [":echo_pwpb"],
+    deps = [":echo_proto"],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_rpc/channel.h",
+        "public/pw_rpc/internal/config.h",
+        "public/pw_rpc/synchronous_call.h",
+    ],
 )

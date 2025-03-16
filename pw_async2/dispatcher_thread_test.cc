@@ -36,7 +36,7 @@ class MockTask : public Task {
  private:
   Poll<> DoPend(Context& cx) override {
     ++polled;
-    last_waker = cx.GetWaker(WaitReason::Unspecified());
+    PW_ASYNC_STORE_WAKER(cx, last_waker, "MockTask is waiting for last_waker");
     if (should_complete) {
       return Ready();
     } else {
@@ -68,7 +68,7 @@ TEST(Dispatcher, RunToCompletion_SleepsUntilWoken) {
     std::move(task.last_waker).Wake();
   });
 
-  thread::Thread work_thread(thread::stl::Options(), delayed_wake);
+  Thread work_thread(thread::stl::Options(), delayed_wake);
 
   dispatcher.RunToCompletion(task);
 

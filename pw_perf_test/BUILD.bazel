@@ -13,12 +13,9 @@
 # the License.
 
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_perf_test",
-    "pw_cc_test",
-    "pw_facade",
-)
+load("//pw_build:pw_facade.bzl", "pw_facade")
+load("//pw_perf_test:pw_cc_perf_test.bzl", "pw_cc_perf_test")
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -36,7 +33,7 @@ cc_library(
         "public/pw_perf_test/internal/test_info.h",
         "public/pw_perf_test/perf_test.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":event_handler",
         ":state",
@@ -53,7 +50,7 @@ cc_library(
     hdrs = [
         "public/pw_perf_test/state.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":event_handler",
         ":timer",
@@ -73,7 +70,7 @@ pw_cc_test(
 cc_library(
     name = "event_handler",
     hdrs = ["public/pw_perf_test/event_handler.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [":timer"],
 )
 
@@ -84,9 +81,7 @@ cc_library(
         "public/pw_perf_test/googletest_style_event_handler.h",
         "public/pw_perf_test/logging_event_handler.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":event_handler",
         "//pw_log",
@@ -109,14 +104,8 @@ cc_library(
     hdrs = [
         "public/pw_perf_test/internal/duration_unit.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     visibility = ["//visibility:private"],
-)
-
-# TODO: pwbug.dev/328679085 - Remove this alias once no-one uses it.
-alias(
-    name = "timer_interface_facade",
-    actual = "timer.facade",
 )
 
 pw_facade(
@@ -125,7 +114,7 @@ pw_facade(
         "public/pw_perf_test/internal/timer.h",
     ],
     backend = ":test_timer_backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":duration_unit",
     ],
@@ -214,4 +203,12 @@ pw_cc_perf_test(
 filegroup(
     name = "docs",
     srcs = ["docs.rst"],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_perf_test/event_handler.h",
+        "public/pw_perf_test/perf_test.h",
+    ],
 )

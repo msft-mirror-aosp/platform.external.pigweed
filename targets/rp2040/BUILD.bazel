@@ -12,10 +12,14 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_build:merge_flags.bzl", "flags_from_dict")
-load("//pw_build:pigweed.bzl", "pw_cc_binary")
-load("//targets/rp2040:flash.bzl", "flash_rp2040")
-load("//targets/rp2040:transition.bzl", "RP2_SYSTEM_FLAGS", "rp2040_binary")
+load("//pw_build:pw_cc_binary.bzl", "pw_cc_binary")
+load("//pw_build:pw_copy_and_patch_file.bzl", "pw_copy_and_patch_file")
+load("//pw_toolchain/cc/current_toolchain:conditions.bzl", "if_compiler_is_clang")
+load("//targets/rp2040:flash.bzl", "flash_rp2040", "flash_rp2350")
+load("//targets/rp2040:transition.bzl", "RP2_SYSTEM_FLAGS", "rp2040_binary", "rp2350_binary")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -58,6 +62,9 @@ platform(
         "@platforms//cpu:armv6-m",
         "@pw_toolchain//constraints/arm_mcpu:cortex-m0plus",
     ],
+    flags = flags_from_dict({
+        "@pico-sdk//bazel/config:PICO_DEFAULT_LINKER_SCRIPT": ":rp2040_linker_script",
+    }),
     parents = [":rp2_common"],
 )
 
@@ -70,6 +77,9 @@ platform(
         "@platforms//cpu:armv8-m",
         "@pw_toolchain//constraints/arm_mcpu:cortex-m33",
     ],
+    flags = flags_from_dict({
+        "@pico-sdk//bazel/config:PICO_DEFAULT_LINKER_SCRIPT": ":rp2350_linker_script",
+    }),
     parents = [":rp2_common"],
 )
 
@@ -79,21 +89,21 @@ cc_library(
         ":pre_init",
         "//pw_tokenizer:linker_script",
         "@pico-sdk//src/rp2_common/pico_stdlib",
-    ] + select({
-        "@rules_cc//cc/compiler:clang": [
+    ] + if_compiler_is_clang(
+        [
             "//pw_libcxx",
             "@pico-sdk//src/rp2_common/pico_clib_interface:llvm_libc_interface",
         ],
-        "//conditions:default": [],
-    }),
+        otherwise = [],
+    ),
 )
 
 alias(
     name = "pico_sdk_clib_select",
-    actual = select({
-        "@rules_cc//cc/compiler:clang": "@pico-sdk//src/rp2_common/pico_clib_interface:llvm_libc_interface",
-        "//conditions:default": "@pico-sdk//src/rp2_common/pico_clib_interface:newlib_interface",
-    }),
+    actual = if_compiler_is_clang(
+        "@pico-sdk//src/rp2_common/pico_clib_interface:llvm_libc_interface",
+        otherwise = "@pico-sdk//src/rp2_common/pico_clib_interface:newlib_interface",
+    ),
 )
 
 cc_library(
@@ -177,10 +187,11 @@ cc_library(
     srcs = [
         "device_handler.cc",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_cpu_exception_cortex_m:snapshot",
         "//pw_system:device_handler.facade",
+        "//pw_thread_freertos:snapshot",
         "@pico-sdk//src/rp2_common/hardware_watchdog:hardware_watchdog",
     ],
 )
@@ -215,4 +226,57 @@ flash_rp2040(
     name = "flash_rp2040_system_async_example",
     testonly = True,
     rp2040_binary = ":rp2040_system_async_example",
+)
+
+pw_copy_and_patch_file(
+    name = "rp2040_memmap_default",
+    src = "@pico-sdk//src/rp2_common/pico_crt0/rp2040:memmap_default.ld",
+    out = "patched_rp2040_memmap_default.ld",
+    patch_file = "patches/rp2040_memmap_default.ld.patch",
+)
+
+cc_library(
+    name = "rp2040_linker_script",
+    additional_linker_inputs = [":rp2040_memmap_default"],
+    linkopts = ["-T$(execpath :rp2040_memmap_default)"],
+    deps = [
+        "@pico-sdk//src/rp2_common/pico_standard_link:default_flash_region",
+    ],
+)
+
+rp2350_binary(
+    name = "rp2350_system_async_example",
+    testonly = True,
+    binary = ":system_async_example",
+)
+
+flash_rp2350(
+    name = "flash_rp2350_system_async_example",
+    testonly = True,
+    rp2350_binary = ":rp2350_system_async_example",
+)
+
+pw_copy_and_patch_file(
+    name = "rp2350_memmap_default",
+    src = "@pico-sdk//src/rp2_common/pico_crt0/rp2350:memmap_default.ld",
+    out = "patched_rp2350_memmap_default.ld",
+    patch_file = "patches/rp2350_memmap_default.ld.patch",
+)
+
+cc_library(
+    name = "rp2350_linker_script",
+    additional_linker_inputs = [":rp2350_memmap_default"],
+    linkopts = ["-T$(execpath :rp2350_memmap_default)"],
+    deps = [
+        "@pico-sdk//src/rp2_common/pico_standard_link:default_flash_region",
+    ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "target_docs.rst",
+        "upstream.rst",
+    ],
+    target_compatible_with = incompatible_with_mcu(),
 )

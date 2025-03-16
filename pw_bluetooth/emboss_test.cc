@@ -29,6 +29,7 @@
 #include "pw_bluetooth/hci_test.emb.h"
 #include "pw_bluetooth/hci_android.emb.h"    // IWYU pragma: keep
 #include "pw_bluetooth/l2cap_frames.emb.h"  // IWYU pragma: keep
+#include "pw_bluetooth/rfcomm_frames.emb.h"  // IWYU pragma: keep
 // clang-format on
 
 namespace pw::bluetooth {
@@ -51,13 +52,100 @@ TEST(EmbossTest, MakeView) {
   EXPECT_EQ(view.payload().Read(), 0x03);
 }
 
+static void InitializeIsoPacket(const emboss::IsoDataFramePacketWriter& view,
+                                emboss::TsFlag ts_flag,
+                                emboss::IsoDataPbFlag pb_flag,
+                                size_t sdu_fragment_size) {
+  view.header().connection_handle().Write(0x123);
+  view.header().ts_flag().Write(ts_flag);
+  view.header().pb_flag().Write(pb_flag);
+
+  size_t optional_fields_total_size = 0;
+  if (ts_flag == emboss::TsFlag::TIMESTAMP_PRESENT) {
+    optional_fields_total_size += 4;
+  }
+
+  if ((pb_flag == emboss::IsoDataPbFlag::FIRST_FRAGMENT) ||
+      (pb_flag == emboss::IsoDataPbFlag::COMPLETE_SDU)) {
+    optional_fields_total_size += 4;
+  }
+
+  view.header().data_total_length().Write(sdu_fragment_size +
+                                          optional_fields_total_size);
+}
+
 // This definition has a mix of full-width values and bitfields and includes
 // conditional bitfields. Let's add this to verify that the structure itself
 // doesn't get changed incorrectly and that emboss' size calculation matches
 // ours.
 TEST(EmbossTest, CheckIsoPacketSize) {
-  int max_size = 12 /* max header */ + 4095 /* max payload */;
-  EXPECT_EQ(emboss::IsoDataFramePacket::MaxSizeInBytes(), max_size);
+  std::array<uint8_t, 2048> buffer;
+  const size_t kSduFragmentSize = 100;
+  auto view = emboss::MakeIsoDataFramePacketView(&buffer);
+
+  InitializeIsoPacket(view,
+                      emboss::TsFlag::TIMESTAMP_NOT_PRESENT,
+                      emboss::IsoDataPbFlag::FIRST_FRAGMENT,
+                      kSduFragmentSize);
+  ASSERT_TRUE(view.IntrinsicSizeInBytes().Ok());
+  EXPECT_EQ(static_cast<size_t>(view.IntrinsicSizeInBytes().Read()),
+            view.hdr_size().Read() + kSduFragmentSize + 4);
+
+  InitializeIsoPacket(view,
+                      emboss::TsFlag::TIMESTAMP_NOT_PRESENT,
+                      emboss::IsoDataPbFlag::INTERMEDIATE_FRAGMENT,
+                      kSduFragmentSize);
+  ASSERT_TRUE(view.IntrinsicSizeInBytes().Ok());
+  EXPECT_EQ(static_cast<size_t>(view.IntrinsicSizeInBytes().Read()),
+            view.hdr_size().Read() + kSduFragmentSize);
+
+  InitializeIsoPacket(view,
+                      emboss::TsFlag::TIMESTAMP_NOT_PRESENT,
+                      emboss::IsoDataPbFlag::COMPLETE_SDU,
+                      kSduFragmentSize);
+  ASSERT_TRUE(view.IntrinsicSizeInBytes().Ok());
+  EXPECT_EQ(static_cast<size_t>(view.IntrinsicSizeInBytes().Read()),
+            view.hdr_size().Read() + kSduFragmentSize + 4);
+
+  InitializeIsoPacket(view,
+                      emboss::TsFlag::TIMESTAMP_NOT_PRESENT,
+                      emboss::IsoDataPbFlag::LAST_FRAGMENT,
+                      kSduFragmentSize);
+  ASSERT_TRUE(view.IntrinsicSizeInBytes().Ok());
+  EXPECT_EQ(static_cast<size_t>(view.IntrinsicSizeInBytes().Read()),
+            view.hdr_size().Read() + kSduFragmentSize);
+
+  InitializeIsoPacket(view,
+                      emboss::TsFlag::TIMESTAMP_PRESENT,
+                      emboss::IsoDataPbFlag::FIRST_FRAGMENT,
+                      kSduFragmentSize);
+  ASSERT_TRUE(view.IntrinsicSizeInBytes().Ok());
+  EXPECT_EQ(static_cast<size_t>(view.IntrinsicSizeInBytes().Read()),
+            view.hdr_size().Read() + kSduFragmentSize + 8);
+
+  InitializeIsoPacket(view,
+                      emboss::TsFlag::TIMESTAMP_PRESENT,
+                      emboss::IsoDataPbFlag::INTERMEDIATE_FRAGMENT,
+                      kSduFragmentSize);
+  ASSERT_TRUE(view.IntrinsicSizeInBytes().Ok());
+  EXPECT_EQ(static_cast<size_t>(view.IntrinsicSizeInBytes().Read()),
+            view.hdr_size().Read() + kSduFragmentSize + 4);
+
+  InitializeIsoPacket(view,
+                      emboss::TsFlag::TIMESTAMP_PRESENT,
+                      emboss::IsoDataPbFlag::COMPLETE_SDU,
+                      kSduFragmentSize);
+  ASSERT_TRUE(view.IntrinsicSizeInBytes().Ok());
+  EXPECT_EQ(static_cast<size_t>(view.IntrinsicSizeInBytes().Read()),
+            view.hdr_size().Read() + kSduFragmentSize + 8);
+
+  InitializeIsoPacket(view,
+                      emboss::TsFlag::TIMESTAMP_PRESENT,
+                      emboss::IsoDataPbFlag::LAST_FRAGMENT,
+                      kSduFragmentSize);
+  ASSERT_TRUE(view.IntrinsicSizeInBytes().Ok());
+  EXPECT_EQ(static_cast<size_t>(view.IntrinsicSizeInBytes().Read()),
+            view.hdr_size().Read() + kSduFragmentSize + 4);
 }
 
 // Test and demonstrate various ways of reading opcodes.
@@ -292,5 +380,193 @@ TEST(EmbossTest, ReadSniffMode) {
   EXPECT_EQ(view.sniff_attempt().Read(), 0x0004);
   EXPECT_EQ(view.sniff_timeout().Read(), 0x0001);
 }
+
+TEST(EmbossTest, ReadRfcomm) {
+  std::array<uint8_t,
+             emboss::RfcommFrame::MinSizeInBytes() + /*credits*/ 1 +
+                 /*payload*/ 3>
+      buffer_with_credits = {// Address
+                             0x19,
+                             // UIH Poll/Final
+                             0xFF,
+                             // Information Length
+                             0x07,
+                             // Credits
+                             0x0A,
+                             // Payload/Information
+                             0xAB,
+                             0xCD,
+                             0xEF,
+                             // FCS
+                             0x49};
+
+  emboss::RfcommFrameView rfcomm =
+      emboss::MakeRfcommFrameView(&buffer_with_credits);
+  EXPECT_TRUE(rfcomm.Ok());
+  EXPECT_EQ(rfcomm.credits().Read(), 10);
+
+  EXPECT_EQ(rfcomm.information()[0].Read(), 0xAB);
+  EXPECT_EQ(rfcomm.information()[1].Read(), 0xCD);
+  EXPECT_EQ(rfcomm.information()[2].Read(), 0xEF);
+
+  EXPECT_EQ(rfcomm.fcs().Read(), 0x49);
+
+  std::array<uint8_t,
+             emboss::RfcommFrame::MinSizeInBytes() +
+                 /*payload*/ 3>
+      buffer_without_credits = {// Address
+                                0x19,
+                                // UIH
+                                0xEF,
+                                // Information Length
+                                0x07,
+                                // Payload/Information
+                                0xAB,
+                                0xCD,
+                                0xEF,
+                                // FCS
+                                0x55};
+
+  rfcomm = emboss::MakeRfcommFrameView(&buffer_without_credits);
+  EXPECT_TRUE(rfcomm.Ok());
+  EXPECT_FALSE(rfcomm.has_credits().ValueOrDefault());
+  EXPECT_EQ(rfcomm.information()[0].Read(), 0xAB);
+  EXPECT_EQ(rfcomm.information()[1].Read(), 0xCD);
+  EXPECT_EQ(rfcomm.information()[2].Read(), 0xEF);
+  EXPECT_EQ(rfcomm.fcs().Read(), 0x55);
+}
+
+TEST(EmbossTest, ReadRfcommExtended) {
+  constexpr size_t kMaxShortLength = 0x7f;
+  std::array<uint8_t,
+             emboss::RfcommFrame::MinSizeInBytes() + /*length_extended*/ 1 +
+                 /*credits*/ 1 +
+                 /*payload*/ (kMaxShortLength + 1)>
+      buffer_extended_length_with_credits = {
+          // Address
+          0x19,
+          // UIH Poll/Final
+          0xFF,
+          // Information Length
+          0x00,
+          0x01,
+          // Credits
+          0x0A,
+          // Payload/Information
+          0xAB,
+          0xCD,
+          0xEF,
+      };
+
+  // FCS
+  buffer_extended_length_with_credits
+      [buffer_extended_length_with_credits.size() - 1] = 0x49;
+
+  emboss::RfcommFrameView rfcomm =
+      emboss::MakeRfcommFrameView(&buffer_extended_length_with_credits);
+  EXPECT_TRUE(rfcomm.Ok());
+  EXPECT_TRUE(rfcomm.has_credits().ValueOrDefault());
+  EXPECT_TRUE(rfcomm.has_length_extended().ValueOrDefault());
+  EXPECT_EQ(rfcomm.information_length().Read(), 128);
+  EXPECT_EQ(rfcomm.information()[0].Read(), 0xAB);
+  EXPECT_EQ(rfcomm.information()[1].Read(), 0xCD);
+  EXPECT_EQ(rfcomm.information()[2].Read(), 0xEF);
+  EXPECT_EQ(rfcomm.fcs().Read(), 0x49);
+}
+
+TEST(EmbossTest, WriteRfcomm) {
+  const std::array<uint8_t, 3> expected_payload = {0xAB, 0xCD, 0xEF};
+  constexpr size_t kFrameSize = emboss::RfcommFrame::MinSizeInBytes() +
+                                /*credits*/ 1 + expected_payload.size();
+  std::array<uint8_t, kFrameSize> buffer{};
+
+  emboss::RfcommFrameWriter rfcomm = emboss::MakeRfcommFrameView(&buffer);
+  rfcomm.extended_address().Write(true);
+  rfcomm.command_response_direction().Write(
+      emboss::RfcommCommandResponseAndDirection::COMMAND_FROM_RESPONDER);
+  rfcomm.channel().Write(3);
+  rfcomm.control().Write(
+      emboss::RfcommFrameType::
+          UNNUMBERED_INFORMATION_WITH_HEADER_CHECK_AND_POLL_FINAL);
+
+  rfcomm.length_extended_flag().Write(emboss::RfcommLengthExtended::NORMAL);
+  rfcomm.length().Write(expected_payload.size());
+
+  EXPECT_TRUE(rfcomm.has_credits().ValueOrDefault());
+  rfcomm.credits().Write(10);
+
+  std::memcpy(rfcomm.information().BackingStorage().data(),
+              expected_payload.data(),
+              expected_payload.size());
+  rfcomm.fcs().Write(0x49);
+
+  std::array<uint8_t, kFrameSize> expected{// Address
+                                           0x19,
+                                           // UIH Poll/Final
+                                           0xFF,
+                                           // Information Length
+                                           0x07,
+                                           // Credits
+                                           0x0A,
+                                           // Payload/Information
+                                           0xAB,
+                                           0xCD,
+                                           0xEF,
+                                           // FCS
+                                           0x49};
+  EXPECT_EQ(buffer, expected);
+}
+
+TEST(EmbossTest, WriteRfcommExtended) {
+  const std::array<uint8_t, 128> expected_payload = {0xAB, 0xCD, 0xEF};
+  constexpr size_t kFrameSize = emboss::RfcommFrame::MinSizeInBytes() +
+                                /* length_extended */ 1 +
+                                /*credits*/ 1 + expected_payload.size();
+  std::array<uint8_t, kFrameSize> buffer{};
+
+  emboss::RfcommFrameWriter rfcomm = emboss::MakeRfcommFrameView(&buffer);
+  rfcomm.extended_address().Write(true);
+  rfcomm.command_response_direction().Write(
+      emboss::RfcommCommandResponseAndDirection::COMMAND_FROM_RESPONDER);
+  rfcomm.channel().Write(3);
+  rfcomm.control().Write(
+      emboss::RfcommFrameType::
+          UNNUMBERED_INFORMATION_WITH_HEADER_CHECK_AND_POLL_FINAL);
+
+  rfcomm.length_extended_flag().Write(emboss::RfcommLengthExtended::EXTENDED);
+  rfcomm.length_extended().Write(expected_payload.size());
+
+  EXPECT_TRUE(rfcomm.has_credits().ValueOrDefault());
+  rfcomm.credits().Write(10);
+
+  std::memcpy(rfcomm.information().BackingStorage().data(),
+              expected_payload.data(),
+              expected_payload.size());
+  rfcomm.fcs().Write(0x49);
+
+  std::array<uint8_t, kFrameSize> expected{
+      // Address
+      0x19,
+      // UIH Poll/Final
+      0xFF,
+      // Information Length
+      0x00,
+      0x01,
+      // Credits
+      0x0A,
+      // Payload/Information
+      0xAB,
+      0xCD,
+      0xEF,
+  };
+  // FCS
+  expected[expected.size() - 1] = 0x49;
+
+  EXPECT_EQ(expected[2], buffer[2]);
+  EXPECT_EQ(expected[3], buffer[3]);
+
+  EXPECT_EQ(buffer, expected);
+}
+
 }  // namespace
 }  // namespace pw::bluetooth

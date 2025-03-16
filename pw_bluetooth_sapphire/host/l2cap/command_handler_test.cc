@@ -41,7 +41,7 @@ class TestCommandHandler final : public CommandHandler {
     static constexpr const char* kName = "Undecodable Response";
 
     using Response::Response;  // Inherit ctor
-    bool Decode(const ByteBuffer& payload_buf) { return false; }
+    bool Decode(const ByteBuffer&) { return false; }
   };
 
   using UndecodableResponseCallback =
@@ -85,7 +85,7 @@ class CommandHandlerTest : public pw::async::test::FakeDispatcherFixture {
   size_t failed_requests() const { return failed_requests_; }
 
   void set_request_fail_callback(fit::closure request_fail_callback) {
-    BT_ASSERT(!request_fail_callback_);
+    PW_CHECK(!request_fail_callback_);
     request_fail_callback_ = std::move(request_fail_callback);
   }
 
@@ -209,7 +209,7 @@ TEST_F(CommandHandlerTest, OutboundDisconReqRejNotEnoughBytes) {
 
   bool cb_called = false;
   auto on_discon_rsp =
-      [&cb_called](const CommandHandler::DisconnectionResponse& rsp) {
+      [&cb_called](const CommandHandler::DisconnectionResponse&) {
         cb_called = true;
       };
 
@@ -245,7 +245,7 @@ TEST_F(CommandHandlerTest, OutboundDisconReqRejInvalidCIDNotEnoughBytes) {
 
   bool cb_called = false;
   auto on_discon_rsp =
-      [&cb_called](const CommandHandler::DisconnectionResponse& rsp) {
+      [&cb_called](const CommandHandler::DisconnectionResponse&) {
         cb_called = true;
       };
 
@@ -332,7 +332,7 @@ TEST_F(CommandHandlerTest, OutboundDisconReqRspPayloadNotEnoughBytes) {
 
   bool cb_called = false;
   auto on_discon_cb =
-      [&cb_called](const CommandHandler::DisconnectionResponse& rsp) {
+      [&cb_called](const CommandHandler::DisconnectionResponse&) {
         cb_called = true;
       };
 
@@ -351,7 +351,7 @@ TEST_F(CommandHandlerTest, OutboundReqRspDecodeError) {
 
   bool cb_called = false;
   auto on_rsp_cb =
-      [&cb_called](const TestCommandHandler::UndecodableResponse& rsp) {
+      [&cb_called](const TestCommandHandler::UndecodableResponse&) {
         cb_called = true;
       };
 
@@ -398,8 +398,8 @@ TEST_F(CommandHandlerTest, OutboundDisconReqRspTimeOut) {
 
 TEST_F(CommandHandlerTest, RejectInvalidChannelId) {
   CommandHandler::DisconnectionRequestCallback cb =
-      [](ChannelId local_cid,
-         ChannelId remote_cid,
+      [](ChannelId,
+         ChannelId,
          CommandHandler::DisconnectionResponder* responder) {
         responder->RejectInvalidChannelId();
       };

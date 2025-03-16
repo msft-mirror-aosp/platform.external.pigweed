@@ -64,14 +64,11 @@ class SequentialCommandRunner final {
   // If |wait| is true, then all previously queued commands must complete
   // successfully before this command is sent.
   // |exclusions| will be passed to CommandChannel::SendExclusiveCommand().
-  using CommandCompleteCallback = fit::function<void(const EventPacket& event)>;
   using EmbossCommandCompleteCallback =
-      fit::function<void(const EmbossEventPacket& event_packet)>;
-  using CommandCompleteCallbackVariant =
-      std::variant<CommandCompleteCallback, EmbossCommandCompleteCallback>;
+      fit::function<void(const EventPacket& event_packet)>;
   void QueueCommand(
-      EmbossCommandPacket command_packet,
-      CommandCompleteCallbackVariant callback = CommandCompleteCallback(),
+      CommandPacket command_packet,
+      EmbossCommandCompleteCallback callback = EmbossCommandCompleteCallback(),
       bool wait = true,
       hci_spec::EventCode complete_event_code =
           hci_spec::kCommandCompleteEventCode,
@@ -80,9 +77,9 @@ class SequentialCommandRunner final {
   // Same as QueueCommand(), except the command completes on the LE Meta Event
   // with subevent code |le_meta_subevent_code|.
   void QueueLeAsyncCommand(
-      EmbossCommandPacket command_packet,
+      CommandPacket command_packet,
       hci_spec::EventCode le_meta_subevent_code,
-      CommandCompleteCallbackVariant callback = CommandCompleteCallback(),
+      EmbossCommandCompleteCallback callback = EmbossCommandCompleteCallback(),
       bool wait = true);
 
   // Runs all the queued commands. This method will return before queued
@@ -126,10 +123,10 @@ class SequentialCommandRunner final {
 
  private:
   struct QueuedCommand {
-    EmbossCommandPacket packet;
+    CommandPacket packet;
     hci_spec::EventCode complete_event_code;
     bool is_le_async_command;
-    CommandCompleteCallbackVariant callback;
+    EmbossCommandCompleteCallback callback;
     bool wait;
     std::unordered_set<hci_spec::OpCode> exclusions;
   };
