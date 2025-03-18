@@ -34,7 +34,8 @@ class McuxpressoInitiator final : public Initiator {
   };
 
   McuxpressoInitiator(const Config& config)
-      : config_(config),
+      : Initiator(Initiator::Feature::kStandard),
+        config_(config),
         base_(reinterpret_cast<I2C_Type*>(config_.flexcomm_address)) {}
 
   // Should be called before attempting any transfers.
@@ -44,15 +45,13 @@ class McuxpressoInitiator final : public Initiator {
   ~McuxpressoInitiator() final;
 
  private:
-  Status DoWriteReadFor(Address device_address,
-                        ConstByteSpan tx_buffer,
-                        ByteSpan rx_buffer,
-                        chrono::SystemClock::duration timeout) override
+  Status DoTransferFor(span<const Message> messages,
+                       chrono::SystemClock::duration timeout) override
       PW_LOCKS_EXCLUDED(mutex_);
 
   // inclusive-language: disable
-  Status InitiateNonBlockingTransfer(chrono::SystemClock::duration rw_timeout,
-                                     i2c_master_transfer_t* transfer)
+  Status InitiateNonBlockingTransferUntil(
+      chrono::SystemClock::time_point deadline, i2c_master_transfer_t* transfer)
       PW_LOCKS_EXCLUDED(callback_isl_);
 
   // Non-blocking I2C transfer callback.
@@ -60,7 +59,7 @@ class McuxpressoInitiator final : public Initiator {
                                        i2c_master_handle_t* handle,
                                        status_t status,
                                        void* initiator_ptr)
-      PW_GUARDED_BY(callback_isl_);
+      PW_LOCKS_EXCLUDED(callback_isl_);
   // inclusive-language: enable
 
   sync::Mutex mutex_;
