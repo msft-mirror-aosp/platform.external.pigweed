@@ -1644,5 +1644,45 @@ TEST_F(PeerTest, BrEdrPairingToken) {
   EXPECT_EQ(count_2, 1);
 }
 
+TEST_F(PeerTest, ClearBondDataDoesNotSetIdentityKnownToFalseIfAddressIsLEPublic) {
+  ASSERT_EQ(peer().address().type(), DeviceAddress::Type::kLEPublic);
+  EXPECT_TRUE(peer().identity_known());
+  sm::PairingData data;
+  data.peer_ltk = kLTK;
+  data.local_ltk = kLTK;
+  data.irk = sm::Key(sm::SecurityProperties(), UInt128{4});
+  peer().MutLe().SetBondData(data);
+  EXPECT_TRUE(peer().identity_known());
+  peer().MutLe().ClearBondData();
+  EXPECT_TRUE(peer().identity_known());
+}
+
+TEST_F(PeerTest, SetInquiryDataWithInvalidRssiIgnored) {
+  EXPECT_EQ(peer().rssi(), hci_spec::kRSSIInvalid);
+
+  const StaticByteBuffer kEirData(
+      0x05,  // Length
+      0x09,  // AD type: Complete Local Name
+      'T',
+      'e',
+      's',
+      't'
+  );
+  StaticPacket<pw::bluetooth::emboss::ExtendedInquiryResultEventWriter> eirep;
+  eirep.view().num_responses().Write(1);
+  eirep.view().bd_addr().CopyFrom(peer().address().value().view());
+  eirep.view().rssi().UncheckedWrite(hci_spec::kMaxRssi + 1);
+  eirep.view().extended_inquiry_response().BackingStorage().CopyFrom(
+      ::emboss::support::ReadOnlyContiguousBuffer(&kEirData), kEirData.size());
+  peer().MutBrEdr().SetInquiryData(eirep.view());
+  EXPECT_EQ(peer().rssi(), hci_spec::kRSSIInvalid);
+
+  StaticPacket<pw::bluetooth::emboss::InquiryResultWithRssiWriter> inquiry_result_rssi;
+  inquiry_result_rssi.view().bd_addr().CopyFrom(peer().address().value().view());
+  inquiry_result_rssi.view().rssi().UncheckedWrite(hci_spec::kMaxRssi + 1);
+  peer().MutBrEdr().SetInquiryData(inquiry_result_rssi.view());
+  EXPECT_EQ(peer().rssi(), hci_spec::kRSSIInvalid);
+}
+
 }  // namespace
 }  // namespace bt::gap
