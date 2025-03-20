@@ -30,11 +30,6 @@ constraint_value(
 )
 
 constraint_value(
-    name = "mps2-an505",
-    constraint_setting = ":chipset",
-)
-
-constraint_value(
     name = "nrf52833",
     constraint_setting = ":chipset",
 )

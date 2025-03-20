@@ -40,8 +40,8 @@ cc_library(
         "l2cap_leu_signaling_channel.cc",
         "l2cap_signaling_channel.cc",
         "l2cap_status_tracker.cc",
-        "multibuf_writer.cc",
         "proxy_host.cc",
+        "recombiner.cc",
         "rfcomm_channel.cc",
         "rfcomm_fcs.cc",
     ],
@@ -50,6 +50,7 @@ cc_library(
     # LINT.IfChange
     hdrs = [
         "public/pw_bluetooth_proxy/basic_l2cap_channel.h",
+        "public/pw_bluetooth_proxy/direction.h",
         "public/pw_bluetooth_proxy/gatt_notify_channel.h",
         "public/pw_bluetooth_proxy/h4_packet.h",
         "public/pw_bluetooth_proxy/internal/acl_data_channel.h",
@@ -63,8 +64,9 @@ cc_library(
         "public/pw_bluetooth_proxy/internal/l2cap_leu_signaling_channel.h",
         "public/pw_bluetooth_proxy/internal/l2cap_signaling_channel.h",
         "public/pw_bluetooth_proxy/internal/l2cap_status_tracker.h",
+        "public/pw_bluetooth_proxy/internal/locked_l2cap_channel.h",
         "public/pw_bluetooth_proxy/internal/logical_transport.h",
-        "public/pw_bluetooth_proxy/internal/multibuf_writer.h",
+        "public/pw_bluetooth_proxy/internal/recombiner.h",
         "public/pw_bluetooth_proxy/internal/rfcomm_fcs.h",
         "public/pw_bluetooth_proxy/l2cap_channel_common.h",
         "public/pw_bluetooth_proxy/l2cap_coc.h",
@@ -72,6 +74,7 @@ cc_library(
         "public/pw_bluetooth_proxy/proxy_host.h",
         "public/pw_bluetooth_proxy/rfcomm_channel.h",
     ],
+    features = ["-conversion_warnings"],
     # LINT.ThenChange(BUILD.gn, CMakeLists.txt)
     implementation_deps = ["//pw_containers:algorithm"],
     strip_include_prefix = "public",
@@ -114,6 +117,7 @@ cc_library(
     # LINT.IfChange
     srcs = ["test_utils.cc"],
     hdrs = ["pw_bluetooth_proxy_private/test_utils.h"],
+    features = ["-conversion_warnings"],
     deps = [
         ":pw_bluetooth_proxy",
         "//pw_assert:check",
@@ -138,12 +142,13 @@ pw_cc_test(
         "gatt_notify_test.cc",
         "h4_packet_test.cc",
         "l2cap_coc_test.cc",
-        "multibuf_writer_test.cc",
         "proxy_host_test.cc",
+        "recombiner_test.cc",
         "rfcomm_fcs_test.cc",
         "rfcomm_test.cc",
         "utils_test.cc",
     ],
+    features = ["-conversion_warnings"],
     deps = [
         ":pw_bluetooth_proxy",
         ":test_utils",

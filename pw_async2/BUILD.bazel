@@ -19,11 +19,11 @@ load(
     "incompatible_with_mcu",
     "minimum_cxx_20",
 )
+load("//pw_build:pw_facade.bzl", "pw_facade")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
-    features = ["-layering_check"],
 )
 
 licenses(["notice"])
@@ -52,20 +52,19 @@ pw_cc_test(
     ],
 )
 
-# NOTE: this target should only be used directly by implementors of the
-# `dispatcher` facade.
-cc_library(
-    name = "dispatcher_base",
-    srcs = [
-        "dispatcher_base.cc",
-    ],
+pw_facade(
+    name = "dispatcher",
+    srcs = ["dispatcher_base.cc"],
     hdrs = [
         "public/pw_async2/context.h",
+        "public/pw_async2/dispatcher.h",
         "public/pw_async2/dispatcher_base.h",
-        "public/pw_async2/internal/lock.h",
+        "public/pw_async2/lock.h",
         "public/pw_async2/task.h",
         "public/pw_async2/waker.h",
     ],
+    backend = ":dispatcher_backend",
+    features = ["-conversion_warnings"],
     implementation_deps = ["//pw_assert:check"],
     strip_include_prefix = "public",
     deps = [
@@ -78,25 +77,15 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "dispatcher",
-    hdrs = [
-        "public/pw_async2/dispatcher.h",
-    ],
-    strip_include_prefix = "public",
-    deps = [
-        ":dispatcher_backend",
-        ":dispatcher_base",
-    ],
-)
-
 label_flag(
     name = "dispatcher_backend",
     build_setting_default = ":dispatcher_backend_multiplexer",
+    features = ["-conversion_warnings"],
 )
 
 cc_library(
     name = "dispatcher_backend_multiplexer",
+    features = ["-conversion_warnings"],
     visibility = ["//targets:__pkg__"],
     deps = select({
         "@platforms//os:linux": ["//pw_async2_epoll:dispatcher"],
@@ -107,6 +96,7 @@ cc_library(
 pw_cc_test(
     name = "dispatcher_test",
     srcs = ["dispatcher_test.cc"],
+    features = ["-conversion_warnings"],
     deps = [
         ":dispatcher",
         "//pw_containers:vector",
@@ -116,6 +106,7 @@ pw_cc_test(
 pw_cc_test(
     name = "dispatcher_thread_test",
     srcs = ["dispatcher_thread_test.cc"],
+    features = ["-conversion_warnings"],
     # TODO: b/343776738 - update to run on all compatible devices
     target_compatible_with = incompatible_with_mcu(),
     deps = [
@@ -123,6 +114,7 @@ pw_cc_test(
         "//pw_function",
         "//pw_thread:sleep",
         "//pw_thread:thread",
+        "//pw_thread_stl:options",
     ],
 )
 
@@ -131,6 +123,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/pend_func_awaitable.h",
     ],
+    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":dispatcher",
@@ -142,6 +135,7 @@ cc_library(
 pw_cc_test(
     name = "pend_func_awaitable_test",
     srcs = ["pend_func_awaitable_test.cc"],
+    features = ["-conversion_warnings"],
     deps = [
         ":coro",
         ":coro_or_else_task",
@@ -150,6 +144,7 @@ pw_cc_test(
         ":poll",
         "//pw_allocator:testing",
         "//pw_function",
+        "//pw_status",
     ],
 )
 
@@ -158,6 +153,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/pend_func_task.h",
     ],
+    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":dispatcher",
@@ -168,7 +164,12 @@ cc_library(
 pw_cc_test(
     name = "pend_func_task_test",
     srcs = ["pend_func_task_test.cc"],
-    deps = [":pend_func_task"],
+    features = ["-conversion_warnings"],
+    deps = [
+        ":dispatcher",
+        ":pend_func_task",
+        "//pw_function",
+    ],
 )
 
 cc_library(
@@ -176,6 +177,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/pendable_as_task.h",
     ],
+    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":dispatcher",
@@ -185,7 +187,11 @@ cc_library(
 pw_cc_test(
     name = "pendable_as_task_test",
     srcs = ["pendable_as_task_test.cc"],
-    deps = [":pendable_as_task"],
+    features = ["-conversion_warnings"],
+    deps = [
+        ":dispatcher",
+        ":pendable_as_task",
+    ],
 )
 
 cc_library(
@@ -193,6 +199,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/allocate_task.h",
     ],
+    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":dispatcher",
@@ -203,6 +210,7 @@ cc_library(
 pw_cc_test(
     name = "allocate_task_test",
     srcs = ["allocate_task_test.cc"],
+    features = ["-conversion_warnings"],
     deps = [
         ":allocate_task",
         "//pw_allocator:testing",
@@ -214,6 +222,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/once_sender.h",
     ],
+    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":dispatcher",
@@ -226,7 +235,9 @@ pw_cc_test(
     srcs = [
         "once_sender_test.cc",
     ],
+    features = ["-conversion_warnings"],
     deps = [
+        ":dispatcher",
         ":once_sender",
         "//pw_containers:vector",
     ],
@@ -249,17 +260,20 @@ cc_library(
         ":dispatcher",
         "//pw_allocator:allocator",
         "//pw_function",
+        "//pw_status",
     ],
 )
 
 pw_cc_test(
     name = "coro_test",
     srcs = ["coro_test.cc"],
+    features = ["-conversion_warnings"],
     deps = [
         ":coro",
         ":dispatcher",
         "//pw_allocator:null_allocator",
         "//pw_allocator:testing",
+        "//pw_status",
     ],
 )
 
@@ -273,18 +287,21 @@ cc_library(
         ":coro",
         ":dispatcher",
         "//pw_function",
+        "//pw_status",
     ],
 )
 
 pw_cc_test(
     name = "coro_or_else_task_test",
     srcs = ["coro_or_else_task_test.cc"],
+    features = ["-conversion_warnings"],
     deps = [
         ":coro",
         ":coro_or_else_task",
         ":dispatcher",
         "//pw_allocator:null_allocator",
         "//pw_allocator:testing",
+        "//pw_status",
     ],
 )
 
@@ -296,6 +313,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/time_provider.h",
     ],
+    features = ["-conversion_warnings"],
     implementation_deps = ["//pw_assert:check"],
     strip_include_prefix = "public",
     deps = [
@@ -303,6 +321,7 @@ cc_library(
         "//pw_chrono:virtual_clock",
         "//pw_containers:intrusive_list",
         "//pw_sync:interrupt_spin_lock",
+        "//pw_sync:lock_annotations",
         "//pw_toolchain:no_destructor",
     ],
 )
@@ -315,6 +334,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/system_time_provider.h",
     ],
+    features = ["-conversion_warnings"],
     implementation_deps = [
         "//pw_chrono:system_timer",
         "//pw_toolchain:no_destructor",
@@ -331,6 +351,7 @@ pw_cc_test(
     srcs = [
         "system_time_provider_test.cc",
     ],
+    features = ["-conversion_warnings"],
     deps = [":system_time_provider"],
 )
 
@@ -339,6 +360,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/simulated_time_provider.h",
     ],
+    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":time_provider",
@@ -351,6 +373,7 @@ pw_cc_test(
     srcs = [
         "simulated_time_provider_test.cc",
     ],
+    features = ["-conversion_warnings"],
     deps = [
         ":simulated_time_provider",
         "//pw_chrono:system_clock",
@@ -362,6 +385,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/enqueue_heap_func.h",
     ],
+    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":dispatcher",
@@ -373,6 +397,7 @@ pw_cc_test(
     srcs = [
         "enqueue_heap_func_test.cc",
     ],
+    features = ["-conversion_warnings"],
     deps = [
         ":dispatcher",
         ":enqueue_heap_func",
@@ -384,6 +409,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/join.h",
     ],
+    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":dispatcher",
@@ -395,6 +421,7 @@ pw_cc_test(
     srcs = [
         "join_test.cc",
     ],
+    features = ["-conversion_warnings"],
     deps = [
         ":dispatcher",
         ":join",
