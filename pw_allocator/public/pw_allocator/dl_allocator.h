@@ -282,8 +282,7 @@ bool DlAllocator<BlockType>::FindNextAvailable(size_t& index) {
     }
     bitmap = bitmaps_[bitmap_index];
   }
-  auto bitmap_log2 = internal::CountRZero(bitmap);
-  index = (bitmap_index * kBitmapBits) + bitmap_log2;
+  index = (bitmap_index * kBitmapBits) + cpp20::countr_zero(bitmap);
   return true;
 }
 

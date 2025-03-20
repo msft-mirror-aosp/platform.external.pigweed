@@ -52,7 +52,6 @@ cc_library(
         "public/pw_kvs/io.h",
         "public/pw_kvs/key_value_store.h",
     ],
-    features = ["-conversion_warnings"],
     implementation_deps = ["//pw_assert:check"],
     strip_include_prefix = "public",
     deps = [
@@ -81,7 +80,6 @@ cc_library(
     hdrs = [
         "public/pw_kvs/crc16_checksum.h",
     ],
-    features = ["-conversion_warnings"],
     deps = [
         ":pw_kvs",
         "//pw_checksum",
@@ -92,7 +90,6 @@ cc_library(
 cc_library(
     name = "flash_test_partition",
     hdrs = ["public/pw_kvs/flash_test_partition.h"],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [":pw_kvs"],
 )
@@ -100,7 +97,6 @@ cc_library(
 cc_library(
     name = "test_key_value_store",
     hdrs = ["public/pw_kvs/test_key_value_store.h"],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":pw_kvs",
@@ -116,7 +112,6 @@ cc_library(
     hdrs = [
         "public/pw_kvs/fake_flash_memory.h",
     ],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":pw_kvs",
@@ -133,7 +128,6 @@ cc_library(
     hdrs = [
         "public/pw_kvs/flash_partition_with_logical_sectors.h",
     ],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":pw_kvs",
@@ -153,7 +147,6 @@ cc_library(
         "PW_FLASH_TEST_SECTOR_SIZE=4096U",
         "PW_FLASH_TEST_ALIGNMENT=1U",
     ],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":fake_flash",
@@ -175,7 +168,6 @@ cc_library(
         "PW_FLASH_TEST_ALIGNMENT=1U",
         "PW_FLASH_TEST_SECTORS_PER_LOGICAL_SECTOR=4U",
     ],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":fake_flash",
@@ -193,7 +185,6 @@ cc_library(
         "PW_FLASH_TEST_SECTOR_SIZE=4",
         "PW_FLASH_TEST_ALIGNMENT=4",
     ],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":fake_flash",
@@ -215,7 +206,6 @@ cc_library(
         "PW_FLASH_TEST_SECTOR_SIZE=4096U",
         "PW_FLASH_TEST_ALIGNMENT=16",
     ],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":fake_flash",
@@ -236,7 +226,6 @@ cc_library(
         "PW_FLASH_TEST_SECTOR_SIZE=4096U",
         "PW_FLASH_TEST_ALIGNMENT=64U",
     ],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":fake_flash",
@@ -257,7 +246,6 @@ cc_library(
         "PW_FLASH_TEST_SECTOR_SIZE=4096U",
         "PW_FLASH_TEST_ALIGNMENT=256U",
     ],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":fake_flash",
@@ -273,7 +261,6 @@ cc_library(
     hdrs = [
         "public/pw_kvs/test_key_value_store.h",
     ],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":crc16",
@@ -291,7 +278,6 @@ cc_library(
     hdrs = [
         "public/pw_kvs/flash_partition_with_stats.h",
     ],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     target_compatible_with = incompatible_with_mcu(),
     visibility = ["//visibility:private"],
@@ -309,7 +295,6 @@ pw_cc_test(
     srcs = [
         "alignment_test.cc",
     ],
-    features = ["-conversion_warnings"],
     deps = [
         ":pw_kvs",
         "//pw_status",
@@ -319,7 +304,6 @@ pw_cc_test(
 pw_cc_test(
     name = "checksum_test",
     srcs = ["checksum_test.cc"],
-    features = ["-conversion_warnings"],
     deps = [
         ":crc16",
         ":pw_kvs",
@@ -331,7 +315,6 @@ pw_cc_test(
 pw_cc_test(
     name = "converts_to_span_test",
     srcs = ["converts_to_span_test.cc"],
-    features = ["-conversion_warnings"],
     deps = [":pw_kvs"],
 )
 
@@ -340,7 +323,6 @@ pw_cc_test(
     srcs = [
         "entry_test.cc",
     ],
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -358,7 +340,6 @@ pw_cc_test(
 pw_cc_test(
     name = "entry_cache_test",
     srcs = ["entry_cache_test.cc"],
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -375,7 +356,6 @@ pw_cc_test(
 pw_cc_test(
     name = "flash_partition_stream_test",
     srcs = ["flash_partition_stream_test.cc"],
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -398,7 +378,6 @@ cc_library(
         "PW_FLASH_TEST_ITERATIONS=100",
         "PW_FLASH_TEST_WRITE_SIZE=1",
     ],
-    features = ["-conversion_warnings"],
     deps = [
         ":flash_test_partition",
         ":pw_kvs",
@@ -415,7 +394,6 @@ cc_library(
         "PW_FLASH_TEST_ITERATIONS=2",
         "PW_FLASH_TEST_WRITE_SIZE=1",
     ],
-    features = ["-conversion_warnings"],
     deps = [
         ":flash_test_partition",
         ":pw_kvs",
@@ -432,7 +410,6 @@ cc_library(
         "PW_FLASH_TEST_ITERATIONS=100",
         "PW_FLASH_TEST_WRITE_SIZE=256",
     ],
-    features = ["-conversion_warnings"],
     deps = [
         ":flash_test_partition",
         ":pw_kvs",
@@ -449,7 +426,6 @@ cc_library(
         "PW_FLASH_TEST_ITERATIONS=2",
         "PW_FLASH_TEST_WRITE_SIZE=256",
     ],
-    features = ["-conversion_warnings"],
     deps = [
         ":flash_test_partition",
         ":pw_kvs",
@@ -462,7 +438,6 @@ cc_library(
     name = "key_value_store_initialized_test",
     testonly = True,
     srcs = ["key_value_store_initialized_test.cc"],
-    features = ["-conversion_warnings"],
     implementation_deps = ["//pw_assert:check"],
     deps = [
         ":crc16",
@@ -478,7 +453,6 @@ cc_library(
 
 pw_cc_test(
     name = "flash_partition_1_alignment_test",
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -495,7 +469,6 @@ pw_cc_test(
 
 pw_cc_test(
     name = "flash_partition_1_alignment_4_logical_test",
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -512,7 +485,6 @@ pw_cc_test(
 
 pw_cc_test(
     name = "flash_partition_16_alignment_test",
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -529,7 +501,6 @@ pw_cc_test(
 
 pw_cc_test(
     name = "flash_partition_64_alignment_test",
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -546,7 +517,6 @@ pw_cc_test(
 
 pw_cc_test(
     name = "flash_partition_256_alignment_test",
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -563,7 +533,6 @@ pw_cc_test(
 
 pw_cc_test(
     name = "flash_partition_256_write_size_test",
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -580,7 +549,6 @@ pw_cc_test(
 
 pw_cc_test(
     name = "flash_partition_4_logical_256_write_size_test",
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -598,7 +566,6 @@ pw_cc_test(
 pw_cc_test(
     name = "key_value_store_test",
     srcs = ["key_value_store_test.cc"],
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -621,7 +588,6 @@ pw_cc_test(
 
 pw_cc_test(
     name = "key_value_store_1_alignment_flash_test",
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -644,7 +610,6 @@ pw_cc_test(
 
 pw_cc_test(
     name = "key_value_store_1_alignment_4_logical_flash_test",
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -667,7 +632,6 @@ pw_cc_test(
 
 pw_cc_test(
     name = "key_value_store_16_alignment_flash_test",
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -690,7 +654,6 @@ pw_cc_test(
 
 pw_cc_test(
     name = "key_value_store_64_alignment_flash_test",
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -713,7 +676,6 @@ pw_cc_test(
 
 pw_cc_test(
     name = "key_value_store_256_alignment_flash_test",
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -737,7 +699,6 @@ pw_cc_test(
 pw_cc_test(
     name = "fake_flash_test_key_value_store_test",
     srcs = ["test_key_value_store_test.cc"],
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -759,7 +720,6 @@ pw_cc_test(
     srcs = [
         "key_value_store_binary_format_test.cc",
     ],
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -777,7 +737,6 @@ pw_cc_test(
 pw_cc_test(
     name = "key_value_store_put_test",
     srcs = ["key_value_store_put_test.cc"],
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -798,7 +757,6 @@ pw_cc_test(
 pw_cc_test(
     name = "key_value_store_map_test",
     srcs = ["key_value_store_map_test.cc"],
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -820,7 +778,6 @@ pw_cc_test(
 pw_cc_test(
     name = "sectors_test",
     srcs = ["sectors_test.cc"],
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration
@@ -839,7 +796,6 @@ pw_cc_test(
     srcs = [
         "key_value_store_wear_test.cc",
     ],
-    features = ["-conversion_warnings"],
     # TODO: b/234883746 - KVS tests are not compatible with device builds as they
     # use features such as std::map and are computationally expensive. Solving
     # this requires a more complex capabilities-based build and configuration

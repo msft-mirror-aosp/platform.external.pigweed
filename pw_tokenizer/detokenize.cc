@@ -320,14 +320,12 @@ Result<Detokenizer> Detokenizer::FromCsv(std::string_view csv) {
         return Status::DataLoss();
       }
 
-      date = static_cast<uint32_t>(year << 16) |
-             static_cast<uint32_t>(month << 8) | static_cast<uint32_t>(day);
+      date = (year << 16) | (month << 8) | day;
     }
 
     // Add to database.
-    database[std::move(domain)]
-            [static_cast<uint32_t>(std::stoul(token, nullptr, 16))]
-                .emplace_back(row[3].c_str(), date);
+    database[std::move(domain)][std::stoul(token, nullptr, 16)].emplace_back(
+        row[3].c_str(), date);
   }
 
   // Log warning if any data lines were skipped.

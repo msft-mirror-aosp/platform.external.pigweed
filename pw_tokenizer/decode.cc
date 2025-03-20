@@ -298,17 +298,15 @@ std::string DecodedFormatString::value_with_errors() const {
 }
 
 size_t DecodedFormatString::argument_count() const {
-  return static_cast<size_t>(
-      std::count_if(segments_.begin(), segments_.end(), [](const auto& arg) {
-        return !arg.spec().empty();
-      }));
+  return std::count_if(segments_.begin(), segments_.end(), [](const auto& arg) {
+    return !arg.spec().empty();
+  });
 }
 
 size_t DecodedFormatString::decoding_errors() const {
-  return static_cast<size_t>(
-      std::count_if(segments_.begin(), segments_.end(), [](const auto& arg) {
-        return !arg.ok();
-      }));
+  return std::count_if(segments_.begin(), segments_.end(), [](const auto& arg) {
+    return !arg.ok();
+  });
 }
 
 FormatString::FormatString(const char* format) {
@@ -319,8 +317,8 @@ FormatString::FormatString(const char* format) {
         !spec.empty()) {
       // Add the text segment seen so far (if any).
       if (text_start < format) {
-        segments_.emplace_back(std::string_view(
-            text_start, static_cast<size_t>(format - text_start)));
+        segments_.emplace_back(
+            std::string_view(text_start, format - text_start));
       }
 
       // Move along the index and text segment start.
@@ -335,8 +333,7 @@ FormatString::FormatString(const char* format) {
   }
 
   if (text_start < format) {
-    segments_.emplace_back(
-        std::string_view(text_start, static_cast<size_t>(format - text_start)));
+    segments_.emplace_back(std::string_view(text_start, format - text_start));
   }
 }
 

@@ -13,12 +13,7 @@
 // the License.
 #![no_std]
 
-#[cfg(feature = "arch_arm_cortex_m")]
 use cortex_m_semihosting::hio::hstdout;
-
-#[cfg(feature = "arch_riscv")]
-use riscv_semihosting::hio::hstdout;
-
 use pw_status::{Error, Result};
 
 #[no_mangle]

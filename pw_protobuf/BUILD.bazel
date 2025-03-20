@@ -66,7 +66,6 @@ cc_library(
         "public/pw_protobuf/stream_decoder.h",
         "public/pw_protobuf/wire_format.h",
     ],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":config",
@@ -92,7 +91,6 @@ cc_library(
 cc_library(
     name = "bytes_utils",
     hdrs = ["public/pw_protobuf/bytes_utils.h"],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":pw_protobuf",
@@ -105,7 +103,6 @@ cc_library(
 pw_cc_test(
     name = "decoder_test",
     srcs = ["decoder_test.cc"],
-    features = ["-conversion_warnings"],
     deps = [
         ":pw_protobuf",
         "//pw_fuzzer:fuzztest",
@@ -117,7 +114,6 @@ pw_cc_test(
 pw_cc_test(
     name = "encoder_test",
     srcs = ["encoder_test.cc"],
-    features = ["-conversion_warnings"],
     deps = [":pw_protobuf"],
 )
 
@@ -127,7 +123,6 @@ pw_cc_fuzz_test(
         "encoder_fuzzer.cc",
         "fuzz.h",
     ],
-    features = ["-conversion_warnings"],
     deps = [
         "//pw_protobuf",
         "//pw_span",
@@ -140,7 +135,6 @@ pw_cc_fuzz_test(
         "decoder_fuzzer.cc",
         "fuzz.h",
     ],
-    features = ["-conversion_warnings"],
     deps = [
         "//pw_protobuf",
         "//pw_span",
@@ -150,7 +144,6 @@ pw_cc_fuzz_test(
 pw_cc_test(
     name = "find_test",
     srcs = ["find_test.cc"],
-    features = ["-conversion_warnings"],
     deps = [
         ":pw_protobuf",
         "//pw_string",
@@ -160,35 +153,30 @@ pw_cc_test(
 pw_cc_test(
     name = "serialized_size_test",
     srcs = ["serialized_size_test.cc"],
-    features = ["-conversion_warnings"],
     deps = [":pw_protobuf"],
 )
 
 pw_cc_test(
     name = "stream_decoder_test",
     srcs = ["stream_decoder_test.cc"],
-    features = ["-conversion_warnings"],
     deps = [":pw_protobuf"],
 )
 
 pw_cc_test(
     name = "map_utils_test",
     srcs = ["map_utils_test.cc"],
-    features = ["-conversion_warnings"],
     deps = [":pw_protobuf"],
 )
 
 pw_cc_test(
     name = "message_test",
     srcs = ["message_test.cc"],
-    features = ["-conversion_warnings"],
     deps = [":pw_protobuf"],
 )
 
 pw_cc_perf_test(
     name = "encoder_perf_test",
     srcs = ["encoder_perf_test.cc"],
-    features = ["-conversion_warnings"],
     deps = [
         ":pw_protobuf",
         "//pw_unit_test",
@@ -338,7 +326,6 @@ pw_cc_test(
     srcs = [
         "codegen_decoder_test.cc",
     ],
-    features = ["-conversion_warnings"],
     deps = [
         ":codegen_test_proto_pwpb",
         ":pw_protobuf",
@@ -352,7 +339,6 @@ pw_cc_test(
     srcs = [
         "codegen_encoder_test.cc",
     ],
-    features = ["-conversion_warnings"],
     deps = [
         ":codegen_test_proto_pwpb",
         ":pw_protobuf",
@@ -366,7 +352,6 @@ pw_cc_test(
     srcs = [
         "codegen_message_test.cc",
     ],
-    features = ["-conversion_warnings"],
     deps = [
         ":codegen_test_proto_pwpb",
         ":pw_protobuf",
@@ -379,7 +364,6 @@ pw_cc_test(
     srcs = [
         "codegen_editions_test.cc",
     ],
-    features = ["-conversion_warnings"],
     deps = [
         ":codegen_test_proto_pwpb",
         ":pw_protobuf",

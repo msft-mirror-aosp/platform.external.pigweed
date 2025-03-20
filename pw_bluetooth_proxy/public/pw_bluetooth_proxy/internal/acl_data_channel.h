@@ -18,14 +18,16 @@
 
 #include "pw_bluetooth/hci_data.emb.h"
 #include "pw_bluetooth/hci_events.emb.h"
-#include "pw_bluetooth_proxy/direction.h"
 #include "pw_bluetooth_proxy/internal/hci_transport.h"
 #include "pw_bluetooth_proxy/internal/l2cap_aclu_signaling_channel.h"
 #include "pw_bluetooth_proxy/internal/l2cap_leu_signaling_channel.h"
 #include "pw_bluetooth_proxy/internal/l2cap_signaling_channel.h"
 #include "pw_bluetooth_proxy/internal/logical_transport.h"
-#include "pw_bluetooth_proxy/internal/recombiner.h"
+#include "pw_bluetooth_proxy/internal/multibuf_writer.h"
 #include "pw_containers/vector.h"
+#include "pw_multibuf/allocator.h"
+#include "pw_multibuf/multibuf.h"
+#include "pw_result/result.h"
 #include "pw_sync/lock_annotations.h"
 #include "pw_sync/mutex.h"
 
@@ -39,6 +41,16 @@ namespace pw::bluetooth::proxy {
 // buffers.
 class AclDataChannel {
  public:
+  // Direction a packet is traveling on ACL transport.
+  enum class Direction : bool {
+    kFromController,
+    kFromHost,
+  };
+  // Must match the number of Direction enumerators.
+  static constexpr size_t kNumDirections = 2;
+
+  static const char* ToString(Direction direction);
+
   // Used to `SendAcl` packets.
   class SendCredit {
    public:
@@ -169,7 +181,8 @@ class AclDataChannel {
   // Handles an ACL Data frame.
   // Returns true if the frame was handled and is consumed by the proxy.
   // Returns false if the frame should be passed on to the other side.
-  bool HandleAclData(Direction direction, emboss::AclDataFrameWriter& acl);
+  bool HandleAclData(AclDataChannel::Direction direction,
+                     emboss::AclDataFrameWriter& acl);
 
  private:
   // An active logical link on ACL logical transport.
@@ -205,9 +218,43 @@ class AclDataChannel {
       }
     }
 
-    Recombiner& GetRecombiner(Direction direction) {
-      return get_recombination_buffer(direction);
+    // Returns true if recombination is active
+    // (currently receiving and recombining fragments).
+    bool RecombinationActive(Direction direction) {
+      return bool(get_recombination_buffer(direction));
     }
+
+    // Starts a new recombination session.
+    //
+    // Precondition: Recombination must not already be active
+    // (RecombinationActive must be false).
+    //
+    // Returns:
+    // * FAILED_PRECONDITION if recombination is already active.
+    // * Any error from MultiBufWriter::Create(), namely RESOURCE_EXHAUSTED.
+    // * OK if recombination is started.
+    pw::Status StartRecombination(
+        Direction direction,
+        multibuf::MultiBufAllocator& multibuf_allocator,
+        size_t size);
+
+    // Adds a fragment of data to the recombination buffer.
+    //
+    // Precondition: Recombination must be active
+    // (RecombinationActive must be true).
+    //
+    // Returns:
+    // * FAILED_PRECONDITION if recombination is not active.
+    // * Any error from MultiBufWriter::Write(), namely RESOURCE_EXHAUSTED.
+    // * OK if the data was written, with value:
+    //   * If recombination is incomplete, returns an empty MultiBuf.
+    //   * If recombination is complete, returns a nonempty MultiBuf with the
+    //     recombined data and ends recombination.
+    pw::Result<multibuf::MultiBuf> RecombineFragment(
+        Direction direction, pw::span<const uint8_t> data);
+
+    // Ends recombination.
+    void EndRecombination(Direction direction);
 
    private:
     AclTransportType transport_;
@@ -218,10 +265,12 @@ class AclDataChannel {
     // type based on link type.
     L2capAclUSignalingChannel aclu_signaling_channel_;
 
-    std::array<Recombiner, kNumDirections> recombination_buffers_{};
+    std::array<std::optional<MultiBufWriter>, kNumDirections>
+        recombination_buffers_;
 
-    Recombiner& get_recombination_buffer(Direction direction) {
-      return recombination_buffers_[cpp23::to_underlying(direction)];
+    MultiBufWriter* get_recombination_buffer(Direction direction) {
+      auto& recomb = recombination_buffers_[cpp23::to_underlying(direction)];
+      return recomb ? recomb.operator->() : nullptr;
     }
   };
 

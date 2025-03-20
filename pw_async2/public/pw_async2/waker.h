@@ -13,7 +13,7 @@
 // the License.
 #pragma once
 
-#include "pw_async2/lock.h"
+#include "pw_async2/internal/lock.h"
 #include "pw_sync/lock_annotations.h"
 
 namespace pw::async2 {
@@ -65,13 +65,12 @@ class Waker {
 
  public:
   constexpr Waker() = default;
-  Waker(Waker&& other) noexcept PW_LOCKS_EXCLUDED(impl::dispatcher_lock());
+  Waker(Waker&& other) noexcept PW_LOCKS_EXCLUDED(dispatcher_lock());
 
   /// Replace this ``Waker`` with another.
   ///
   /// This operation is guaranteed to be thread-safe.
-  Waker& operator=(Waker&& other) noexcept
-      PW_LOCKS_EXCLUDED(impl::dispatcher_lock());
+  Waker& operator=(Waker&& other) noexcept PW_LOCKS_EXCLUDED(dispatcher_lock());
 
   ~Waker() noexcept { RemoveFromTaskWakerList(); }
 
@@ -84,7 +83,7 @@ class Waker {
   /// wake up and make progress.
   ///
   /// This operation is guaranteed to be thread-safe.
-  void Wake() && PW_LOCKS_EXCLUDED(impl::dispatcher_lock());
+  void Wake() && PW_LOCKS_EXCLUDED(dispatcher_lock());
 
   /// INTERNAL-ONLY: users should use the `PW_ASYNC_CLONE_WAKER` macro.
   ///
@@ -95,7 +94,7 @@ class Waker {
   ///
   /// This operation is guaranteed to be thread-safe.
   void InternalCloneInto(Waker& waker_out) &
-      PW_LOCKS_EXCLUDED(impl::dispatcher_lock());
+      PW_LOCKS_EXCLUDED(dispatcher_lock());
 
   /// Returns whether this ``Waker`` is empty.
   ///
@@ -105,7 +104,7 @@ class Waker {
   /// moved-from ``Waker`` will be empty.
   ///
   /// This operation is guaranteed to be thread-safe.
-  [[nodiscard]] bool IsEmpty() const PW_LOCKS_EXCLUDED(impl::dispatcher_lock());
+  [[nodiscard]] bool IsEmpty() const PW_LOCKS_EXCLUDED(dispatcher_lock());
 
   /// Clears this ``Waker``.
   ///
@@ -113,28 +112,28 @@ class Waker {
   /// ``IsEmpty`` will return ``true``.
   ///
   /// This operation is guaranteed to be thread-safe.
-  void Clear() PW_LOCKS_EXCLUDED(impl::dispatcher_lock()) {
+  void Clear() PW_LOCKS_EXCLUDED(dispatcher_lock()) {
     RemoveFromTaskWakerList();
   }
 
  private:
-  Waker(Task& task) PW_LOCKS_EXCLUDED(impl::dispatcher_lock()) : task_(&task) {
+  Waker(Task& task) PW_LOCKS_EXCLUDED(dispatcher_lock()) : task_(&task) {
     InsertIntoTaskWakerList();
   }
 
   void InsertIntoTaskWakerList();
   void InsertIntoTaskWakerListLocked()
-      PW_EXCLUSIVE_LOCKS_REQUIRED(impl::dispatcher_lock());
+      PW_EXCLUSIVE_LOCKS_REQUIRED(dispatcher_lock());
   void RemoveFromTaskWakerList();
   void RemoveFromTaskWakerListLocked()
-      PW_EXCLUSIVE_LOCKS_REQUIRED(impl::dispatcher_lock());
+      PW_EXCLUSIVE_LOCKS_REQUIRED(dispatcher_lock());
 
   // The ``Task`` to poll when awoken.
-  Task* task_ PW_GUARDED_BY(impl::dispatcher_lock()) = nullptr;
+  Task* task_ PW_GUARDED_BY(dispatcher_lock()) = nullptr;
 
   // The next ``Waker`` that may awaken this ``Task``.
   // This list is controlled by the corresponding ``Task``.
-  Waker* next_ PW_GUARDED_BY(impl::dispatcher_lock()) = nullptr;
+  Waker* next_ PW_GUARDED_BY(dispatcher_lock()) = nullptr;
 };
 
 }  // namespace pw::async2

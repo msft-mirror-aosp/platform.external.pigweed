@@ -42,7 +42,6 @@ pw_cc_test(
 pw_cc_test(
     name = "pwpb_test",
     srcs = ["pwpb_test.cc"],
-    features = ["-conversion_warnings"],
     deps = [
         "//pw_protobuf_compiler/pwpb_test_protos:pwpb_test_pw_proto",
         "//pw_string",
@@ -68,7 +67,6 @@ pwpb_proto_library(
 pw_cc_test(
     name = "pwpb_test_no_prefix",
     srcs = ["pwpb_test_no_prefix.cc"],
-    features = ["-conversion_warnings"],
     deps = [
         ":pwpb_test_pw_proto_no_prefix",
         "//pw_string",
@@ -92,7 +90,7 @@ proto_library(
 proto_library(
     name = "pw_protobuf_compiler_nanopb_protos",
     srcs = ["nanopb_test_protos/nanopb_test.proto"],
-    deps = ["@nanopb//:nanopb_proto"],
+    deps = ["@com_github_nanopb_nanopb//:nanopb_proto"],
 )
 
 nanopb_proto_library(
@@ -108,7 +106,6 @@ py_proto_library(
 pw_cc_test(
     name = "nested_packages_test",
     srcs = ["nested_packages_test.cc"],
-    features = ["-conversion_warnings"],
     deps = [
         "//pw_protobuf_compiler/pw_nested_packages:aggregate_pwpb",
         "//pw_protobuf_compiler/pw_nested_packages:aggregate_wrapper_pwpb",

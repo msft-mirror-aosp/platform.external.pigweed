@@ -21,13 +21,8 @@
 use console_backend as _;
 use target as _;
 
-// Cortex-M runtime entry macro.
-#[cfg(feature = "arch_arm_cortex_m")]
+// Cortex M runtime entry macro.
 use cortex_m_rt::entry;
-
-// RISCV runtime entry maco.
-#[cfg(feature = "arch_riscv")]
-use riscv_rt::entry;
 
 use kernel::Kernel;
 

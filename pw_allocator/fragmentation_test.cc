@@ -51,8 +51,7 @@ TEST(FragmentationTest, CalculateFragmentation) {
     for (size_t i = 0; i < n * n; ++i) {
       fragmentation.AddFragment(n);
     }
-    auto expected = 1.f - (1.f / static_cast<float>(n));
-    EXPECT_FLOAT_EQ(CalculateFragmentation(fragmentation), expected);
+    EXPECT_FLOAT_EQ(CalculateFragmentation(fragmentation), 1.f - (1.f / n));
   }
 }
 

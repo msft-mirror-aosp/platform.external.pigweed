@@ -31,5 +31,4 @@ pw_cc_binary(
 pw_cc_binary(
     name = "simple_function",
     srcs = ["simple_function.cc"],
-    features = ["-conversion_warnings"],
 )

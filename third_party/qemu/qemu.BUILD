@@ -26,8 +26,3 @@ native_binary(
     name = "qemu-system-arm",
     src = "bin/qemu-system-arm",
 )
-
-native_binary(
-    name = "qemu-system-riscv32",
-    src = "bin/qemu-system-riscv32",
-)

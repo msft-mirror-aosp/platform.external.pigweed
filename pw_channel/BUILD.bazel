@@ -30,7 +30,6 @@ cc_library(
         "public/pw_channel/internal/channel_specializations.h",
         "public/pw_channel/properties.h",
     ],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     tags = ["noclangtidy"],
     deps = [
@@ -49,7 +48,6 @@ cc_library(
 pw_cc_test(
     name = "channel_test",
     srcs = ["channel_test.cc"],
-    features = ["-conversion_warnings"],
     deps = [
         ":pw_channel",
         "//pw_allocator:testing",
@@ -66,7 +64,6 @@ cc_library(
     name = "forwarding_channel",
     srcs = ["forwarding_channel.cc"],
     hdrs = ["public/pw_channel/forwarding_channel.h"],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":pw_channel",
@@ -82,7 +79,6 @@ cc_library(
 pw_cc_test(
     name = "forwarding_channel_test",
     srcs = ["forwarding_channel_test.cc"],
-    features = ["-conversion_warnings"],
     deps = [
         ":forwarding_channel",
         "//pw_allocator:testing",
@@ -96,7 +92,6 @@ cc_library(
     name = "loopback_channel",
     srcs = ["loopback_channel.cc"],
     hdrs = ["public/pw_channel/loopback_channel.h"],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":pw_channel",
@@ -111,7 +106,6 @@ cc_library(
 pw_cc_test(
     name = "loopback_channel_test",
     srcs = ["loopback_channel_test.cc"],
-    features = ["-conversion_warnings"],
     deps = [
         ":loopback_channel",
         ":pw_channel",
@@ -129,7 +123,6 @@ cc_library(
     name = "epoll_channel",
     srcs = ["epoll_channel.cc"],
     hdrs = ["public/pw_channel/epoll_channel.h"],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
@@ -147,7 +140,6 @@ cc_library(
 pw_cc_test(
     name = "epoll_channel_test",
     srcs = ["epoll_channel_test.cc"],
-    features = ["-conversion_warnings"],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":epoll_channel",
@@ -186,11 +178,10 @@ cc_library(
     name = "stream_channel",
     srcs = ["stream_channel.cc"],
     hdrs = ["public/pw_channel/stream_channel.h"],
-    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     deps = [
         ":pw_channel",
-        "//pw_async2:dispatcher",
+        "//pw_async2:dispatcher_base",
         "//pw_log",
         "//pw_multibuf",
         "//pw_multibuf:allocator",
@@ -206,7 +197,6 @@ cc_library(
 pw_cc_test(
     name = "stream_channel_test",
     srcs = ["stream_channel_test.cc"],
-    features = ["-conversion_warnings"],
     deps = [
         ":stream_channel",
         "//pw_async2:pend_func_task",

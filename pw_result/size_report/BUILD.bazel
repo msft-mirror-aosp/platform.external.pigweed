@@ -25,7 +25,6 @@ licenses(["notice"])
 pw_cc_binary(
     name = "pointer_simple",
     srcs = ["pointer_simple.cc"],
-    features = ["-conversion_warnings"],
     target_compatible_with = incompatible_with_mcu(),
     deps = [
         "//pw_log",
@@ -46,7 +45,6 @@ pw_cc_binary(
 pw_cc_binary(
     name = "pointer_noinline",
     srcs = ["pointer_noinline.cc"],
-    features = ["-conversion_warnings"],
     target_compatible_with = incompatible_with_mcu(),
     deps = [
         "//pw_log",

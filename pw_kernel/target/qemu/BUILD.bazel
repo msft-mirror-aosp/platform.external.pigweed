@@ -12,28 +12,22 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("//pw_build:merge_flags.bzl", "flags_from_dict")
-load("//pw_build:pw_linker_script.bzl", "pw_linker_script")
+load("@pigweed//pw_build:merge_flags.bzl", "flags_from_dict")
+
+package(default_visibility = ["//visibility:public"])
 
 platform(
     name = "mps2-an505",
     constraint_values = [
+        "//pw_build/constraints/chipset:mps2-an505",
         "//pw_build/constraints/arm:cortex-m33",
         "@platforms//cpu:armv8-m",
         "@platforms//os:none",
         "@rust_crates//:no_std",
     ],
     flags = flags_from_dict({
-        "//pw_kernel/lib/unittest:unittest_runner": "//pw_kernel/lib/unittest:unittest_runner_semihosting",
+        "//pw_kernel/lib/unittest:unittest_runner": "//pw_kernel/lib/unittest:unittest_runner_cortex_m",
         "//pw_kernel/subsys/console:console_backend": "//pw_kernel/subsys/console:console_backend_semihosting",
-        "//pw_kernel/target:linker_script": ":linker_script_mps2_an505",
+        "//pw_kernel/target:linker_script": "//pw_kernel/target/qemu/linker_scripts:qemu_mps2_an505_linker_script",
     }),
-)
-
-pw_linker_script(
-    name = "linker_script_mps2_an505",
-    linker_script = "mps2-an505.ld",
-    target_compatible_with = [
-        "//pw_build/constraints/arm:cortex-m33",
-    ],
 )
