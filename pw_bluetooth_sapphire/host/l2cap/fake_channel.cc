@@ -113,13 +113,8 @@ void FakeChannel::SignalLinkError() {
 bool FakeChannel::Send(ByteBufferPtr sdu) {
   PW_DCHECK(sdu);
 
-  if (!send_cb_) {
-    bt_log(
-        DEBUG,
-        "l2cap",
-        "Dropping SDU and returning error because no send callback configured");
+  if (!send_cb_)
     return false;
-  }
 
   if (sdu->size() > max_tx_sdu_size()) {
     bt_log(ERROR,

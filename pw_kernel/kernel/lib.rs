@@ -17,7 +17,6 @@
 
 use foreign_box::ForeignBox;
 use pw_log::info;
-use time::Clock as _;
 
 mod arch;
 #[cfg(not(feature = "std_panic_handler"))]
@@ -25,18 +24,14 @@ mod panic;
 mod scheduler;
 pub mod sync;
 mod target;
-mod timer;
+
+use scheduler::yield_timeslice;
+use scheduler::Stack;
+use scheduler::Thread;
+use scheduler::SCHEDULER_STATE;
 
 use arch::{Arch, ArchInterface};
-use scheduler::{yield_timeslice, Stack, Thread, SCHEDULER_STATE};
 use sync::mutex::Mutex;
-use timer::{Clock, Duration};
-
-#[no_mangle]
-#[allow(non_snake_case)]
-pub extern "C" fn pw_assert_HandleFailure() -> ! {
-    Arch::panic();
-}
 
 // A structure intended to be statically allocated to hold a Thread structure that will
 // be constructed at run time.
@@ -56,10 +51,10 @@ impl ThreadBuffer {
     // TODO: figure out how to properly statically construct a thread or
     // make sure this function can only be called once.
     #[inline(never)]
-    unsafe fn alloc_thread(&mut self, name: &'static str) -> ForeignBox<Thread> {
-        pw_assert::eq!(self.buffer.as_ptr().align_offset(align_of::<Thread>()), 0);
+    unsafe fn alloc_thread(&mut self) -> ForeignBox<Thread> {
+        assert!(self.buffer.as_ptr().align_offset(align_of::<Thread>()) == 0);
         let thread_ptr = self.buffer.as_mut_ptr() as *mut Thread;
-        thread_ptr.write(Thread::new(name));
+        thread_ptr.write(Thread::new());
         ForeignBox::new_from_ptr(&mut *thread_ptr)
     }
 }
@@ -69,7 +64,7 @@ pub struct Kernel {}
 impl Kernel {
     pub fn main() -> ! {
         target::console_init();
-        info!("Welcome to Maize on {}!", target::name() as &str);
+        info!("Welcome to Maize on {}!", target::name());
 
         Arch::early_init();
 
@@ -78,7 +73,7 @@ impl Kernel {
         unsafe {
             info!("allocating bootstrap thread");
             static mut THREAD_BUFFER_BOOTSTRAP: ThreadBuffer = ThreadBuffer::new();
-            bootstrap_thread = THREAD_BUFFER_BOOTSTRAP.alloc_thread("bootstrap");
+            bootstrap_thread = THREAD_BUFFER_BOOTSTRAP.alloc_thread();
 
             info!("initializing bootstrap thread");
             static mut STACK_BOOTSTRAP: [u8; 2048] = [0; 2048];
@@ -101,7 +96,7 @@ impl Kernel {
 // completion of main in thread context
 fn bootstrap_thread_entry(_arg: usize) {
     info!("Welcome to the first thread, continuing bootstrap");
-    pw_assert::assert!(Arch::interrupts_enabled());
+    assert!(Arch::interrupts_enabled());
 
     Arch::init();
 
@@ -112,7 +107,7 @@ fn bootstrap_thread_entry(_arg: usize) {
     unsafe {
         info!("allocating idle_thread");
         static mut IDLE_THREAD_BUFFER: ThreadBuffer = ThreadBuffer::new();
-        idle_thread = IDLE_THREAD_BUFFER.alloc_thread("idle");
+        idle_thread = IDLE_THREAD_BUFFER.alloc_thread();
 
         info!("initializing idle_thread");
         static mut IDLE_STACK: [u8; 2048] = [0; 2048];
@@ -126,7 +121,7 @@ fn bootstrap_thread_entry(_arg: usize) {
     unsafe {
         info!("allocating thread A");
         static mut THREAD_BUFFER_A: ThreadBuffer = ThreadBuffer::new();
-        thread_a = THREAD_BUFFER_A.alloc_thread("thread_a");
+        thread_a = THREAD_BUFFER_A.alloc_thread();
 
         info!("initializing thread A");
         static mut STACK_A: [u8; 2048] = [0; 2048];
@@ -143,7 +138,7 @@ fn bootstrap_thread_entry(_arg: usize) {
     unsafe {
         info!("allocating thread B");
         static mut THREAD_BUFFER_B: ThreadBuffer = ThreadBuffer::new();
-        thread_b = THREAD_BUFFER_B.alloc_thread("thread_b");
+        thread_b = THREAD_BUFFER_B.alloc_thread();
 
         info!("initializing thread B");
         static mut STACK_B: [u8; 2048] = [0; 2048];
@@ -161,7 +156,7 @@ fn bootstrap_thread_entry(_arg: usize) {
     SCHEDULER_STATE.lock().dump_all_threads();
 
     info!("End of kernel test");
-    pw_assert::assert!(Arch::interrupts_enabled());
+    assert!(Arch::interrupts_enabled());
 
     info!("Exiting bootstrap thread");
 }
@@ -169,7 +164,7 @@ fn bootstrap_thread_entry(_arg: usize) {
 #[allow(dead_code)]
 fn idle_thread_entry(_arg: usize) {
     // Fake idle thread to keep the runqueue from being empty if all threads are blocked.
-    pw_assert::assert!(Arch::interrupts_enabled());
+    assert!(Arch::interrupts_enabled());
     loop {
         Arch::idle();
     }
@@ -180,26 +175,22 @@ static TEST_COUNTER: Mutex<u64> = Mutex::new(0);
 #[allow(dead_code)]
 fn test_thread_entry_a(_arg: usize) {
     info!("I'm thread A");
-    pw_assert::assert!(Arch::interrupts_enabled());
+    assert!(Arch::interrupts_enabled());
     loop {
         let mut counter = TEST_COUNTER.lock();
         info!("Thread A incrementing counter");
         *counter += 1;
-        scheduler::sleep_until(Clock::now() + Duration::from_secs(1));
+        scheduler::TICK_WAIT_QUEUE.lock().wait();
     }
 }
 
 #[allow(dead_code)]
 fn test_thread_entry_b(_arg: usize) {
-    info!("I'm thread B");
-    pw_assert::assert!(Arch::interrupts_enabled());
+    info!("I'm thread A");
+    assert!(Arch::interrupts_enabled());
     loop {
-        let Ok(counter) = TEST_COUNTER.lock_until(Clock::now() + Duration::from_millis(500)) else {
-            info!("Thread B: timeout");
-            continue;
-        };
-        info!("Thread B: counter value {}", *counter as u64);
-        pw_assert::ne!(*counter, 2);
+        let counter = TEST_COUNTER.lock();
+        info!("Thread B: counter value {}", *counter);
         drop(counter);
         yield_timeslice();
     }

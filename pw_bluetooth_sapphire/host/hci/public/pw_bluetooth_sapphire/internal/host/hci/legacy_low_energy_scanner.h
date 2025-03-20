@@ -29,11 +29,10 @@ class LocalAddressDelegate;
 //     - HCI_LE_Advertising_Report event
 class LegacyLowEnergyScanner final : public LowEnergyScanner {
  public:
-  LegacyLowEnergyScanner(
-      LocalAddressDelegate* local_addr_delegate,
-      const AdvertisingPacketFilter::Config& packet_filter_config,
-      Transport::WeakPtr transport,
-      pw::async::Dispatcher& pw_dispatcher);
+  LegacyLowEnergyScanner(LocalAddressDelegate* local_addr_delegate,
+                         const PacketFilterConfig& packet_filter_config,
+                         Transport::WeakPtr transport,
+                         pw::async::Dispatcher& pw_dispatcher);
   ~LegacyLowEnergyScanner() override;
 
   bool StartScan(const ScanOptions& options,
@@ -51,14 +50,13 @@ class LegacyLowEnergyScanner final : public LowEnergyScanner {
   // Build the HCI command packet to set the scan parameters for the flavor of
   // low energy scanning being implemented.
   CommandPacket BuildSetScanParametersPacket(
-      const DeviceAddress& local_address,
-      const ScanOptions& options) const override;
+      const DeviceAddress& local_address, const ScanOptions& options) override;
 
   // Build the HCI command packet to enable scanning for the flavor of low
   // energy scanning being implemented.
   CommandPacket BuildEnablePacket(
       const ScanOptions& options,
-      pw::bluetooth::emboss::GenericEnableParam enable) const override;
+      pw::bluetooth::emboss::GenericEnableParam enable) override;
 
   // Called when a Scan Response is received during an active scan or when we
   // time out waiting

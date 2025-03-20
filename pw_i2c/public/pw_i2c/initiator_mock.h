@@ -23,10 +23,6 @@
 
 namespace pw::i2c {
 
-///
-/// DEPRECATED: This file is deprecated in favor of initiator_message_mock.h
-///
-
 /// Base class for creating transaction instances. For read-only,
 /// write-only, or probe transactions, improve code readability
 /// by using one of the following helpers instead:
@@ -172,8 +168,7 @@ constexpr Transaction ProbeTransaction(
 class MockInitiator : public Initiator {
  public:
   explicit constexpr MockInitiator(span<Transaction> transaction_list)
-      : Initiator(Initiator::Feature::kStandard),
-        expected_transactions_(transaction_list),
+      : expected_transactions_(transaction_list),
         expected_transaction_index_(0) {}
 
   /// Indicates whether the actual I2C transactions matched the expected

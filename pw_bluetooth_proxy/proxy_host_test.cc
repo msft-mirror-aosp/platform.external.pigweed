@@ -1865,7 +1865,7 @@ TEST_F(MultiSendTest, CanOccupyAllThenReuseEachBuffer) {
   constexpr size_t kMaxSends = ProxyHost::GetNumSimultaneousAclSendsSupported();
   struct {
     size_t sends_called = 0;
-    pw::Vector<H4PacketWithH4, kMaxSends * 2> released_packets{};
+    std::array<H4PacketWithH4, 2 * kMaxSends> released_packets{};
   } capture;
 
   pw::Function<void(H4PacketWithHci && packet)>&& send_to_host_fn(
@@ -1873,8 +1873,7 @@ TEST_F(MultiSendTest, CanOccupyAllThenReuseEachBuffer) {
   pw::Function<void(H4PacketWithH4 && packet)> send_to_controller_fn(
       [&capture](H4PacketWithH4&& packet) {
         // Capture all packets to prevent their destruction.
-        capture.sends_called++;
-        capture.released_packets.push_back(std::move(packet));
+        capture.released_packets[capture.sends_called++] = std::move(packet);
       });
 
   ProxyHost proxy = ProxyHost(std::move(send_to_host_fn),
@@ -1900,7 +1899,7 @@ TEST_F(MultiSendTest, CanOccupyAllThenReuseEachBuffer) {
 
   // Confirm we can release and reoccupy each buffer slot.
   for (size_t i = 0; i < kMaxSends; ++i) {
-    capture.released_packets.pop_back();
+    capture.released_packets[i].~H4PacketWithH4();
     EXPECT_EQ(channel.Write(MultiBufFromArray(attribute_value)).status,
               PW_STATUS_OK);
     EXPECT_EQ(channel.Write(MultiBufFromArray(attribute_value)).status,
@@ -1910,10 +1909,9 @@ TEST_F(MultiSendTest, CanOccupyAllThenReuseEachBuffer) {
 
   // If captured packets are not reset here, they may destruct after the proxy
   // and lead to a crash when trying to lock the proxy's destructed mutex.
-  capture.released_packets.clear();
-  // for (auto& packet : capture.released_packets) {
-  //   packet.ResetAndReturnReleaseFn();
-  // }
+  for (auto& packet : capture.released_packets) {
+    packet.ResetAndReturnReleaseFn();
+  }
 }
 
 TEST_F(MultiSendTest, CanRepeatedlyReuseOneBuffer) {
@@ -1932,9 +1930,6 @@ TEST_F(MultiSendTest, CanRepeatedlyReuseOneBuffer) {
           capture.released_packets[capture.sends_called] = std::move(packet);
         } else {
           // Reuse only first packet slot after kMaxSends.
-          // TODO: https://pwbug.dev/402543431 - Move to using vector rather
-          // than new/delete against array slot.
-          new (&(capture.released_packets[0])) H4PacketWithH4();
           capture.released_packets[0] = std::move(packet);
         }
         ++capture.sends_called;
@@ -1958,8 +1953,6 @@ TEST_F(MultiSendTest, CanRepeatedlyReuseOneBuffer) {
 
   // Repeatedly free and reoccupy first buffer.
   for (size_t i = 0; i < kMaxSends; ++i) {
-    // TODO: https://pwbug.dev/402543431 - Move to using vector rather
-    // than new/delete against array slow.
     capture.released_packets[0].~H4PacketWithH4();
     EXPECT_EQ(channel.Write(MultiBufFromArray(attribute_value)).status,
               PW_STATUS_OK);
@@ -3346,6 +3339,9 @@ class AclFragTest : public ProxyHostTest {
   static constexpr uint16_t kHandle = 0x4AD;
   static constexpr uint16_t kLocalCid = 0xC1D;
 
+  int packets_sent_to_host = 0;
+  int packets_sent_to_controller = 0;
+
   ProxyHost GetProxy() {
     // We can't add a ProxyHost member because it makes the test fixture too
     // large, so we provide a helper function instead.
@@ -3354,6 +3350,8 @@ class AclFragTest : public ProxyHostTest {
                      /*le_acl_credits_to_reserve=*/0,
                      /*br_edr_acl_credits_to_reserve=*/0);
   }
+
+  std::vector<multibuf::MultiBuf> payloads_from_controller;
 
   BasicL2capChannel GetL2capChannel(ProxyHost& proxy) {
     return BuildBasicL2capChannel(
@@ -3365,7 +3363,7 @@ class AclFragTest : public ProxyHostTest {
             .transport = AclTransportType::kLe,
             .payload_from_controller_fn =
                 [this](multibuf::MultiBuf&& buffer) {
-                  payloads_from_controller_.emplace_back(std::move(buffer));
+                  payloads_from_controller.emplace_back(std::move(buffer));
                   return std::nullopt;  // Consume
                 },
         });
@@ -3373,12 +3371,12 @@ class AclFragTest : public ProxyHostTest {
 
   void ExpectPayloadsFromController(
       std::initializer_list<ConstByteSpan> expected_payloads) {
-    EXPECT_EQ(payloads_from_controller_.size(), expected_payloads.size());
-    if (payloads_from_controller_.size() != expected_payloads.size()) {
+    EXPECT_EQ(payloads_from_controller.size(), expected_payloads.size());
+    if (payloads_from_controller.size() != expected_payloads.size()) {
       return;
     }
 
-    auto payloads_iter = payloads_from_controller_.begin();
+    auto payloads_iter = payloads_from_controller.begin();
     for (ConstByteSpan expected : expected_payloads) {
       std::optional<pw::ByteSpan> payload = (payloads_iter++)->ContiguousSpan();
       PW_CHECK(payload.has_value());
@@ -3390,24 +3388,19 @@ class AclFragTest : public ProxyHostTest {
   void VerifyNormalOperationAfterRecombination(ProxyHost& proxy) {
     // Verify things work normally after recombination ends.
     static constexpr std::array<uint8_t, 4> kPayload = {'D', 'o', 'n', 'e'};
-    payloads_from_controller_.clear();
+    payloads_from_controller.clear();
     SendL2capBFrame(proxy, kHandle, kPayload, kPayload.size(), kLocalCid);
     ExpectPayloadsFromController({
         as_bytes(span(kPayload)),
     });
   }
 
-  int packets_sent_to_host_ = 0;
-  int packets_sent_to_controller_ = 0;
-
  private:
-  void SendToHost(H4PacketWithHci&& /*packet*/) { ++packets_sent_to_host_; }
+  void SendToHost(H4PacketWithHci&& /*packet*/) { ++packets_sent_to_host; }
 
   void SendToController(H4PacketWithH4&& /*packet*/) {
-    ++packets_sent_to_controller_;
+    ++packets_sent_to_controller;
   }
-
-  std::vector<multibuf::MultiBuf> payloads_from_controller_;
 };
 
 TEST_F(AclFragTest, AclBiggerThanL2capDropped) {
@@ -3419,7 +3412,7 @@ TEST_F(AclFragTest, AclBiggerThanL2capDropped) {
   SendL2capBFrame(proxy, kHandle, kPayload, 1, kLocalCid);
 
   // Should be dropped.
-  EXPECT_EQ(packets_sent_to_host_, 0);
+  EXPECT_EQ(packets_sent_to_host, 0);
   ExpectPayloadsFromController({});
 }
 
@@ -3437,37 +3430,11 @@ TEST_F(AclFragTest, RecombinationWorksWithEmptyFirstPayload) {
   PW_LOG_INFO("Sending frag 2: ACL(CONT) + payload2");
   SendAclContinuingFrag(proxy, kHandle, kPayload);
 
-  EXPECT_EQ(packets_sent_to_host_, 0);
+  EXPECT_EQ(packets_sent_to_host, 0);
   ExpectPayloadsFromController({
       as_bytes(span(kPayload)),
   });
 
-  VerifyNormalOperationAfterRecombination(proxy);
-}
-
-// If a client channel is dropped between first and last packet of a fragmented
-// PDU, then packet should be dropped.
-TEST_F(AclFragTest, ChannelDtorDuringRecombinationDropsPdu) {
-  ProxyHost proxy = GetProxy();
-  std::optional<BasicL2capChannel> channel{GetL2capChannel(proxy)};
-
-  static constexpr std::array<uint8_t, 4> kPayload = {0xA1, 0xB2, 0xC3, 0xD2};
-
-  // Fragment 1: ACL Header + L2CAP B-Frame Header + (no payload)
-  PW_LOG_INFO("Sending frag 1: ACL + L2CAP header");
-  SendL2capBFrame(proxy, kHandle, {}, kPayload.size(), kLocalCid);
-
-  channel.reset();
-
-  // Fragment 2: ACL Header + Payload frag 2
-  PW_LOG_INFO("Sending frag 2: ACL(CONT) + payload2");
-  SendAclContinuingFrag(proxy, kHandle, kPayload);
-
-  EXPECT_EQ(packets_sent_to_host_, 0);
-  ExpectPayloadsFromController({});
-
-  // Open up channel again to verify rx still works after completing above.
-  BasicL2capChannel channel2 = GetL2capChannel(proxy);
   VerifyNormalOperationAfterRecombination(proxy);
 }
 
@@ -3491,7 +3458,7 @@ TEST_F(AclFragTest, RecombinationWorksWithSplitPayloads) {
     SendAclContinuingFrag(proxy, kHandle, kPayloadFrag2);
   }
 
-  EXPECT_EQ(packets_sent_to_host_, 0);
+  EXPECT_EQ(packets_sent_to_host, 0);
   ExpectPayloadsFromController({
       as_bytes(span(kPayload)),
       as_bytes(span(kPayload)),
@@ -3513,7 +3480,7 @@ TEST_F(AclFragTest, UnexpectedContinuingFragment) {
   SendAclContinuingFrag(proxy, kHandle, kPayload);
 
   ExpectPayloadsFromController({});
-  EXPECT_EQ(packets_sent_to_host_, 1);  // Should be passed on to host
+  EXPECT_EQ(packets_sent_to_host, 1);  // Should be passed on to host
 
   VerifyNormalOperationAfterRecombination(proxy);
 }
@@ -3542,7 +3509,7 @@ TEST_F(AclFragTest, UnexpectedFirstFragment) {
   SendAclContinuingFrag(proxy, kHandle, kPayloadFrag2);
 
   // Nothing should be sent to the host. The first fragment of PDU A is dropped.
-  EXPECT_EQ(packets_sent_to_host_, 0);
+  EXPECT_EQ(packets_sent_to_host, 0);
 
   // PDU B is delivered.
   ExpectPayloadsFromController({
@@ -3572,7 +3539,7 @@ TEST_F(AclFragTest, ContinuingFragmentTooLarge) {
   ExpectPayloadsFromController({});
 
   // This was for a channel owned by the proxy so it should have been dropped.
-  EXPECT_EQ(packets_sent_to_host_, 0);
+  EXPECT_EQ(packets_sent_to_host, 0);
 
   VerifyNormalOperationAfterRecombination(proxy);
 }
@@ -3648,7 +3615,7 @@ TEST_F(AclFragTest,
   SendAclContinuingFrag(proxy, kHandle, kPayload1Frag2);
 
   EXPECT_EQ(channel1_sends_called, 1);
-  EXPECT_EQ(packets_sent_to_host_, 0);
+  EXPECT_EQ(packets_sent_to_host, 0);
 }
 
 }  // namespace

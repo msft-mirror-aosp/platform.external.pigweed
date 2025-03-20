@@ -15,7 +15,6 @@
 #include "pw_bluetooth_sapphire/internal/host/hci/legacy_low_energy_scanner.h"
 
 #include "pw_bluetooth/hci_events.emb.h"
-#include "pw_bluetooth_sapphire/internal/host/hci/advertising_packet_filter.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/fake_local_address_delegate.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/controller_test.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/fake_controller.h"
@@ -54,10 +53,9 @@ class LegacyLowEnergyScannerTest : public TestingBase,
 
     scanner_ = std::make_unique<LegacyLowEnergyScanner>(
         fake_address_delegate(),
-        AdvertisingPacketFilter::Config(false, 0),
+        LegacyLowEnergyScanner::PacketFilterConfig(false, 0),
         transport()->GetWeakPtr(),
         dispatcher());
-    scanner_->SetPacketFilters(0, {});
     scanner_->set_delegate(this);
 
     auto p = std::make_unique<FakePeer>(kPublicAddr,
@@ -93,8 +91,7 @@ class LegacyLowEnergyScannerTest : public TestingBase,
   }
 
   // LowEnergyScanner::Delegate override:
-  void OnPeerFound(const std::unordered_set<uint16_t>& /*scan_ids*/,
-                   const LowEnergyScanResult& result) override {
+  void OnPeerFound(const LowEnergyScanResult& result) override {
     if (peer_found_cb_) {
       peer_found_cb_(result);
     }

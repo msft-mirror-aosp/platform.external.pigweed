@@ -263,6 +263,7 @@ bool SignalingChannel::Send(ByteBufferPtr packet) {
             pw::bytes::ConvertOrderFrom(cpp20::endian::little,
                                         reply.header().length));
   PW_DCHECK(chan_);
+
   return chan_->Send(std::move(packet));
 }
 

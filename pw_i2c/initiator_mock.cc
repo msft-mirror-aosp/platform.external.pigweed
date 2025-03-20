@@ -19,20 +19,15 @@
 
 namespace pw::i2c {
 
-///
-/// DEPRECATED: This file is deprecated in favor of initiator_message_mock.cc
-///
-
 Status MockInitiator::DoWriteReadFor(Address device_address,
                                      ConstByteSpan tx_buffer,
                                      ByteSpan rx_buffer,
                                      chrono::SystemClock::duration timeout) {
   PW_CHECK_INT_LT(expected_transaction_index_, expected_transactions_.size());
 
-  EXPECT_EQ(expected_transactions_[expected_transaction_index_]
-                .address()
-                .GetAddress(),
-            device_address.GetAddress());
+  EXPECT_EQ(
+      expected_transactions_[expected_transaction_index_].address().GetTenBit(),
+      device_address.GetTenBit());
 
   auto expected_timeout =
       expected_transactions_[expected_transaction_index_].timeout();

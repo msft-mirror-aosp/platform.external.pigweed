@@ -21,7 +21,6 @@ pw_doc_group("docs") {
   sources = [
     "docs.rst",
     "format.rst",
-    "pigweed_config.rst",
   ]
   inputs = [
     "py/pw_presubmit/cli.py",

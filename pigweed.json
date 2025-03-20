@@ -187,12 +187,6 @@
             "//docs"
           ]
         ],
-        "lintformat": [
-          [
-            "run",
-            "//pw_presubmit/py:check_formatting"
-          ]
-        ],
         "integration": [
           [
             "test",

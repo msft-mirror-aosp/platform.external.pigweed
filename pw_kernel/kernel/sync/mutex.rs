@@ -17,16 +17,11 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-use pw_status::Result;
-
-use crate::{
-    scheduler::{Thread, WaitQueueLock},
-    timer::Instant,
-};
+use crate::scheduler::{Thread, WaitQueueLock};
 
 struct MutexState {
     count: u32,
-    holder_thread_id: usize,
+    holder_id: usize,
 }
 
 pub struct Mutex<T> {
@@ -69,7 +64,7 @@ impl<T> Mutex<T> {
         Self {
             state: WaitQueueLock::new(MutexState {
                 count: 0,
-                holder_thread_id: Thread::null_id(),
+                holder_id: Thread::null_id(),
             }),
             inner: UnsafeCell::new(initial_value),
         }
@@ -77,58 +72,37 @@ impl<T> Mutex<T> {
 
     pub fn lock(&self) -> MutexGuard<'_, T> {
         let mut state = self.state.lock();
-        assert_ne!(state.holder_thread_id, state.sched().current_thread_id());
         state.count += 1;
         // TODO - konkers: investigate using core::intrinsics::unlikely() or
         //                 core::hint::unlikely()
-        if state.count > 1 {
-            state = state.wait();
-        }
+        let mut state = if state.count > 1 {
+            state.into_wait_queue().wait();
+            // `wait()` consumes the state lock so re-acquire it before moving on.
+            self.state.lock()
+        } else {
+            state
+        };
 
-        state.holder_thread_id = state.sched().current_thread_id();
+        state.holder_id = state.sched().current_thread_id();
 
         // At this point we have exclusive access to `self.inner`.
 
         MutexGuard { lock: self }
     }
 
-    // TODO - konkers: Investigate combining with lock().
-    pub fn lock_until(&self, deadline: Instant) -> Result<MutexGuard<'_, T>> {
-        let mut state = self.state.lock();
-        assert_ne!(state.holder_thread_id, state.sched().current_thread_id());
-        state.count += 1;
-        // TODO - konkers: investigate using core::intrinsics::unlikely() or
-        //                 core::hint::unlikely()
-        if state.count > 1 {
-            let result;
-            (state, result) = state.wait_until(deadline);
-
-            if let Err(e) = result {
-                state.count -= 1;
-                return Err(e);
-            }
-        }
-
-        state.holder_thread_id = state.sched().current_thread_id();
-
-        // At this point we have exclusive access to `self.inner`.
-
-        Ok(MutexGuard { lock: self })
-    }
-
     fn unlock(&self) {
         let mut state = self.state.lock();
 
-        pw_assert::assert!(state.count > 0);
-        pw_assert::eq!(state.holder_thread_id, state.sched().current_thread_id());
-        state.holder_thread_id = Thread::null_id();
+        assert!(state.count > 0);
+        assert_eq!(state.holder_id, state.sched().current_thread_id());
+        state.holder_id = Thread::null_id();
 
         state.count -= 1;
 
         // TODO - konkers: investigate using core::intrinsics::unlikely() or
         //                 core::hint::unlikely()
         if state.count > 0 {
-            state.wake_one();
+            state.into_wait_queue().wake_one();
         }
     }
 }

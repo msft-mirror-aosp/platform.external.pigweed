@@ -27,8 +27,8 @@ bazel_dep(name = "freertos", version = "10.5.1.bcr.2")
 bazel_dep(name = "gazelle", version = "0.40.0", repo_name = "bazel_gazelle")
 bazel_dep(name = "googletest", version = "1.15.0", repo_name = "com_google_googletest")
 bazel_dep(name = "nanopb", version = "0.4.9.1", repo_name = "com_github_nanopb_nanopb")
-bazel_dep(name = "pico-sdk", version = "2.1.1")
-bazel_dep(name = "picotool", version = "2.1.1")
+bazel_dep(name = "pico-sdk", version = "2.1.1-develop.bcr.20250113-4b6e6475")
+bazel_dep(name = "picotool", version = "2.1.0")
 bazel_dep(name = "platforms", version = "0.0.10")
 
 # LINT.IfChange(protobuf)
@@ -84,7 +84,7 @@ single_version_override(
 git_override(
     module_name = "googletest",
     commit = "e54519b09463cec3aea77a1739e02c97ca766da5",
-    remote = "https://pigweed.googlesource.com/third_party/github/google/googletest.git",
+    remote = "https://github.com/google/googletest.git",
 )
 
 single_version_override(
@@ -113,10 +113,6 @@ single_version_override(
         # rust_analyzer: Support passing a --config option to Bazel
         # https://github.com/bazelbuild/rules_rust/pull/3254
         "//pw_rust/bazel_patches:0005-rust_analyzer-Support-passing-a-config-option-to-Baz.patch",
-
-        # Adds more riscv32 triples
-        # TODO: https://pwbug.dev/401293971 - Upstream below patch
-        "//pw_rust/bazel_patches:0006-Add-riscv32-triples.patch",
     ],
 )
 
@@ -173,14 +169,25 @@ cipd_repository(
     name = "llvm_toolchain",
     build_file = "//pw_toolchain/build_external:llvm_clang.BUILD",
     path = "fuchsia/third_party/clang/${os}-${arch}",
-    tag = "git_revision:553da9634dc4bae215e6c850d2de3186d09f9da5",
+    tag = "git_revision:0454dd8c48cd771478f1ae53330ba78e71bcd7cb",
+)
+
+# TODO: https://pwbug.dev/388593877 - macOS toolchain is behind because of a
+# breakage in C++ standard library headers. Remove this when the upstream LLVM
+# bug (https://github.com/llvm/llvm-project/issues/117630) is fixed and
+# rolled into Pigweed.
+cipd_repository(
+    name = "llvm_toolchain_macos",
+    build_file = "//pw_toolchain/build_external:llvm_clang.BUILD",
+    path = "fuchsia/third_party/clang/${os}-${arch}",
+    tag = "git_revision:8280651ad57cb9fb24a404cec2401040c28dec98",
 )
 
 cipd_repository(
     name = "llvm_toolchain_device",
     build_file = "//pw_toolchain/build_external:llvm_clang.BUILD",
     path = "fuchsia/third_party/clang/${os}-${arch}",
-    tag = "git_revision:553da9634dc4bae215e6c850d2de3186d09f9da5",
+    tag = "git_revision:0454dd8c48cd771478f1ae53330ba78e71bcd7cb",
 )
 
 # Fetch linux sysroot for host builds.
@@ -215,8 +222,6 @@ register_toolchains(
     "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m4",
     "//pw_toolchain/host_clang:host_cc_toolchain_linux",
     "//pw_toolchain/host_clang:host_cc_toolchain_macos",
-    "//pw_toolchain/riscv_clang:riscv_clang_cc_toolchain_rv32imc",
-    "//pw_toolchain/riscv_clang:riscv_clang_cc_toolchain_rv32imac",
     dev_dependency = True,
 )
 
@@ -253,8 +258,6 @@ crate.from_cargo(
         "thumbv6m-none-eabi",
         "thumbv7m-none-eabi",
         "thumbv8m.main-none-eabihf",
-        "riscv32imc-unknown-none-elf",
-        "riscv32imac-unknown-none-elf",
     ],
 )
 use_repo(crate, "crates_no_std")
@@ -333,7 +336,6 @@ use_repo(go_deps, "org_golang_google_grpc", "org_golang_google_grpc_examples", "
 # ===========================
 maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
 maven.install(
-    name = "pigweed_maven_deps",
     artifacts = [
         "com.google.auto.value:auto-value-annotations:1.8.2",
         "com.google.auto.value:auto-value:1.8.2",
@@ -351,15 +353,18 @@ maven.install(
         "https://repo1.maven.org/maven2",
     ],
 )
-use_repo(maven, "pigweed_maven_deps")
+use_repo(
+    maven,
+    "maven",
+)
 
 # QEMU prebuilts
 # ==============
 cipd_repository(
     name = "qemu",
     build_file = "//third_party/qemu:qemu.BUILD",
-    path = "fuchsia/third_party/qemu/${platform}",
-    tag = "git_revision:aa90f1161bb17a4863e16ec2f75104cff0752d4e",
+    path = "fuchsia/third_party/qemu/${os}-${arch}",
+    tag = "git_revision:d922088eb4ba6bc31a99f17b32cf75e59dd306cd",
 )
 
 # Vendored libraries

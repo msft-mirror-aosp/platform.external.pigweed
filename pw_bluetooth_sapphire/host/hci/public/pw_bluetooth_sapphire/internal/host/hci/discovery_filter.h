@@ -134,7 +134,7 @@ class DiscoveryFilter final {
   // Returns true, if the given LE scan result satisfies this filter. Otherwise
   // returns false. |advertising_data| should include scan response data, if
   // any.
-  bool Matches(
+  bool MatchLowEnergyResult(
       const std::optional<std::reference_wrapper<const AdvertisingData>>
           advertising_data,
       bool connectable,
@@ -142,17 +142,6 @@ class DiscoveryFilter final {
 
   // Clears all the fields of this filter.
   void Reset();
-
-  // Determine if another DiscoveryFilter is equal to this one
-  bool operator==(const DiscoveryFilter& other) const;
-
-  // Determine if another DiscoveryFilter is not equal to this one
-  bool operator!=(const DiscoveryFilter& other) const {
-    return !(*this == other);
-  }
-
-  // Return a string representation of the filter
-  std::string ToString() const;
 
  private:
   std::vector<UUID> service_uuids_;
@@ -165,6 +154,6 @@ class DiscoveryFilter final {
   std::optional<int8_t> rssi_;
 
   std::optional<uint8_t> flags_;
-  bool all_flags_required_ = false;
+  bool all_flags_required_;
 };
 }  // namespace bt::hci

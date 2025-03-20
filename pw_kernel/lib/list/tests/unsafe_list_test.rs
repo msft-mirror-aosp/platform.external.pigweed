@@ -14,7 +14,7 @@
 
 #![no_std]
 #![no_main]
-use core::{mem::offset_of, ptr::NonNull};
+use core::mem::offset_of;
 
 use list::*;
 use unittest::test;
@@ -27,26 +27,6 @@ use unittest::test;
 struct TestMember {
     value: u32,
     link: Link,
-}
-
-impl PartialEq for TestMember {
-    fn eq(&self, other: &Self) -> bool {
-        self.value == other.value
-    }
-}
-
-impl Eq for TestMember {}
-
-impl PartialOrd for TestMember {
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        Some(self.value.cmp(&other.value))
-    }
-}
-
-impl Ord for TestMember {
-    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        self.value.cmp(&other.value)
-    }
 }
 
 struct TestAdapter {}
@@ -81,25 +61,6 @@ fn new_link_is_not_linked() -> unittest::Result<()> {
 fn new_list_is_empty() -> unittest::Result<()> {
     let list = UnsafeList::<TestMember, TestAdapter>::new();
     unittest::assert_true!(unsafe { list.is_empty() });
-    Ok(())
-}
-
-#[test]
-fn single_element_list_is_non_empty_and_linked() -> unittest::Result<()> {
-    let mut element1 = TestMember {
-        value: 1,
-        link: Link::new(),
-    };
-    let mut list = UnsafeList::<TestMember, TestAdapter>::new();
-
-    unittest::assert_true!(unsafe { list.is_empty() });
-    unittest::assert_false!(unsafe { list.is_element_linked(&raw mut element1) });
-
-    unsafe { list.push_front_unchecked(&raw mut element1) };
-
-    unittest::assert_false!(unsafe { list.is_empty() });
-    unittest::assert_true!(unsafe { list.is_element_linked(&raw mut element1) });
-
     Ok(())
 }
 
@@ -163,7 +124,7 @@ fn unlink_removes_head_correctly() -> unittest::Result<()> {
     unsafe { list.push_front_unchecked(&mut element2) };
     unsafe { list.push_front_unchecked(&mut element1) };
 
-    unsafe { list.unlink_element_unchecked(&mut element1) };
+    unsafe { list.unlink_element(&mut element1) };
 
     unsafe { validate_list(&list, &[2, 3]) }
 }
@@ -188,7 +149,7 @@ fn unlink_removes_tail_correctly() -> unittest::Result<()> {
     unsafe { list.push_front_unchecked(&mut element2) };
     unsafe { list.push_front_unchecked(&mut element1) };
 
-    unsafe { list.unlink_element_unchecked(&mut element3) };
+    unsafe { list.unlink_element(&mut element3) };
 
     unsafe { validate_list(&list, &[1, 2]) }
 }
@@ -213,25 +174,9 @@ fn unlink_removes_middle_correctly() -> unittest::Result<()> {
     unsafe { list.push_front_unchecked(&mut element2) };
     unsafe { list.push_front_unchecked(&mut element1) };
 
-    unsafe { list.unlink_element_unchecked(&mut element2) };
+    unsafe { list.unlink_element(&mut element2) };
 
     unsafe { validate_list(&list, &[1, 3]) }
-}
-
-#[test]
-fn unlink_fails_non_inserted_element() -> unittest::Result<()> {
-    let mut element1 = TestMember {
-        value: 1,
-        link: Link::new(),
-    };
-
-    let mut list = UnsafeList::<TestMember, TestAdapter>::new();
-
-    unittest::assert_eq!(
-        unsafe { list.unlink_element(NonNull::new(&raw mut element1).unwrap()) },
-        None
-    );
-    Ok(())
 }
 
 #[test]
@@ -404,75 +349,4 @@ fn filter_removes_tail_correctly() -> unittest::Result<()> {
     unsafe { list.filter(|element| element.value != 3) };
 
     unsafe { validate_list(&list, &[1, 2]) }
-}
-
-#[test]
-fn sorted_insert_inserts_sorted_items_in_correct_order() -> unittest::Result<()> {
-    let mut element1 = TestMember {
-        value: 1,
-        link: Link::new(),
-    };
-    let mut element2 = TestMember {
-        value: 2,
-        link: Link::new(),
-    };
-    let mut element3 = TestMember {
-        value: 3,
-        link: Link::new(),
-    };
-
-    let mut list = UnsafeList::<TestMember, TestAdapter>::new();
-    unsafe { list.sorted_insert_unchecked(&mut element3) };
-    unsafe { list.sorted_insert_unchecked(&mut element2) };
-    unsafe { list.sorted_insert_unchecked(&mut element1) };
-    unsafe { validate_list(&list, &[1, 2, 3]) }
-}
-
-#[test]
-fn sorted_insert_inserts_reverse_sorted_items_in_correct_order() -> unittest::Result<()> {
-    let mut element1 = TestMember {
-        value: 1,
-        link: Link::new(),
-    };
-    let mut element2 = TestMember {
-        value: 2,
-        link: Link::new(),
-    };
-    let mut element3 = TestMember {
-        value: 3,
-        link: Link::new(),
-    };
-
-    let mut list = UnsafeList::<TestMember, TestAdapter>::new();
-    unsafe { list.sorted_insert_unchecked(&mut element1) };
-    unsafe { list.sorted_insert_unchecked(&mut element2) };
-    unsafe { list.sorted_insert_unchecked(&mut element3) };
-    unsafe { validate_list(&list, &[1, 2, 3]) }
-}
-
-#[test]
-fn sorted_insert_inserts_unsorted_items_in_correct_order() -> unittest::Result<()> {
-    let mut element1 = TestMember {
-        value: 1,
-        link: Link::new(),
-    };
-    let mut element2 = TestMember {
-        value: 2,
-        link: Link::new(),
-    };
-    let mut element2_2 = TestMember {
-        value: 2,
-        link: Link::new(),
-    };
-    let mut element3 = TestMember {
-        value: 3,
-        link: Link::new(),
-    };
-
-    let mut list = UnsafeList::<TestMember, TestAdapter>::new();
-    unsafe { list.sorted_insert_unchecked(&mut element2) };
-    unsafe { list.sorted_insert_unchecked(&mut element1) };
-    unsafe { list.sorted_insert_unchecked(&mut element3) };
-    unsafe { list.sorted_insert_unchecked(&mut element2_2) };
-    unsafe { validate_list(&list, &[1, 2, 2, 3]) }
 }

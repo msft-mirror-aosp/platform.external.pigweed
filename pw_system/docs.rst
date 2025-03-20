@@ -334,11 +334,6 @@ Next, run the console through bazel, adding the argument(s) ``--debugger-listen`
 Once the console has been started, simply select ``Run -> Start Debugging`` and the VS code debugger
 will automatically attach to the running python console.
 
-pw_system.benchmark_runner
-==========================
-.. automodule:: pw_system.benchmark_runner
-  :members:
-    Runner
 
 API reference
 =============

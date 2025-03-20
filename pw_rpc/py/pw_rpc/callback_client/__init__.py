@@ -91,7 +91,6 @@ from pw_rpc.callback_client.call import (
     UseDefault,
     UnaryResponse,
     StreamResponse,
-    Call,
     UnaryCall,
     ServerStreamingCall,
     ClientStreamingCall,

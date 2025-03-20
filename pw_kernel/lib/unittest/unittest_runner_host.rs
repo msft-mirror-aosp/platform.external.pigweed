@@ -11,25 +11,25 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
+#![feature(type_alias_impl_trait)]
 use console_backend as _;
-use kernel as _;
 use pw_log::{error, info};
 
 #[no_mangle]
 pub extern "C" fn main() -> core::ffi::c_int {
     let mut success = true;
     unittest_core::for_each_test(|test| {
-        info!("[{}] running", test.desc.name as &str);
+        info!("[{}] running", test.desc.name);
         match test.test_fn {
             unittest_core::TestFn::StaticTestFn(f) => {
                 if let Err(e) = f() {
                     error!(
                         "[{}] FAILED: {}:{} - {}",
-                        test.desc.name as &str, e.file as &str, e.line as u32, e.message as &str
+                        test.desc.name, e.file, e.line, e.message
                     );
                     success = false;
                 } else {
-                    info!("[{}] PASSED", test.desc.name as &str);
+                    info!("[{}] PASSED", test.desc.name);
                 }
             }
         }

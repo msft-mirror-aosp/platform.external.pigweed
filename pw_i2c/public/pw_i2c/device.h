@@ -52,12 +52,6 @@ class Device {
   Device(Device&&) = default;
   ~Device() = default;
 
-  /// Wraps `pw::i2c::Initiator::TransferFor`.
-  Status TransferFor(span<const Message> messages,
-                     chrono::SystemClock::duration timeout) {
-    return initiator_.TransferFor(messages, timeout);
-  }
-
   /// Wraps `pw::i2c::Initiator::WriteReadFor`.
   Status WriteReadFor(ConstByteSpan tx_buffer,
                       ByteSpan rx_buffer,
@@ -65,7 +59,6 @@ class Device {
     return initiator_.WriteReadFor(
         device_address_, tx_buffer, rx_buffer, timeout);
   }
-
   /// Wraps the variation of `pw::i2c::Initiator::WriteReadFor` that accepts
   /// explicit sizes for the amount of bytes to write to the device and read
   /// from the device.

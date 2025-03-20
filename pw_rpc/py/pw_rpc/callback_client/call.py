@@ -284,7 +284,7 @@ class Call:
 
 
 class UnaryCall(Call):
-    """`Call` variant that tracks the a unary RPC call."""
+    """Tracks the state of a unary RPC call."""
 
     @property
     def response(self) -> Any:
@@ -297,7 +297,7 @@ class UnaryCall(Call):
 
 
 class ServerStreamingCall(Call):
-    """`Call` variant that tracks a server streaming RPC call."""
+    """Tracks the state of a server streaming RPC call."""
 
     @property
     def responses(self) -> Sequence:
@@ -326,7 +326,7 @@ class ServerStreamingCall(Call):
 
 
 class ClientStreamingCall(Call):
-    """`Call` variant that tracks a client streaming RPC call."""
+    """Tracks the state of a client streaming RPC call."""
 
     @property
     def response(self) -> Any:
@@ -350,7 +350,7 @@ class ClientStreamingCall(Call):
 
 
 class BidirectionalStreamingCall(Call):
-    """`Call` variant that tracks a bidirectional streaming RPC call."""
+    """Tracks the state of a bidirectional streaming RPC call."""
 
     @property
     def responses(self) -> Sequence:

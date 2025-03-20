@@ -13,7 +13,6 @@
 // the License.
 #pragma once
 
-#include <atomic>
 #include <optional>
 
 #include "fsl_clock.h"
@@ -22,10 +21,8 @@
 #include "pw_containers/vector.h"
 #include "pw_i2c/initiator.h"
 #include "pw_i2c_mcuxpresso/i3c_ccc.h"
-#include "pw_result/result.h"
 #include "pw_status/status.h"
 #include "pw_sync/mutex.h"
-#include "pw_sync/timed_thread_notification.h"
 
 namespace pw::i2c {
 
@@ -42,8 +39,7 @@ class I3cMcuxpressoInitiator final : public pw::i2c::Initiator {
                                   // for I3C messages, or 1 ODBAUD.
   };
   I3cMcuxpressoInitiator(const Config& config)
-      : Initiator(Initiator::Feature::kStandard),
-        config_(config),
+      : config_(config),
         base_(reinterpret_cast<I3C_Type*>(config.base_address)) {}
 
   // Initializes the I3C controller peripheral as configured in the constructor.
@@ -71,25 +67,11 @@ class I3cMcuxpressoInitiator final : public pw::i2c::Initiator {
                            I3cCcc ccc_id,
                            pw::i2c::Address address,
                            pw::ByteSpan buffer);
-  pw::Status DoTransferFor(span<const Message> messages,
-                           chrono::SystemClock::duration timeout)
+  pw::Status DoWriteReadFor(pw::i2c::Address address,
+                            pw::ConstByteSpan tx_buffer,
+                            pw::ByteSpan rx_buffer,
+                            pw::chrono::SystemClock::duration timeout)
       PW_LOCKS_EXCLUDED(mutex_);
-
-  pw::Result<i3c_bus_type_t> ValidateAndDetermineProtocol(
-      span<const Message> messages) const;
-
-  // inclusive-language: disable
-  Status InitiateNonBlockingTransferUntil(
-      chrono::SystemClock::time_point deadline,
-      i3c_master_transfer_t* transfer);
-
-  // Non-blocking I3C transfer callback.
-  static void TransferCompleteCallback(I3C_Type* base,
-                                       i3c_master_handle_t* handle,
-                                       status_t status,
-                                       void* initiator_ptr);
-
-  // inclusive-language: enable
 
   const Config& config_;
   I3C_Type* base_;
@@ -98,15 +80,6 @@ class I3cMcuxpressoInitiator final : public pw::i2c::Initiator {
   bool enabled_ PW_GUARDED_BY(mutex_) = false;
   pw::sync::Mutex mutex_;
   std::optional<pw::Vector<uint8_t, I3C_MAX_DEVCNT>> i3c_dynamic_address_list_;
-
-  // Transfer completion status for non-blocking I3C transfer.
-  sync::TimedThreadNotification callback_complete_notification_;
-  std::atomic<status_t> transfer_status_;
-
-  // inclusive-language: disable
-  i3c_master_transfer_callback_t initiator_callbacks_;
-  i3c_master_handle_t handle_ PW_GUARDED_BY(mutex_);
-  // inclusive-language: enable
 };
 
 }  // namespace pw::i2c

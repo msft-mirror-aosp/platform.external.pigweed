@@ -16,7 +16,6 @@
 
 #include <unordered_map>
 
-#include "pw_bluetooth_sapphire/internal/host/hci/advertising_packet_filter.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/fake_local_address_delegate.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/controller_test.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/fake_controller.h"
@@ -61,10 +60,9 @@ class ExtendedLowEnergyScannerTest : public TestingBase,
 
     scanner_ = std::make_unique<ExtendedLowEnergyScanner>(
         &fake_address_delegate_,
-        AdvertisingPacketFilter::Config(false, 0),
+        ExtendedLowEnergyScanner::PacketFilterConfig(false, 0),
         transport()->GetWeakPtr(),
         dispatcher());
-    scanner_->SetPacketFilters(0, {});
     scanner_->set_delegate(this);
 
     auto p = std::make_unique<FakePeer>(kPublicAddr1, dispatcher(), true, true);
@@ -92,8 +90,7 @@ class ExtendedLowEnergyScannerTest : public TestingBase,
     TestingBase::TearDown();
   }
 
-  void OnPeerFound(const std::unordered_set<uint16_t>& /*scan_ids*/,
-                   const LowEnergyScanResult& result) override {
+  void OnPeerFound(const LowEnergyScanResult& result) override {
     if (peer_found_cb_) {
       peer_found_cb_(result);
     }

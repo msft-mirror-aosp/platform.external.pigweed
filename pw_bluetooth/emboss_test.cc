@@ -20,7 +20,6 @@
 // clang-format off
 // All emboss headers are listed (even if they don't have explicit tests) to
 // ensure they are compiled.
-#include "pw_bluetooth/emboss_util.h"
 #include "pw_bluetooth/att.emb.h"  // IWYU pragma: keep
 #include "pw_bluetooth/hci_commands.emb.h"  // IWYU pragma: keep
 #include "pw_bluetooth/hci_common.emb.h"
@@ -547,5 +546,6 @@ TEST(EmbossTest, WriteRfcommExtended) {
 
   EXPECT_EQ(buffer, expected);
 }
+
 }  // namespace
 }  // namespace pw::bluetooth

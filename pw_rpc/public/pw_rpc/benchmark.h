@@ -13,6 +13,9 @@
 // the License.
 #pragma once
 
+#include <cstdint>
+#include <unordered_map>
+
 #include "pw_rpc/benchmark.raw_rpc.pb.h"
 
 namespace pw::rpc {

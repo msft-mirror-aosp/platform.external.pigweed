@@ -398,10 +398,7 @@ class DirectoryDatabaseCommandLineTest(unittest.TestCase):
         )
 
     def tearDown(self) -> None:
-        shutil.rmtree(  # pylint: disable=deprecated-argument
-            self._dir,
-            onerror=_remove_readonly,
-        )
+        shutil.rmtree(self._dir, onerror=_remove_readonly)
 
     def test_add_csv_to_dir(self) -> None:
         """Tests a CSV can be created within the database."""

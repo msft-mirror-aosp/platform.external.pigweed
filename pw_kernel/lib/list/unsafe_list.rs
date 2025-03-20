@@ -53,13 +53,11 @@ mod inner {
     impl LinkInner {
         pub const NEXT_OFFSET: usize = offset_of!(LinkInner, next);
         pub const PREV_OFFSET: usize = offset_of!(LinkInner, prev);
-        pub const UNLINKED_VALUE: Option<NonNull<Link>> =
-            Some(unsafe { NonNull::new_unchecked(usize::MAX as *mut Link) });
 
         pub const fn new() -> Self {
             Self {
-                next: Self::UNLINKED_VALUE,
-                prev: Self::UNLINKED_VALUE,
+                next: None,
+                prev: None,
                 _pin: PhantomPinned,
             }
         }
@@ -95,16 +93,11 @@ impl Link {
     }
 
     pub fn is_unlinked(&self) -> bool {
-        self.get_next() == LinkInner::UNLINKED_VALUE && self.get_prev() == LinkInner::UNLINKED_VALUE
+        self.get_next().is_none() && self.get_prev().is_none()
     }
 
     pub fn is_linked(&self) -> bool {
         !self.is_unlinked()
-    }
-
-    fn set_unlinked(&mut self) {
-        self.set_next(LinkInner::UNLINKED_VALUE);
-        self.set_prev(LinkInner::UNLINKED_VALUE);
     }
 
     #[inline]
@@ -179,16 +172,6 @@ impl<T, A: Adapter> UnsafeList<T, A> {
         link.byte_sub(A::LINK_OFFSET).as_ptr() as *mut T
     }
 
-    /// Returns true if element is in **ANY** list that uses this list's adapter.
-    ///
-    /// # Safety
-    /// `element` must be a valid, non-null pointer.
-    pub unsafe fn is_element_linked(&mut self, element: *mut T) -> bool {
-        let element = NonNull::new_unchecked(element);
-        let link_ptr = Self::get_link_ptr(element);
-        (*link_ptr.as_ptr()).is_linked()
-    }
-
     /// unchecked means:
     /// * we don't `assert!((*element_ptr.as_ptr()).is_unlinked());`
     /// * we don't check that `element` is non-null.
@@ -251,31 +234,6 @@ impl<T, A: Adapter> UnsafeList<T, A> {
         self.tail = Some(link_ptr);
     }
 
-    /// Insert element_a into the list immediately before `element_b`
-    ///
-    /// # Safety
-    /// It is up to the caller to ensure exclusive access to the list and its
-    /// members.
-    /// It is up to the caller to ensure that element_a is not in a list.
-    /// It is up to the caller to ensure that element_b is in a list.
-    /// It is up to the caller to ensure the element_a and element_b are non-null.
-    unsafe fn insert_before(&mut self, element_a: NonNull<Link>, element_b: NonNull<Link>) {
-        let prev = (*element_b.as_ptr()).get_prev();
-
-        (*element_a.as_ptr()).set_next(Some(element_b));
-        (*element_a.as_ptr()).set_prev(prev);
-
-        (*element_b.as_ptr()).set_prev(Some(element_a));
-
-        match prev {
-            // Element is at the head of the list
-            None => self.head = Some(element_a),
-
-            // Element has elements before it in the list.
-            Some(prev_ptr) => (*prev_ptr.as_ptr()).set_next(Some(element_a)),
-        }
-    }
-
     /// unlinks element from the linked list.
     ///
     /// # Safety
@@ -283,7 +241,7 @@ impl<T, A: Adapter> UnsafeList<T, A> {
     /// members.
     /// It is up to the caller to ensure the element is in the list
     /// It is up to the caller to ensure the element is non-null.
-    pub unsafe fn unlink_element_unchecked(&mut self, element: *mut T) {
+    pub unsafe fn unlink_element(&mut self, element: *mut T) {
         let element = NonNull::new_unchecked(element);
         let link_ptr = Self::get_link_ptr(element);
 
@@ -306,18 +264,8 @@ impl<T, A: Adapter> UnsafeList<T, A> {
             Some(next_ptr) => (*next_ptr.as_ptr()).set_prev(prev),
         }
 
-        (*link_ptr.as_ptr()).set_unlinked();
-    }
-
-    /// # Safety
-    /// Call ensures the element is a valid point to an instance of T.
-    pub unsafe fn unlink_element(&mut self, element: NonNull<T>) -> Option<NonNull<T>> {
-        if (*Self::get_link_ptr(element).as_ptr()).is_linked() {
-            self.unlink_element_unchecked(element.as_ptr());
-            Some(element)
-        } else {
-            None
-        }
+        (*link_ptr.as_ptr()).set_next(None);
+        (*link_ptr.as_ptr()).set_prev(None);
     }
 
     /// # Safety
@@ -367,7 +315,7 @@ impl<T, A: Adapter> UnsafeList<T, A> {
             let next = (*cur_ptr.as_ptr()).get_next();
 
             if !callback(&mut *element) {
-                self.unlink_element_unchecked(element);
+                self.unlink_element(element);
             }
 
             cur = next;
@@ -387,44 +335,8 @@ impl<T, A: Adapter> UnsafeList<T, A> {
 
         let element = Self::get_element_mut(cur);
 
-        self.unlink_element_unchecked(element);
+        self.unlink_element(element);
         Some(element)
-    }
-}
-
-impl<T: Ord, A: Adapter> UnsafeList<T, A> {
-    /// unchecked means:
-    /// * we don't `assert!((*element_ptr.as_ptr()).is_unlinked());`
-    /// * we don't check that `element` is non-null.
-    ///
-    /// # Safety
-    /// It is up to the caller to ensure exclusive access to the list and its
-    /// members.
-    /// It is up to the caller to ensure the element is not in a list.
-    /// It is up to the caller to ensure the element is non-null.
-    pub unsafe fn sorted_insert_unchecked(&mut self, element: *mut T) {
-        let element = NonNull::new_unchecked(element);
-        let link_ptr = Self::get_link_ptr(element);
-
-        let mut cur = self.head;
-
-        loop {
-            let Some(cur_link_ptr) = cur else {
-                break;
-            };
-
-            let cur_element_ptr = Self::get_element_ptr(cur_link_ptr);
-            if *element.as_ptr() <= *cur_element_ptr {
-                self.insert_before(link_ptr, cur_link_ptr);
-                return;
-            }
-
-            cur = (*cur_link_ptr.as_ptr()).get_next();
-        }
-
-        // Either the list is empty or all elements are less than `element`.
-        // In both cases pushing the element to the back is appropriate.
-        self.push_back_unchecked(element.as_ptr());
     }
 }
 
