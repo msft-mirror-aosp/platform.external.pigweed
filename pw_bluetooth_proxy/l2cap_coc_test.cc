@@ -1554,9 +1554,7 @@ TEST_F(L2capCocQueueTest, H4BufferReleaseTriggersQueueDrain) {
 
   struct {
     size_t sends_called = 0;
-    // TODO: https://pwbug.dev/403330161 - Switch back to pw Vector once
-    // its use-of-uninitialized-value is fixed.
-    std::vector<H4PacketWithH4> packet_store;
+    Vector<H4PacketWithH4, kNumSends> packet_store;
   } capture;
   pw::Function<void(H4PacketWithHci && packet)>&& send_to_host_fn(
       []([[maybe_unused]] H4PacketWithHci&& packet) {});

@@ -22,17 +22,6 @@ from pw_presubmit.format.private.cli import FormattingSuite
 from pw_presubmit.format.python import BlackFormatter
 
 
-try:
-    # pylint: disable=unused-import
-    import python.runfiles  # type: ignore
-
-    # pylint: enable=unused-import
-
-    _FORMAT_FIX_COMMAND = 'bazel run @pigweed//pw_presubmit/py:format --'
-except ImportError:
-    _FORMAT_FIX_COMMAND = 'python -m pigweed_format'
-
-
 def _pigweed_formatting_suite() -> FormattingSuite:
     runfiles = RunfilesManager()
     # GN
@@ -64,10 +53,7 @@ def _pigweed_formatting_suite() -> FormattingSuite:
             tool_runner=runfiles,
         ),
     ]
-    return FormattingSuite(
-        pigweed_formatters,
-        formatter_fix_command=_FORMAT_FIX_COMMAND,
-    )
+    return FormattingSuite(pigweed_formatters)
 
 
 if __name__ == '__main__':

@@ -197,7 +197,8 @@ def all_package_files(env_vars, package_files):
                 ]
 
             if entries:
-                yield from flatten_package_files(entries)
+                for entry in flatten_package_files(entries):
+                    yield entry
 
     return list(flatten_package_files(to_process))
 

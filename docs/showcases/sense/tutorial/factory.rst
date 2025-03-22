@@ -28,19 +28,8 @@ Flash the factory app to your Pico
       .. tab-item:: VS Code
          :sync: vsc
 
-         .. tab-set::
-
-            .. tab-item:: Pico 1 & 1W (RP2040)
-
-               In **Bazel Build Targets** expand **//apps/factory**, then
-               right-click **:flash (native_binary)**, then select **Run
-               target**.
-
-            .. tab-item:: Pico 2 & 2W (RP2350)
-
-               In **Bazel Build Targets** expand **//apps/factory**, then
-               right-click **:flash_rp2350 (native_binary)**, then select **Run
-               target**.
+         In **Bazel Build Targets** expand **//apps/factory**, then right-click
+         **:flash (native_binary)**, then select **Run target**.
 
       .. tab-item:: CLI
          :sync: cli

@@ -54,7 +54,8 @@ def list_boards_command(unused_args, builder):
     # TODO(tonymd): Print this sorted with auto-ljust columns
     longest_name_length = 0
     for board_name, board_dict in builder.board.items():
-        longest_name_length = max(longest_name_length, len(board_name))
+        if len(board_name) > longest_name_length:
+            longest_name_length = len(board_name)
     longest_name_length += 2
 
     print("Board Name".ljust(longest_name_length), "Description")

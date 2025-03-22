@@ -1,4 +1,4 @@
-# Copyright 2025 The Pigweed Authors
+# Copyright 2024 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -12,28 +12,10 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("//pw_build:compatibility.bzl", "boolean_constraint_value")
+"""Private helper function for bzlmod compatibility."""
 
-package(default_visibility = ["//visibility:public"])
+visibility(["//pw_toolchain/host_clang/..."])
 
-licenses(["notice"])
-
-# A list of the RISC-V processor extensions known to the pigweed
-# toolchains. These can be used in the platform to define the
-# capabilities of the architecture.
-
-boolean_constraint_value(
-    name = "A",
-)
-
-boolean_constraint_value(
-    name = "C",
-)
-
-boolean_constraint_value(
-    name = "I",
-)
-
-boolean_constraint_value(
-    name = "M",
-)
+# TODO: https://pwbug.dev/346388161 - Remove this once we migrate to rules_cc.
+LINUX_SYSROOT = "external/" + Label("@linux_sysroot").repo_name
+LLVM_TOOLCHAIN = "external/" + Label("@llvm_toolchain_macos").repo_name

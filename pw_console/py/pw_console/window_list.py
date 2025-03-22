@@ -393,8 +393,7 @@ class WindowList:
                 width=lambda: self.width,
             )
 
-        else:
-            # Tabbed mode
+        elif self.display_mode == DisplayMode.TABBED:
             content_split = WindowListHSplit(
                 self,
                 [

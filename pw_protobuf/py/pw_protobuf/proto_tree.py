@@ -320,7 +320,8 @@ class ProtoNode(abc.ABC):
         """Iterates depth-first through all nodes in this node's subtree."""
         yield self
         for child_iterator in self._children.values():
-            yield from child_iterator
+            for child in child_iterator:
+                yield child
 
     def _attr_hierarchy(
         self,

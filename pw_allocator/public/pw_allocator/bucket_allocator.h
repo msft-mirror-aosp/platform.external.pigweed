@@ -20,6 +20,7 @@
 #include "pw_allocator/block/detailed_block.h"
 #include "pw_allocator/block_allocator.h"
 #include "pw_allocator/bucket/unordered.h"
+#include "pw_assert/check.h"
 #include "pw_status/try.h"
 
 namespace pw::allocator {

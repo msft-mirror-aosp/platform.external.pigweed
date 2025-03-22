@@ -32,20 +32,10 @@ impl super::ThreadState for ThreadState {
         _old_thread_state: *mut ThreadState,
         _new_thread_state: *mut ThreadState,
     ) -> SpinLockGuard<'_, SchedulerState> {
-        pw_assert::panic!("unimplemented");
+        panic!("unimplemented");
     }
     fn initialize_frame(&mut self, _stack: Stack, _initial_function: fn(usize), _arg0: usize) {
-        pw_assert::panic!("unimplemented");
-    }
-}
-
-pub struct Clock;
-
-impl time::Clock for Clock {
-    const TICKS_PER_SEC: u64 = 1_000_000;
-
-    fn now() -> time::Instant<Self> {
-        time::Instant::from_ticks(0)
+        panic!("unimplemented");
     }
 }
 
@@ -54,7 +44,6 @@ pub struct Arch {}
 impl ArchInterface for Arch {
     type ThreadState = ThreadState;
     type BareSpinLock = spinlock::BareSpinLock;
-    type Clock = Clock;
 
     fn early_init() {
         info!("HOST arch early init");

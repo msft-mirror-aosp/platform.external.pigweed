@@ -60,7 +60,8 @@ def _longest_line_length(text):
     """Return the longest line in the given text."""
     max_line_length = 0
     for line in text.splitlines():
-        max_line_length = max(max_line_length, len(line))
+        if len(line) > max_line_length:
+            max_line_length = len(line)
     return max_line_length
 
 
@@ -274,12 +275,9 @@ class HelpWindow(ConditionalContainer):
         return min(desired_width, window_manager_width)
 
     def load_user_guide(self):
-        rstdoc_text = (
-            importlib.resources.files(f'{_PW_CONSOLE_MODULE}.docs')
-            .joinpath('user_guide.rst')
-            .read_text()
+        rstdoc_text = importlib.resources.read_text(
+            f'{_PW_CONSOLE_MODULE}.docs', 'user_guide.rst'
         )
-
         max_line_length = 0
         rst_text = ''
         for line in rstdoc_text.splitlines():
@@ -367,9 +365,8 @@ class HelpWindow(ConditionalContainer):
             description = description.replace('\n', ' ')
 
             # Save the length of the description.
-            self.max_description_width = max(
-                self.max_description_width, len(description)
-            )
+            if len(description) > self.max_description_width:
+                self.max_description_width = len(description)
 
             # Get the existing list of keys for this function or make a new one.
             key_list = self.help_text_sections[section_name].get(
@@ -389,9 +386,8 @@ class HelpWindow(ConditionalContainer):
 
             key_list_width = len(', '.join(key_list))
             # Save the length of the key list.
-            self.max_key_list_width = max(
-                self.max_key_list_width, key_list_width
-            )
+            if key_list_width > self.max_key_list_width:
+                self.max_key_list_width = key_list_width
 
             # Update this functions key_list
             self.help_text_sections[section_name][description] = key_list

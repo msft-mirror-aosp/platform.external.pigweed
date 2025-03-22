@@ -189,11 +189,13 @@ class ConsoleApp:
         local_vars = local_vars or global_vars
 
         jinja_templates = {
-            resource.name: resource.read_text()
-            for resource in importlib.resources.files(
+            t: importlib.resources.read_text(
+                f'{PW_CONSOLE_MODULE}.templates', t
+            )
+            for t in importlib.resources.contents(
                 f'{PW_CONSOLE_MODULE}.templates'
-            ).iterdir()
-            if resource.is_file() and resource.name.endswith('.jinja')
+            )
+            if t.endswith('.jinja')
         }
 
         # Setup the Jinja environment
@@ -640,12 +642,9 @@ class ConsoleApp:
 
         html_package_path = f'{PW_CONSOLE_MODULE}.html'
         self.html_files = {
-            '/{}'.format(resource.name): resource.read_text()
-            for resource in importlib.resources.files(
-                html_package_path
-            ).iterdir()
-            if resource.is_file()
-            and Path(resource.name).suffix in ['.css', '.html', '.js', '.json']
+            '/{}'.format(t): importlib.resources.read_text(html_package_path, t)
+            for t in importlib.resources.contents(html_package_path)
+            if Path(t).suffix in ['.css', '.html', '.js', '.json']
         }
 
         server_thread = Thread(

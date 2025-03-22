@@ -36,7 +36,7 @@ using pw::bluetooth::emboss::MakeLEExtendedAdvertisingReportDataView;
 
 ExtendedLowEnergyScanner::ExtendedLowEnergyScanner(
     LocalAddressDelegate* local_addr_delegate,
-    const AdvertisingPacketFilter::Config& packet_filter_config,
+    const PacketFilterConfig& packet_filter_config,
     Transport::WeakPtr transport,
     pw::async::Dispatcher& pw_dispatcher)
     : LowEnergyScanner(local_addr_delegate,
@@ -72,7 +72,7 @@ bool ExtendedLowEnergyScanner::StartScan(const ScanOptions& options,
 }
 
 CommandPacket ExtendedLowEnergyScanner::BuildSetScanParametersPacket(
-    const DeviceAddress& local_address, const ScanOptions& options) const {
+    const DeviceAddress& local_address, const ScanOptions& options) {
   // LESetExtendedScanParametersCommand contains a variable amount of data,
   // depending on how many bits are set within the scanning_phys parameter. As
   // such, we must first calculate the size of the variable data before
@@ -113,7 +113,7 @@ CommandPacket ExtendedLowEnergyScanner::BuildSetScanParametersPacket(
 }
 
 CommandPacket ExtendedLowEnergyScanner::BuildEnablePacket(
-    const ScanOptions& options, GenericEnableParam enable) const {
+    const ScanOptions& options, GenericEnableParam enable) {
   auto packet = CommandPacket::New<LESetExtendedScanEnableCommandWriter>(
       hci_spec::kLESetExtendedScanEnable);
   auto params = packet.view_t();
@@ -267,7 +267,7 @@ void ExtendedLowEnergyScanner::OnExtendedAdvertisingReportEvent(
           BufferView(report.data().BackingStorage().begin(), bytes_allowed);
       result.AppendData(truncated_data);
 
-      NotifyPeerFound(result);
+      delegate()->OnPeerFound(result);
       continue;
     }
 
@@ -294,12 +294,12 @@ void ExtendedLowEnergyScanner::OnExtendedAdvertisingReportEvent(
     }
 
     if (is_directed) {
-      NotifyDirectedAdvertisement(result);
+      delegate()->OnDirectedAdvertisement(result);
       continue;
     }
 
     if (IsActiveScanning() && is_scan_response) {
-      NotifyPeerFound(result);
+      delegate()->OnPeerFound(result);
       continue;
     }
 
@@ -311,7 +311,7 @@ void ExtendedLowEnergyScanner::OnExtendedAdvertisingReportEvent(
       continue;
     }
 
-    NotifyPeerFound(result);
+    delegate()->OnPeerFound(result);
   }
 }
 

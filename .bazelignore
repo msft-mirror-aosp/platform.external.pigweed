@@ -15,7 +15,6 @@
 .cipd
 .presubmit
 .environment
-.vscode
 environment
 node_modules
 out

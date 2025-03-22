@@ -82,17 +82,16 @@ LowEnergyScanner::PendingScanResult::PendingScanResult(
 
 LowEnergyScanner::LowEnergyScanner(
     LocalAddressDelegate* local_addr_delegate,
-    const AdvertisingPacketFilter::Config& packet_filter_config,
-    Transport::WeakPtr hci,
+    const PacketFilterConfig& packet_filter_config,
+    hci::Transport::WeakPtr hci,
     pw::async::Dispatcher& pw_dispatcher)
     : pw_dispatcher_(pw_dispatcher),
       scan_timeout_task_(pw_dispatcher_),
-      packet_filter_(packet_filter_config, hci->GetWeakPtr()),
+      packet_filter_config_(packet_filter_config),
       local_addr_delegate_(local_addr_delegate),
       hci_(std::move(hci)) {
   PW_DCHECK(local_addr_delegate_);
   PW_DCHECK(hci_.is_alive());
-
   hci_cmd_runner_ = std::make_unique<SequentialCommandRunner>(
       hci_->command_channel()->AsWeakPtr());
 
@@ -112,7 +111,7 @@ void LowEnergyScanner::AddPendingResult(LowEnergyScanResult&& scan_result) {
       [this, address = scan_result.address()] {
         std::unique_ptr<PendingScanResult> result =
             RemovePendingResult(address);
-        NotifyPeerFound(result->result());
+        delegate()->OnPeerFound(result->result());
       });
   pending_results_.emplace(scan_result.address(), std::move(pending));
 }
@@ -126,54 +125,6 @@ LowEnergyScanner::RemovePendingResult(const DeviceAddress& address) {
 
   node.mapped()->CancelTimeout();
   return std::move(node.mapped());
-}
-
-void LowEnergyScanner::SetPacketFilters(
-    uint16_t scan_id, const std::vector<DiscoveryFilter>& filters) {
-  packet_filter_.SetPacketFilters(scan_id, filters);
-
-  // If there are cached scan results, a scan is currently ongoing. If a scan
-  // session is joining in during an ongoing scan, the cached peers it receives
-  // will be based on the filters which were previously offloaded. We will have
-  // potentially kicked out peers that the new scan session may have been
-  // interested in.
-  if (packet_filter_.IsOffloadedFilteringEnabled()) {
-    cached_scan_results_.clear();
-  }
-}
-
-void LowEnergyScanner::UnsetPacketFilters(uint16_t scan_id) {
-  packet_filter_.UnsetPacketFilters(scan_id);
-}
-
-void LowEnergyScanner::NotifyCachedPeers(uint16_t scan_id) {
-  for (const LowEnergyScanResult& result : cached_scan_results_) {
-    AdvertisingData::ParseResult ad = AdvertisingData::FromBytes(result.data());
-    bool connectable = result.connectable();
-    int8_t rssi = result.rssi();
-
-    if (packet_filter_.Matches(scan_id, ad, connectable, rssi)) {
-      delegate()->OnPeerFound({scan_id}, result);
-    }
-  }
-}
-
-void LowEnergyScanner::NotifyPeerFound(const LowEnergyScanResult& result) {
-  bt_log(DEBUG,
-         "hci-le",
-         "peer found (address: %s, connectable: %d)",
-         bt_str(result.address()),
-         result.connectable());
-
-  cached_scan_results_.push_back(result);
-
-  AdvertisingData::ParseResult ad = AdvertisingData::FromBytes(result.data());
-  std::unordered_set<uint16_t> scan_ids =
-      packet_filter_.Matches(ad, result.connectable(), result.rssi());
-
-  if (!scan_ids.empty()) {
-    delegate()->OnPeerFound(scan_ids, result);
-  }
 }
 
 bool LowEnergyScanner::StartScan(const ScanOptions& options,
@@ -300,13 +251,12 @@ void LowEnergyScanner::StopScanInternal(bool stopped_by_user) {
   if (!stopped_by_user) {
     for (auto& result : pending_results_) {
       const std::unique_ptr<PendingScanResult>& pending = result.second;
-      NotifyPeerFound(pending->result());
+      delegate_->OnPeerFound(pending->result());
     }
   }
 
   // Either way clear all results from the previous scan period.
   pending_results_.clear();
-  cached_scan_results_.clear();
 
   PW_DCHECK(hci_cmd_runner_->IsReady());
 

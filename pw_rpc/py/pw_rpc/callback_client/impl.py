@@ -358,8 +358,6 @@ class _ClientStreamingMethodClient(_MethodClient):
         *,
         timeout_s: OptionalTimeout = UseDefault.VALUE,
     ) -> UnaryResponse:
-        # Instance of 'Uninferable_ClientStreamingCall' has no 'finish_and_wait'
-        # pylint: disable-next=no-member
         return self.invoke().finish_and_wait(requests, timeout_s=timeout_s)
 
 
@@ -410,9 +408,6 @@ class _BidirectionalStreamingMethodClient(_MethodClient):
         *,
         timeout_s: OptionalTimeout = UseDefault.VALUE,
     ) -> StreamResponse:
-        # Instance of 'Uninferable_BidirectionalStreamingCall' has no
-        # 'finish_and_wait' member
-        # pylint: disable-next=no-member
         return self.invoke().finish_and_wait(requests, timeout_s=timeout_s)
 
 

@@ -277,7 +277,6 @@ pw_cc_test(
         ":intrusive_list",
         ":vector",
         "//pw_span",
-        "//pw_unit_test:constexpr",
     ],
 )
 

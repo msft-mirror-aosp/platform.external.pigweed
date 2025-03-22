@@ -53,8 +53,7 @@ impl super::super::ThreadState for ArchThreadState {
         old_thread_state: *mut ArchThreadState,
         new_thread_state: *mut ArchThreadState,
     ) -> SpinLockGuard<'a, SchedulerState> {
-        pw_assert::assert!(new_thread_state == sched_state.get_current_arch_thread_state());
-        // TODO - konkers: Allow $expr to be tokenized.
+        assert!(new_thread_state == sched_state.get_current_arch_thread_state());
 
         // info!(
         //     "context switch from thread {:#08x} to thread {:#08x}",
@@ -92,7 +91,7 @@ impl super::super::ThreadState for ArchThreadState {
             sched_state = SCHEDULER_STATE.lock();
         } else {
             // in interrupt context the pendsv should have already triggered it
-            pw_assert::assert!(SCB::is_pendsv_pending());
+            assert!(SCB::is_pendsv_pending());
         }
         sched_state
     }
@@ -129,7 +128,7 @@ fn trampoline(initial_function: fn(usize), arg0: usize) {
     //     initial_function as usize, arg0
     // );
 
-    pw_assert::assert!(Arch::interrupts_enabled());
+    assert!(Arch::interrupts_enabled());
 
     // Call the actual initial function of the thread.
     initial_function(arg0);
@@ -155,8 +154,8 @@ unsafe fn pendsv_swap_sp(frame: *mut FullExceptionFrame) -> *mut FullExceptionFr
     // in the middle of an atomic sequence.
     asm!("clrex");
 
-    pw_assert::assert!(in_interrupt_handler());
-    pw_assert::assert!(!Arch::interrupts_enabled());
+    assert!(in_interrupt_handler());
+    assert!(!Arch::interrupts_enabled());
 
     // Save the incoming frame to the current active thread's arch state, that will function
     // as the context switch frame for when it is returned to later. Clear active thread
@@ -165,7 +164,7 @@ unsafe fn pendsv_swap_sp(frame: *mut FullExceptionFrame) -> *mut FullExceptionFr
     // info!("inside pendsv: currently active thread {:08x}", at as usize);
     // info!("old frame {:08x}: pc {:08x}", frame as usize, (*frame).pc);
 
-    pw_assert::assert!(at != core::ptr::null_mut());
+    assert!(at != core::ptr::null_mut());
 
     (*at).frame = frame;
     set_active_thread(core::ptr::null_mut());

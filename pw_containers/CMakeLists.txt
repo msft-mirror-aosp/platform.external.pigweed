@@ -267,7 +267,6 @@ pw_add_test(pw_containers.algorithm_test
     pw_containers.intrusive_list
     pw_containers.vector
     pw_span
-    pw_unit_test.constexpr
   GROUPS
     modules
     pw_containers

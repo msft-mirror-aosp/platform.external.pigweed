@@ -276,8 +276,7 @@ void Peer::LowEnergyData::SetBondData(const sm::PairingData& bond_data) {
 
 void Peer::LowEnergyData::ClearBondData() {
   PW_CHECK(bond_data_->has_value());
-  if (bond_data_->value().irk &&
-      peer_->address().type() == DeviceAddress::Type::kLERandom) {
+  if (bond_data_->value().irk) {
     peer_->set_identity_known(false);
   }
   bond_data_.Set(std::nullopt);
@@ -353,7 +352,7 @@ void Peer::BrEdrData::SetInquiryData(
       DeviceClass(view.class_of_device().BackingStorage().ReadUInt()),
       view.clock_offset().BackingStorage().ReadUInt(),
       view.page_scan_repetition_mode().Read(),
-      view.rssi().UncheckedRead());
+      view.rssi().Read());
 }
 
 void Peer::BrEdrData::SetInquiryData(
@@ -366,7 +365,7 @@ void Peer::BrEdrData::SetInquiryData(
       DeviceClass(view.class_of_device().BackingStorage().ReadUInt()),
       view.clock_offset().BackingStorage().ReadUInt(),
       view.page_scan_repetition_mode().Read(),
-      view.rssi().UncheckedRead(),
+      view.rssi().Read(),
       response_view);
 }
 
@@ -720,8 +719,7 @@ bool Peer::RegisterName(const std::string& name, Peer::NameSource source) {
 // Private methods below:
 
 bool Peer::SetRssiInternal(int8_t rssi) {
-  if (rssi != hci_spec::kRSSIInvalid && rssi >= hci_spec::kMinRssi &&
-      rssi <= hci_spec::kMaxRssi && rssi_ != rssi) {
+  if (rssi != hci_spec::kRSSIInvalid && rssi_ != rssi) {
     rssi_ = rssi;
     return true;
   }

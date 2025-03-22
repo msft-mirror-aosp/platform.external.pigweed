@@ -66,7 +66,6 @@ template <class ViewT>
 class CommandPacketT : public CommandPacket {
  public:
   ViewT view_t() { return view<ViewT>(); }
-  ViewT view_t(size_t size) { return view<ViewT>(size); }
 
  private:
   friend class CommandPacket;

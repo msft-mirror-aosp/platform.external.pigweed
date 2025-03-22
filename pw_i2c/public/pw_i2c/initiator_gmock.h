@@ -30,12 +30,6 @@ class GmockInitiator : public Initiator {
                ByteSpan rx_buffer,
                chrono::SystemClock::duration timeout),
               (override));
-
-  MOCK_METHOD(Status,
-              DoTransferFor,
-              (span<const Message> messages,
-               chrono::SystemClock::duration timeout),
-              (override));
 };
 
 }  // namespace pw::i2c

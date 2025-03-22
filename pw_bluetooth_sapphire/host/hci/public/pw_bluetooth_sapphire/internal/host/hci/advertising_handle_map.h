@@ -13,8 +13,6 @@
 // the License.
 
 #pragma once
-
-#include "pw_bluetooth_sapphire/internal/host/common/bidirectional_map.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/protocol.h"
 
 namespace bt::hci {
@@ -34,8 +32,8 @@ namespace bt::hci {
 // also able to discover this type of advertising packet. Conversely, extended
 // advertising PDUs are a newer format that offers a number of improvements,
 // including the ability to advertise larger amounts of data. However, devices
-// not specifically scanning for them, or who are running on an older version of
-// Bluetooth (pre-5.0), won't be able to see them.
+// not specifically scanning for them or who are running on an older version of
+// Bluetooth (pre-5.0) won't be able to see them.
 //
 // When advertising using extended advertising PDUs, users often choose to emit
 // legacy advertising PDUs as well in order to maintain backwards compatibility
@@ -45,7 +43,7 @@ namespace bt::hci {
 // extended advertising PDUs. Along with DeviceAddress, AdvertisingHandleMap
 // tracks whether the mapping is for an extended PDU or a legacy PDU.
 //
-// NOTE: Users shouldn't rely on any particular ordering of the next available
+// Users shouldn't rely on any particular ordering of the next available
 // mapping. Any available AdvertisingHandle may be used.
 class AdvertisingHandleMap {
  public:
@@ -67,9 +65,7 @@ class AdvertisingHandleMap {
   // there is no AdvertisingHandle currently mapping to the provided device
   // address.
   std::optional<hci_spec::AdvertisingHandle> GetHandle(
-      const DeviceAddress& address, bool extended_pdu) const {
-    return map_.get({address, extended_pdu});
-  }
+      const DeviceAddress& address, bool extended_pdu) const;
 
   // Convert an AdvertisingHandle to a DeviceAddress. The conversion may fail if
   // there is no DeviceAddress currently mapping to the provided handle.
@@ -85,7 +81,7 @@ class AdvertisingHandleMap {
   //
   // If the given handle doesn't map to any (DeviceAddress, bool) tuple, this
   // function does nothing.
-  void RemoveHandle(hci_spec::AdvertisingHandle handle) { map_.erase(handle); }
+  void RemoveHandle(hci_spec::AdvertisingHandle handle);
 
   // Remove the mapping between a DeviceAddress and the AdvertisingHandle it
   // maps to. The container may reuse the AdvertisingHandle for other
@@ -96,9 +92,7 @@ class AdvertisingHandleMap {
   //
   // If the given (DeviceAddress, bool) tuple doesn't map to any
   // AdvertisingHandle, this function does nothing.
-  void RemoveAddress(const DeviceAddress& address, bool extended_pdu) {
-    map_.erase({address, extended_pdu});
-  }
+  void RemoveAddress(const DeviceAddress& address, bool extended_pdu);
 
   // Get the maximum number of mappings the AdvertisingHandleMap will support.
   uint8_t capacity() const { return capacity_; }
@@ -110,13 +104,13 @@ class AdvertisingHandleMap {
   std::optional<hci_spec::AdvertisingHandle> LastUsedHandleForTesting() const;
 
   // Get the number of unique mappings in the container
-  std::size_t Size() const { return map_.size(); }
+  std::size_t Size() const;
 
   // Return true if the container has no mappings, false otherwise
-  bool Empty() const { return map_.empty(); }
+  bool Empty() const;
 
   // Remove all mappings in the container
-  void Clear() { return map_.clear(); }
+  void Clear();
 
  private:
   // Although not in the range of valid advertising handles (0x00 to 0xEF),
@@ -138,7 +132,7 @@ class AdvertisingHandleMap {
   std::optional<hci_spec::AdvertisingHandle> NextHandle();
 
   // The last generated advertising handle used as a hint to generate the next
-  // handle.
+  // handle; defaults to kStartHandle if no handles have been generated yet.
   hci_spec::AdvertisingHandle last_handle_ = kStartHandle;
 
   struct TupleKeyHasher {
@@ -150,11 +144,14 @@ class AdvertisingHandleMap {
     }
   };
 
-  BidirectionalMap<hci_spec::AdvertisingHandle,
-                   std::tuple<DeviceAddress, bool>,
-                   std::hash<hci_spec::AdvertisingHandle>,
-                   TupleKeyHasher>
-      map_;
+  std::unordered_map<std::tuple<DeviceAddress, bool>,
+                     hci_spec::AdvertisingHandle,
+                     TupleKeyHasher>
+      addr_to_handle_;
+
+  std::unordered_map<hci_spec::AdvertisingHandle,
+                     std::tuple<DeviceAddress, bool>>
+      handle_to_addr_;
 };
 
 }  // namespace bt::hci

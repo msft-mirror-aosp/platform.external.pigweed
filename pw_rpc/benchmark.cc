@@ -19,10 +19,23 @@
 #include "pw_rpc/internal/config.h"
 
 namespace pw::rpc {
+namespace {
+
+StatusWithSize CopyBuffer(ConstByteSpan input, ByteSpan output) {
+  if (input.size() > output.size()) {
+    return pw::StatusWithSize::ResourceExhausted();
+  }
+  std::copy(input.begin(), input.end(), output.begin());
+  return pw::StatusWithSize(input.size());
+}
+
+}  // namespace
 
 void BenchmarkService::UnaryEcho(ConstByteSpan request,
                                  RawUnaryResponder& responder) {
-  responder.Finish(span(request).first(request.size()), PW_STATUS_OK)
+  std::byte response[32];
+  StatusWithSize result = CopyBuffer(request, response);
+  responder.Finish(span(response).first(result.size()), result.status())
       .IgnoreError();
 }
 

@@ -1241,7 +1241,7 @@ def _read_notice_lines(file: TextIO) -> Iterable[str]:
         for _ in range(12):  # The notice is 13 lines; read the remaining 12.
             yield next(lines)
     except StopIteration:
-        pass
+        return
 
 
 @filter_paths(exclude=_EXCLUDE_FROM_COPYRIGHT_NOTICE)
@@ -1581,6 +1581,8 @@ INCLUDE_CHECK_EXCEPTIONS = (
     "//pw_interrupt_cortex_m:context",
     "//pw_log_fuchsia:pw_log_fuchsia",
     "//pw_log_null:headers",
+    "//pw_log_tokenized:gcc_partially_tokenized",
+    "//pw_log_tokenized:pw_log_tokenized",
     "//pw_metric:metric_service_pwpb",
     "//pw_multibuf:internal_test_utils",
     "//pw_perf_test:arm_cortex_timer",

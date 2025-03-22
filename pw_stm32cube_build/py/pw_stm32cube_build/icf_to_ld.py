@@ -129,7 +129,6 @@ def create_ld(ld_regions: dict, blocks: dict) -> str:
     Raises:
         KeyError if ld_regions does not contain 'RAM' and 'FLASH'
     """
-    # pylint: disable=line-too-long
     return f"""\
 ENTRY(Reset_Handler)
 _estack = ORIGIN(RAM) + LENGTH(RAM);
@@ -275,7 +274,6 @@ SECTIONS
   .ARM.attributes 0 : {{ *(.ARM.attributes) }}
 }}
     """
-    # pylint: enable=line-too-long
 
 
 def icf_to_ld(icf_path: pathlib.Path, ld_path: pathlib.Path | None):

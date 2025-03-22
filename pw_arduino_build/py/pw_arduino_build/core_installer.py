@@ -238,7 +238,6 @@ def install_teensy_core(_install_prefix: str, install_dir: str, cache_dir: str):
 
 
 def apply_teensy_patches(install_dir):
-    """Apply patch files to the Teensy Arduino core."""
     # On Mac the "hardware" directory is a symlink:
     #   ls -l third_party/arduino/cores/teensy/
     #   hardware -> Teensyduino.app/Contents/Java/hardware
@@ -252,19 +251,15 @@ def apply_teensy_patches(install_dir):
     patches_python_package = 'pw_arduino_build.core_patches.teensy'
 
     patch_file_names = sorted(
-        resource.name
-        for resource in importlib.resources.files(
-            patches_python_package
-        ).iterdir()
-        if resource.is_file() and Path(resource.name).suffix in ['.diff']
+        patch
+        for patch in importlib.resources.contents(patches_python_package)
+        if Path(patch).suffix in ['.diff']
     )
 
     # Apply each patch file.
     for diff_name in patch_file_names:
-        with importlib.resources.as_file(
-            importlib.resources.files(patches_python_package).joinpath(
-                diff_name
-            )
+        with importlib.resources.path(
+            patches_python_package, diff_name
         ) as diff_path:
             file_operations.git_apply_patch(
                 patch_root_path.as_posix(),

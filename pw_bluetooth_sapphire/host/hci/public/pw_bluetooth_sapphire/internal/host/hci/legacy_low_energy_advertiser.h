@@ -65,7 +65,7 @@ class LegacyLowEnergyAdvertiser final : public LowEnergyAdvertiser {
   CommandPacket BuildEnablePacket(
       const DeviceAddress& address,
       pw::bluetooth::emboss::GenericEnableParam enable,
-      bool extended_pdu) const override;
+      bool extended_pdu) override;
 
   std::optional<CommandPacket> BuildSetAdvertisingParams(
       const DeviceAddress& address,
@@ -78,21 +78,21 @@ class LegacyLowEnergyAdvertiser final : public LowEnergyAdvertiser {
       const DeviceAddress& address,
       const AdvertisingData& data,
       AdvFlags flags,
-      bool extended_pdu) const override;
+      bool extended_pdu) override;
 
   CommandPacket BuildUnsetAdvertisingData(const DeviceAddress& address,
-                                          bool extended_pdu) const override;
+                                          bool extended_pdu) override;
 
   std::vector<CommandPacket> BuildSetScanResponse(
       const DeviceAddress& address,
       const AdvertisingData& scan_rsp,
-      bool extended_pdu) const override;
+      bool extended_pdu) override;
 
   CommandPacket BuildUnsetScanResponse(const DeviceAddress& address,
-                                       bool extended_pdu) const override;
+                                       bool extended_pdu) override;
 
   CommandPacket BuildRemoveAdvertisingSet(const DeviceAddress& address,
-                                          bool extended_pdu) const override;
+                                          bool extended_pdu) override;
 
   // |starting_| is set to true if a start is pending.
   // |staged_params_| are the parameters that will be advertised.

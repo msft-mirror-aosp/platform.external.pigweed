@@ -86,7 +86,7 @@ class AndroidExtendedLowEnergyAdvertiser final : public LowEnergyAdvertiser {
   CommandPacket BuildEnablePacket(
       const DeviceAddress& address,
       pw::bluetooth::emboss::GenericEnableParam enable,
-      bool extended_pdu) const override;
+      bool extended_pdu) override;
 
   std::optional<CommandPacket> BuildSetAdvertisingParams(
       const DeviceAddress& address,
@@ -99,21 +99,20 @@ class AndroidExtendedLowEnergyAdvertiser final : public LowEnergyAdvertiser {
       const DeviceAddress& address,
       const AdvertisingData& data,
       AdvFlags flags,
-      bool extended_pdu) const override;
+      bool extended_pdu) override;
 
   CommandPacket BuildUnsetAdvertisingData(const DeviceAddress& address,
-                                          bool extended_pdu) const override;
+                                          bool extended_pdu) override;
 
-  std::vector<CommandPacket> BuildSetScanResponse(
-      const DeviceAddress& address,
-      const AdvertisingData& data,
-      bool extended_pdu) const override;
+  std::vector<CommandPacket> BuildSetScanResponse(const DeviceAddress& address,
+                                                  const AdvertisingData& data,
+                                                  bool extended_pdu) override;
 
   CommandPacket BuildUnsetScanResponse(const DeviceAddress& address,
-                                       bool extended_pdu) const override;
+                                       bool extended_pdu) override;
 
   CommandPacket BuildRemoveAdvertisingSet(const DeviceAddress& address,
-                                          bool extended_pdu) const override;
+                                          bool extended_pdu) override;
 
   void OnCurrentOperationComplete() override;
 

@@ -77,7 +77,6 @@ pub trait BareSpinLock {
 pub trait ArchInterface {
     type ThreadState: ThreadState;
     type BareSpinLock: BareSpinLock;
-    type Clock: time::Clock;
 
     fn early_init() {}
     fn init() {}
