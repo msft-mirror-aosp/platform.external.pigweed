@@ -32,10 +32,11 @@ from typing import (
     TextIO,
 )
 
-from pw_cli import color, find_config
+from pw_cli import color
 from pw_cli.collect_files import add_file_collection_arguments
 from pw_cli.diff import colorize_diff
 from pw_cli.plural import plural
+from pw_config_loader import find_config
 from pw_presubmit.format.core import (
     FileFormatter,
     FormatFixStatus,
@@ -88,6 +89,7 @@ def summarize_findings(
     log_fix_command: bool,
     log_oneliner_summary: bool,
     file: TextIO = sys.stdout,
+    formatter_fix_command: str = 'pw format --fix',
 ) -> None:
     """Prints a summary of a format check's findings."""
     if not findings:
@@ -124,8 +126,6 @@ def summarize_findings(
         file.write(diff)
 
     if log_fix_command:
-        # TODO: https://pwbug.dev/326309165 - Add a Bazel-specific command.
-        format_command = "pw format --fix"
 
         def path_relative_to_cwd(path: Path):
             try:
@@ -134,7 +134,7 @@ def summarize_findings(
                 return Path(path).resolve()
 
         paths = " ".join([str(path_relative_to_cwd(p)) for p in paths_to_fix])
-        message = f'  {format_command} {paths}'
+        message = f'  {formatter_fix_command} {paths}'
         _LOG.warning('To fix formatting, run:\n\n%s\n', message)
 
 

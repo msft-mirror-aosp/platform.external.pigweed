@@ -13,9 +13,8 @@
 // the License.
 
 import * as vscode from 'vscode';
-
 import { ClangdActiveFilesCache } from './activeFilesCache';
-import { clangdPath } from './bazel';
+import { clangdPath as bazelClangdPath } from './bazel';
 import { availableTargets, getTarget, baseSetTarget, Target } from './paths';
 
 import { didChangeClangdConfig, didChangeTarget } from '../events';
@@ -24,6 +23,14 @@ import { launchTroubleshootingLink } from '../links';
 import logger from '../logging';
 import { RefreshManager } from '../refreshManager';
 import { settingFor, settings, stringSettingFor } from '../settings/vscode';
+import { processCompDbs } from './parser';
+import {
+  getTargetType,
+  loadProcessedMapping,
+  ProcessedTargetMapping,
+  saveProcessedMapping,
+} from './processedMapping';
+import { saveUnprocessedMapping } from './unprocessedMapping';
 
 export async function setTargetWithClangd(
   target: Target | undefined,
@@ -36,6 +43,37 @@ export async function setTargetWithClangd(
     throw new Error(`Target not among available targets: ${target}`);
   }
 
+  const targetType = await getTargetType(target.name);
+  let clangdPath: string;
+
+  if (targetType === 'bazel') {
+    const clangdPathForBazel = bazelClangdPath();
+
+    if (!clangdPathForBazel) {
+      vscode.window.showErrorMessage(
+        'A Bazel target was selected, but a clangd binary could not be found ' +
+          'among the Bazel binaries.',
+      );
+
+      return;
+    }
+
+    clangdPath = clangdPathForBazel;
+  } else {
+    const clangdPathForBootstrap = settings.clangdAlternatePath();
+
+    if (!clangdPathForBootstrap) {
+      vscode.window.showErrorMessage(
+        'Set this config value to the path to clangd: ' +
+          'pigweed.clangdAlternatePath',
+      );
+
+      return;
+    }
+
+    clangdPath = clangdPathForBootstrap;
+  }
+
   await baseSetTarget(target);
   didChangeTarget.fire(target.name);
 
@@ -44,19 +82,18 @@ export async function setTargetWithClangd(
 
   // These updates all happen asynchronously, and we want to make sure they're
   // all done before we trigger a clangd restart.
-  Promise.all([
-    updatePath(clangdPath()),
+  await Promise.all([
+    updatePath(clangdPath),
     updateArgs([
-      `--compile-commands-dir=${target.path}`,
+      `--compile-commands-dir=${target.dir}`,
       '--query-driver=**',
       '--header-insertion=never',
       '--background-index',
     ]),
     settingsFileWriter(target.name),
-  ]).then(() =>
-    // Restart the clangd server so it picks up the new setting.
-    vscode.commands.executeCommand('clangd.restart'),
-  );
+  ]);
+  // Restart the clangd server so it picks up the new setting.
+  vscode.commands.executeCommand('clangd.restart');
 }
 
 /** Show a checkmark next to the item if it's the current setting. */
@@ -70,11 +107,11 @@ export async function setCompileCommandsTarget(
   const currentTarget = getTarget();
   const targets = await availableTargets();
   const targetNameMap = Object.fromEntries(
-    targets.map((target) => [target.name, target]),
+    targets.map((target) => [target.displayName, target]),
   );
 
   const targetEntries = targets.map((target) => ({
-    label: target.name,
+    label: target.displayName,
     iconPath: markIfActive(target === currentTarget),
   }));
 
@@ -108,13 +145,31 @@ export async function setCompileCommandsTarget(
     });
 }
 
-export const setCompileCommandsTargetOnSettingsChange =
-  (activeFilesCache: ClangdActiveFilesCache) =>
-  (e: vscode.ConfigurationChangeEvent) => {
-    if (e.affectsConfiguration('pigweed')) {
-      setTargetWithClangd(undefined, activeFilesCache.writeToSettings);
-    }
+export async function refreshNonBazelCompileCommands() {
+  const { processedCompDbs, unprocessedCompDbs } = await processCompDbs();
+
+  const currentProcessedMapping = await loadProcessedMapping();
+
+  const updatedProcessedMapping: ProcessedTargetMapping = Object.fromEntries(
+    processedCompDbs.map((targetName) => [targetName, 'bootstrap']),
+  );
+
+  const newProcessedMapping: ProcessedTargetMapping = {
+    ...currentProcessedMapping,
+    ...updatedProcessedMapping,
   };
+
+  const writePromises = [
+    processedCompDbs.writeAll(),
+    saveProcessedMapping(newProcessedMapping),
+  ];
+
+  if (unprocessedCompDbs.length > 0) {
+    writePromises.push(saveUnprocessedMapping(unprocessedCompDbs));
+  }
+
+  await Promise.all(writePromises);
+}
 
 export async function refreshCompileCommandsAndSetTarget(
   refresh: () => void,

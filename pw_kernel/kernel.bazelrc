@@ -13,7 +13,8 @@
 # the License.
 
 common:k_common --@rules_rust//rust/toolchain/channel=nightly
-common:k_common --@pigweed//pw_log/rust:pw_log_backend=//pw_kernel/subsys/console:pw_log_backend
+common:k_common --@pigweed//pw_toolchain:cortex-m_toolchain_kind=clang
+common:k_common --@pigweed//pw_log/rust:pw_log_backend=//pw_kernel/subsys/console:pw_log_backend_basic
 build:k_common --build_tag_filters=-do_not_build
 build:k_common -c opt
 test:k_common --test_tag_filters=-integration,-do_not_build,-do_not_run_test
@@ -37,7 +38,7 @@ common:k_host --config=k_common
 # QEMU mps2-an505 target configuration
 # =======================================
 common:k_qemu_mps2_an505 --config=k_common
-build:k_qemu_mps2_an505 --platforms=//pw_kernel/target/qemu:mps2-an505
+build:k_qemu_mps2_an505 --platforms=//pw_kernel/target/arm:mps2-an505
 run:k_qemu_mps2_an505 --run_under="@qemu//:qemu-system-arm \
   -cpu cortex-m33 \
   -machine mps2-an505 \
@@ -50,6 +51,25 @@ test:k_qemu_mps2_an505 --run_under="@qemu//:qemu-system-arm \
   -machine mps2-an505 \
   -nographic \
   -semihosting-config enable=on,target=native \
+  -serial mon:stdio \
+  -kernel "
+
+# QEMU virt riscv32 target configuration
+# =======================================
+common:k_qemu_virt_riscv32 --config=k_common
+build:k_qemu_virt_riscv32 --platforms=//pw_kernel/target/qemu_virt:riscv32imc
+run:k_qemu_virt_riscv32 --run_under="@qemu//:qemu-system-riscv32 \
+  -bios none \
+  -cpu rv32 \
+  -machine virt \
+  -nographic \
+  -serial mon:stdio \
+  -kernel "
+test:k_qemu_virt_riscv32 --run_under="@qemu//:qemu-system-riscv32 \
+  -bios none \
+  -cpu rv32 \
+  -machine virt \
+  -nographic \
   -serial mon:stdio \
   -kernel "
 

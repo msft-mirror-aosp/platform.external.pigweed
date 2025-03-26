@@ -67,7 +67,6 @@ def _argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         '--compile-dir',
         type=Path,
-        required=True,
         help='Root path for compilation',
     )
     parser.add_argument(
@@ -135,7 +134,6 @@ def protoc_pwpb_args(
     out_args = [
         '--plugin',
         f'protoc-gen-custom={args.plugin_path}',
-        f'--custom_opt=-I{args.compile_dir}',
         *[f'--custom_opt=-I{include_path}' for include_path in include_paths],
     ]
 
@@ -253,11 +251,13 @@ DEFAULT_PROTOC_ARGS: dict[str, _DefaultArgsFunction] = {
 BUILTIN_PROTOC_LANGS = ('go', 'python')
 
 
-def main() -> int:
+def main(input_args) -> int:
     """Runs protoc as configured by command-line arguments."""
-
     parser = _argument_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(input_args)
+
+    if args.language == 'nanopb' and args.compile_dir is None:
+        parser.error("--compile-dir is required when --language is nanopb.")
 
     if args.plugin_path is None and args.language not in BUILTIN_PROTOC_LANGS:
         parser.error(
@@ -267,6 +267,8 @@ def main() -> int:
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
     include_paths: list[str] = []
+    if args.compile_dir:
+        include_paths.append(args.compile_dir)
     if args.include_file:
         include_paths.extend(line.strip() for line in args.include_file)
     if args.proto_path:
@@ -291,7 +293,6 @@ def main() -> int:
 
     cmd: tuple[str | Path, ...] = (
         args.protoc,
-        f'-I{args.compile_dir}',
         *[f'-I{include_path}' for include_path in include_paths],
         *protoc_common_args(args),
         *DEFAULT_PROTOC_ARGS[args.language](args, include_paths),
@@ -319,4 +320,4 @@ def main() -> int:
 
 if __name__ == '__main__':
     setup_logging()
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

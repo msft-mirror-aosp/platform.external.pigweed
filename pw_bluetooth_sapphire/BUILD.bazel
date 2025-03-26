@@ -42,6 +42,7 @@ cc_library(
     name = "central",
     srcs = ["central.cc"],
     hdrs = ["public/pw_bluetooth_sapphire/central.h"],
+    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     tags = ["noclangtidy"],
     deps = [
@@ -63,6 +64,7 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/connection.h",
         "public/pw_bluetooth_sapphire/internal/connection_options.h",
     ],
+    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     tags = ["noclangtidy"],
     visibility = ["//visibility:private"],
@@ -78,12 +80,31 @@ cc_library(
     hdrs = [
         "public/pw_bluetooth_sapphire/internal/uuid.h",
     ],
+    features = ["-conversion_warnings"],
     strip_include_prefix = "public",
     visibility = ["//visibility:private"],
     deps = [
         "//pw_bluetooth:pw_bluetooth2",
         "//pw_bluetooth_sapphire/host/common",
         "//pw_span",
+    ],
+)
+
+cc_library(
+    name = "discovery_filter",
+    srcs = [
+        "discovery_filter.cc",
+    ],
+    hdrs = [
+        "public/pw_bluetooth_sapphire/internal/discovery_filter.h",
+    ],
+    features = ["-conversion_warnings"],
+    strip_include_prefix = "public",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":uuid",
+        "//pw_bluetooth:pw_bluetooth2",
+        "//pw_bluetooth_sapphire/host/hci",
     ],
 )
 
@@ -160,11 +181,12 @@ pw_cc_test(
 pw_cc_test(
     name = "central_test",
     srcs = ["central_test.cc"],
-    # TODO: https://pwbug.dev/393957973 - Fix this test.
-    tags = ["noubsan"],
+    features = ["-conversion_warnings"],
     test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [
         ":central",
+        ":discovery_filter",
+        ":uuid",
         "//pw_async:fake_dispatcher",
         "//pw_async2:pend_func_task",
         "//pw_bluetooth_sapphire/host/gap:testing",
@@ -176,6 +198,7 @@ cc_library(
     name = "peripheral",
     srcs = ["peripheral.cc"],
     hdrs = ["public/pw_bluetooth_sapphire/peripheral.h"],
+    features = ["-conversion_warnings"],
     includes = ["public"],
     tags = ["noclangtidy"],
     deps = [
@@ -188,8 +211,7 @@ cc_library(
 pw_cc_test(
     name = "peripheral_test",
     srcs = ["peripheral_test.cc"],
-    # TODO: https://pwbug.dev/393957973 - Fix this test.
-    tags = ["noubsan"],
+    features = ["-conversion_warnings"],
     test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [
         ":peripheral",
