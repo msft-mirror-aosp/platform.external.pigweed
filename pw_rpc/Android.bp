@@ -26,6 +26,7 @@ java_library {
     ],
     libs: [
         "auto_value_annotations",
+        "error_prone_annotations",
         "guava",
         "jsr305",
         "libprotobuf-java-lite",
@@ -239,7 +240,7 @@ genrule_defaults {
         "--out-dir=$(genDir) " +
         "--compile-dir=$${compile_dir} " +
         "--language nanopb " +
-        "--sources $${proto_files} " +
+        "--sources $${proto_files[@]} " +
         "--no-experimental-proto3-optional " +
         "--no-experimental-editions " +
         "--pwpb-no-oneof-callbacks " +
@@ -282,7 +283,7 @@ genrule_defaults {
         "--out-dir=$(genDir) " +
         "--compile-dir=$${compile_dir} " +
         "--language nanopb " +
-        "--sources $${proto_files} " +
+        "--sources $${proto_files[@]} " +
         "--no-experimental-proto3-optional " +
         "--no-experimental-editions " +
         "--pwpb-no-oneof-callbacks " +
@@ -351,7 +352,7 @@ genrule_defaults {
         "--out-dir=$(genDir) " +
         "--compile-dir=$${compile_dir} " +
         "--language nanopb_rpc " +
-        "--sources $${proto_files} " +
+        "--sources $${proto_files[@]} " +
         "--no-experimental-proto3-optional " +
         "--no-experimental-editions " +
         "--pwpb-no-oneof-callbacks " +
@@ -405,7 +406,7 @@ genrule_defaults {
         "--out-dir=$(genDir) " +
         "--compile-dir=$${compile_dir} " +
         "--language raw_rpc " +
-        "--sources $${proto_files} " +
+        "--sources $${proto_files[@]} " +
         "--no-experimental-proto3-optional " +
         "--no-experimental-editions " +
         "--pwpb-no-oneof-callbacks " +
@@ -459,7 +460,7 @@ genrule_defaults {
         "--out-dir=$(genDir) " +
         "--compile-dir=$${compile_dir} " +
         "--language pwpb " +
-        "--sources $${proto_files} " +
+        "--sources $${proto_files[@]} " +
         "--no-experimental-proto3-optional " +
         "--no-experimental-editions " +
         "--pwpb-no-oneof-callbacks " +
@@ -513,7 +514,7 @@ genrule_defaults {
         "--out-dir=$(genDir) " +
         "--compile-dir=$${compile_dir} " +
         "--language pwpb_rpc " +
-        "--sources $${proto_files} " +
+        "--sources $${proto_files[@]} " +
         "--no-experimental-proto3-optional " +
         "--no-experimental-editions " +
         "--pwpb-no-oneof-callbacks " +

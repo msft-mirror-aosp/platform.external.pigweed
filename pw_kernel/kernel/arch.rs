@@ -17,6 +17,11 @@ mod arm_cortex_m;
 #[cfg(feature = "arch_arm_cortex_m")]
 pub use arm_cortex_m::Arch;
 
+#[cfg(feature = "arch_riscv")]
+mod riscv;
+#[cfg(feature = "arch_riscv")]
+pub use riscv::Arch;
+
 #[cfg(feature = "arch_host")]
 mod host;
 #[cfg(feature = "arch_host")]
@@ -77,6 +82,7 @@ pub trait BareSpinLock {
 pub trait ArchInterface {
     type ThreadState: ThreadState;
     type BareSpinLock: BareSpinLock;
+    type Clock: time::Clock;
 
     fn early_init() {}
     fn init() {}

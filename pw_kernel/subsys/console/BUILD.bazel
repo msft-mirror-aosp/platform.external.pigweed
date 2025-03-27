@@ -37,17 +37,40 @@ rust_library(
 rust_library(
     name = "console_backend_semihosting",
     srcs = ["console_backend_semihosting.rs"],
+    crate_features = select({
+        "@pigweed//pw_build/constraints/arm:cortex-m0": ["arch_arm_cortex_m"],
+        "@pigweed//pw_build/constraints/arm:cortex-m3": ["arch_arm_cortex_m"],
+        "@pigweed//pw_build/constraints/arm:cortex-m33": ["arch_arm_cortex_m"],
+        "@platforms//cpu:riscv32": ["arch_riscv"],
+        "//conditions:default": [],
+    }),
     crate_name = "console_backend",
     target_compatible_with = select({
         "//pw_build/constraints/arm:cortex-m0": [],
         "//pw_build/constraints/arm:cortex-m3": [],
         "//pw_build/constraints/arm:cortex-m33": [],
+        "@platforms//cpu:riscv32": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
         "//pw_kernel/lib/pw_status",
-        "@rust_crates//:cortex-m-semihosting",
         "@rust_crates//:embedded-io",
+    ] + select({
+        "@pigweed//pw_build/constraints/arm:cortex-m0": ["@rust_crates//:cortex-m-semihosting"],
+        "@pigweed//pw_build/constraints/arm:cortex-m3": ["@rust_crates//:cortex-m-semihosting"],
+        "@pigweed//pw_build/constraints/arm:cortex-m33": ["@rust_crates//:cortex-m-semihosting"],
+        "@platforms//cpu:riscv32": ["@rust_crates//:riscv-semihosting"],
+        "//conditions:default": [],
+    }),
+)
+
+rust_library(
+    name = "colors",
+    srcs = ["colors.rs"],
+    crate_features = ["color"],
+    deps = [
+        "//pw_bytes/rust:pw_bytes",
+        "//pw_log/rust:pw_log_backend_api",
     ],
 )
 
@@ -58,9 +81,9 @@ label_flag(
 )
 
 rust_proc_macro(
-    name = "pw_log_backend_macro",
+    name = "pw_log_backend_basic_macro",
     srcs = [
-        "pw_log_backend_macro.rs",
+        "pw_log_backend_basic_macro.rs",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -74,17 +97,36 @@ rust_proc_macro(
 )
 
 rust_library(
-    name = "pw_log_backend",
+    name = "pw_log_backend_basic",
     srcs = [
-        "pw_log_backend.rs",
+        "pw_log_backend_basic.rs",
     ],
     crate_name = "pw_log_backend",
-    proc_macro_deps = [":pw_log_backend_macro"],
-    tags = ["manual"],
+    proc_macro_deps = [":pw_log_backend_basic_macro"],
     visibility = ["//visibility:public"],
     deps = [
+        ":colors",
         ":console",
-        "@pigweed//pw_log/rust:pw_log_backend_api",
+        "//pw_log/rust:pw_log_backend_api",
+        "@rust_crates//:embedded-io",
+    ],
+)
+
+rust_library(
+    name = "pw_log_backend_tokenized",
+    srcs = [
+        "pw_log_backend_tokenized.rs",
+    ],
+    crate_name = "pw_log_backend",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":colors",
+        ":console",
+        "//pw_base64/rust:pw_base64",
+        "//pw_log/rust:pw_log_backend_api",
+        "//pw_status/rust:pw_status",
+        "//pw_stream/rust:pw_stream",
+        "//pw_tokenizer/rust:pw_tokenizer",
         "@rust_crates//:embedded-io",
     ],
 )

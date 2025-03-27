@@ -19,7 +19,19 @@ from pw_build.runfiles_manager import RunfilesManager
 from pw_presubmit.format.bazel import BuildifierFormatter
 from pw_presubmit.format.cpp import ClangFormatFormatter
 from pw_presubmit.format.private.cli import FormattingSuite
+from pw_presubmit.format.owners import OwnersFormatter
 from pw_presubmit.format.python import BlackFormatter
+
+
+try:
+    # pylint: disable=unused-import
+    import python.runfiles  # type: ignore
+
+    # pylint: enable=unused-import
+
+    _FORMAT_FIX_COMMAND = 'bazel run @pigweed//pw_presubmit/py:format --'
+except ImportError:
+    _FORMAT_FIX_COMMAND = 'python -m pigweed_format'
 
 
 def _pigweed_formatting_suite() -> FormattingSuite:
@@ -52,8 +64,14 @@ def _pigweed_formatting_suite() -> FormattingSuite:
         ClangFormatFormatter(
             tool_runner=runfiles,
         ),
+        OwnersFormatter(
+            tool_runner=runfiles,
+        ),
     ]
-    return FormattingSuite(pigweed_formatters)
+    return FormattingSuite(
+        pigweed_formatters,
+        formatter_fix_command=_FORMAT_FIX_COMMAND,
+    )
 
 
 if __name__ == '__main__':

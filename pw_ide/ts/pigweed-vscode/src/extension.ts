@@ -29,13 +29,16 @@ import {
 } from './bazelWatcher';
 
 import {
+  availableTargets,
   ClangdActiveFilesCache,
   disableInactiveFileCodeIntelligence,
   enableInactiveFileCodeIntelligence,
+  getTarget,
   initBazelClangdPath,
   refreshCompileCommandsAndSetTarget,
+  refreshNonBazelCompileCommands,
   setCompileCommandsTarget,
-  setCompileCommandsTargetOnSettingsChange,
+  setTargetWithClangd,
 } from './clangd';
 
 import { getSettingsData, syncSettingsSharedToProject } from './configParsing';
@@ -51,7 +54,7 @@ import {
   isBazelProject,
   isBootstrapProject,
 } from './project';
-import { RefreshManager } from './refreshManager';
+import { OK, RefreshManager } from './refreshManager';
 import { settings, workingDir } from './settings/vscode';
 import {
   ClangdFileWatcher,
@@ -73,7 +76,6 @@ import { WebviewProvider } from './webviewProvider';
 import { commandRegisterer, VscCommandCallback } from './utils';
 import { shouldSupportGn } from './gn';
 import { shouldSupportCmake } from './cmake';
-import { processCompDbs } from './clangd/parser';
 
 interface CommandEntry {
   name: string;
@@ -214,8 +216,7 @@ async function registerCommands(
       name: 'pigweed.refresh-compile-commands',
       callback: async () => {
         if (useGn || useCmake) {
-          const { processedCompDbs } = await processCompDbs();
-          await processedCompDbs.writeAll();
+          await refreshNonBazelCompileCommands();
         }
 
         if (useBazel) {
@@ -223,34 +224,24 @@ async function registerCommands(
           showProgressDuringRefresh(refreshManager);
         }
       },
-      projectType: ['bazel', 'both'],
-    },
-    {
-      name: 'pigweed.refresh-compile-commands',
-      callback: () =>
-        vscode.window.showWarningMessage(
-          'This command is currently not supported with Bootstrap projects',
-        ),
-      projectType: ['bootstrap'],
+      projectType: ['any'],
     },
     {
       name: 'pigweed.refresh-compile-commands-and-set-target',
-      callback: () => {
-        refreshCompileCommandsAndSetTarget(
-          bazelCompileCommandsWatcher!.refresh,
-          refreshManager,
-          clangdActiveFilesCache,
-        );
+      callback: async () => {
+        if (useGn || useCmake) {
+          await refreshNonBazelCompileCommands();
+        }
+
+        if (useBazel) {
+          refreshCompileCommandsAndSetTarget(
+            bazelCompileCommandsWatcher!.refresh,
+            refreshManager,
+            clangdActiveFilesCache,
+          );
+        }
       },
-      projectType: ['bazel', 'both'],
-    },
-    {
-      name: 'pigweed.refresh-compile-commands-and-set-target',
-      callback: () =>
-        vscode.window.showWarningMessage(
-          'This command is currently not supported with Bootstrap projects',
-        ),
-      projectType: ['bootstrap'],
+      projectType: ['any'],
     },
   ];
 
@@ -479,6 +470,23 @@ export async function activate(context: vscode.ExtensionContext) {
   // Marshall all of our components and dependencies.
   const refreshManager = disposer.add(RefreshManager.create({ logger }));
 
+  refreshManager.on(async () => {
+    const target = getTarget();
+    if (!target) {
+      const allTargets = await availableTargets();
+      if (allTargets.length > 0) {
+        await setTargetWithClangd(
+          allTargets[0],
+          clangdActiveFilesCache.writeToSettings,
+        );
+        // Due to an unknown clangd extension issue, the clangd refuses to work
+        // on first-ever run, restarting clangd does not work either.
+        await vscode.commands.executeCommand('workbench.action.reloadWindow');
+      }
+    }
+    return OK;
+  }, 'didRefresh');
+
   const { clangdActiveFilesCache } = disposer.addMany({
     clangdActiveFilesCache: new ClangdActiveFilesCache(refreshManager),
     inactiveVisibilityStatusBarItem: new InactiveVisibilityStatusBarItem(),
@@ -538,14 +546,6 @@ export async function activate(context: vscode.ExtensionContext) {
       clangdActiveFilesCache,
     );
   }
-
-  // If the current target is changed directly via a settings file change (in
-  // other words, not by running a command), detect that and do all the other
-  // stuff that the command would otherwise have done.
-  vscode.workspace.onDidChangeConfiguration(
-    setCompileCommandsTargetOnSettingsChange(clangdActiveFilesCache),
-    disposer.disposables,
-  );
 
   if (settings.enforceExtensionRecommendations()) {
     logger.info('Project is configured to enforce extension recommendations');

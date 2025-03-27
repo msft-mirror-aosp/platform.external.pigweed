@@ -37,6 +37,7 @@
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/constants.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/util.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/vendor_protocol.h"
+#include "pw_bluetooth_sapphire/internal/host/hci/advertising_packet_filter.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/android_extended_low_energy_advertiser.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/discovery_filter.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/extended_low_energy_advertiser.h"
@@ -439,61 +440,48 @@ class AdapterImpl final : public Adapter {
   void ParseLEGetVendorCapabilitiesCommandComplete(
       const hci::EventPacket& event);
 
-  hci::LowEnergyScanner::PacketFilterConfig GetPacketFilterConfig() {
+  hci::AdvertisingPacketFilter::Config GetPacketFilterConfig() const {
     bool offloading_enabled = false;
     uint8_t max_filters = 0;
 
     constexpr pw::bluetooth::Controller::FeaturesBits feature =
         pw::bluetooth::Controller::FeaturesBits::kAndroidVendorExtensions;
     if (state().IsControllerFeatureSupported(feature) &&
-        state().android_vendor_capabilities &&
+        state().android_vendor_capabilities.has_value() &&
         state().android_vendor_capabilities->supports_filtering()) {
-      bt_log(INFO,
-             "gap",
-             "controller supports android vendor extensions packet filtering, "
-             "max offloaded filters: %d",
-             max_filters);
       offloading_enabled = true;
       max_filters = state().android_vendor_capabilities->max_filters();
     }
 
-    return hci::LowEnergyScanner::PacketFilterConfig(offloading_enabled,
-                                                     max_filters);
+    bt_log(INFO,
+           "gap",
+           "controller support for offloaded packet filtering: %s, "
+           "max_filters: %d",
+           offloading_enabled ? "yes" : "no",
+           max_filters);
+
+    return hci::AdvertisingPacketFilter::Config(offloading_enabled,
+                                                max_filters);
   }
 
-  std::unique_ptr<hci::LowEnergyAdvertiser> CreateAdvertiser(bool extended) {
+  std::unique_ptr<hci::LowEnergyAdvertiser> CreateAdvertiser(
+      bool extended) const {
     if (extended) {
       return std::make_unique<hci::ExtendedLowEnergyAdvertiser>(
           hci_, state_.low_energy_state.max_advertising_data_length_);
     }
 
-    constexpr pw::bluetooth::Controller::FeaturesBits feature =
-        pw::bluetooth::Controller::FeaturesBits::kAndroidVendorExtensions;
-    if (!state().IsControllerFeatureSupported(feature)) {
-      return std::make_unique<hci::LegacyLowEnergyAdvertiser>(hci_);
-    }
+    // TODO(b/405398246): When we enabled Android vendor extensions, we found
+    // that OOBE on smart displays and some other devices stopped working. As
+    // a stop gap measure, we disabled multiple advertising via vendor
+    // extensions. Once we work out the issues with multiple advertising via
+    // vendor extensions, we should re-enable them.
 
-    if (!state().android_vendor_capabilities) {
-      bt_log(
-          WARN,
-          "gap",
-          "controller supports android vendor extensions, but failed to parse "
-          "LEGetVendorCapabilitiesCommandComplete, using legacy advertiser");
-      return std::make_unique<hci::LegacyLowEnergyAdvertiser>(hci_);
-    }
-
-    uint8_t max_advt =
-        state().android_vendor_capabilities->max_simultaneous_advertisements();
-    bt_log(INFO,
-           "gap",
-           "controller supports android vendor extensions, max simultaneous "
-           "advertisements: %d",
-           max_advt);
-    return std::make_unique<hci::AndroidExtendedLowEnergyAdvertiser>(hci_,
-                                                                     max_advt);
+    return std::make_unique<hci::LegacyLowEnergyAdvertiser>(hci_);
   }
 
-  std::unique_ptr<hci::LowEnergyConnector> CreateConnector(bool extended) {
+  std::unique_ptr<hci::LowEnergyConnector> CreateConnector(
+      bool extended) const {
     return std::make_unique<hci::LowEnergyConnector>(
         hci_,
         le_address_manager_.get(),
@@ -505,7 +493,7 @@ class AdapterImpl final : public Adapter {
 
   std::unique_ptr<hci::LowEnergyScanner> CreateScanner(
       bool extended,
-      const hci::LowEnergyScanner::PacketFilterConfig& packet_filter_config) {
+      const hci::AdvertisingPacketFilter::Config& packet_filter_config) const {
     if (extended) {
       return std::make_unique<hci::ExtendedLowEnergyScanner>(
           le_address_manager_.get(), packet_filter_config, hci_, dispatcher_);
@@ -1040,12 +1028,13 @@ void AdapterImpl::InitializeStep1() {
         state_.controller_address = DeviceAddressBytes(packet.bd_addr());
       });
 
-  if (state().IsControllerFeatureSupported(
-          pw::bluetooth::Controller::FeaturesBits::kAndroidVendorExtensions)) {
-    bt_log(INFO,
-           "gap",
-           "controller supports android hci extensions, querying exact feature "
-           "set");
+  bool android_vendor_extension_support = state().IsControllerFeatureSupported(
+      pw::bluetooth::Controller::FeaturesBits::kAndroidVendorExtensions);
+  bt_log(INFO,
+         "gap",
+         "controller support for android hci vendor extensions: %s",
+         android_vendor_extension_support ? "yes" : "no");
+  if (android_vendor_extension_support) {
     init_seq_runner_->QueueCommand(
         hci::CommandPacket::New<
             android_emb::LEGetVendorCapabilitiesCommandView>(
@@ -1548,7 +1537,7 @@ void AdapterImpl::InitializeStep4() {
   hci_le_advertiser_ = CreateAdvertiser(extended);
   hci_le_connector_ = CreateConnector(extended);
 
-  hci::LowEnergyScanner::PacketFilterConfig packet_filter_config =
+  hci::AdvertisingPacketFilter::Config packet_filter_config =
       GetPacketFilterConfig();
   hci_le_scanner_ = CreateScanner(extended, packet_filter_config);
 

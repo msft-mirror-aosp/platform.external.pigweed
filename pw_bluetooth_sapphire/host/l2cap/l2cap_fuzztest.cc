@@ -31,6 +31,8 @@ constexpr size_t kMaxDataPacketLength = 64;
 // Ensure outbound ACL packets aren't queued.
 constexpr size_t kBufferMaxNumPackets = 1000;
 
+constexpr size_t kMaxNumLoopIterations = 2 * kBufferMaxNumPackets;
+
 // If the packet size is too large, we consume too much of the fuzzer data per
 // packet without much benefit.
 constexpr uint16_t kMaxAclPacketSize = 100;
@@ -68,10 +70,13 @@ class DataFuzzTest : public TestingBase {
         hci::DataBufferInfo(kMaxDataPacketLength, kBufferMaxNumPackets);
     InitializeACLDataChannel(bredr_buffer_info);
 
+    // Random channel IDs are disabled because they result in infinite loops in
+    // RandomGenerator::GetInt when the remaining fuzzer data is all 0 or there
+    // is insufficient remaining data.
     channel_manager_ =
         l2cap::ChannelManager::Create(transport()->acl_data_channel(),
                                       transport()->command_channel(),
-                                      /*random_channel_ids=*/true,
+                                      /*random_channel_ids=*/false,
                                       dispatcher());
   }
 
@@ -84,7 +89,11 @@ class DataFuzzTest : public TestingBase {
   void TestBody() override {
     RegisterService();
 
-    while (data_.remaining_bytes() > 0) {
+    // The fuzzer times out if the input data is massive (>1MB) and the packets
+    // are all the minimum size (4), so we have to cap the max number of
+    // iterations.
+    for (size_t i = 0; i < kMaxNumLoopIterations && data_.remaining_bytes() > 0;
+         i++) {
       bool run_loop = data_.ConsumeBool();
       if (run_loop) {
         RunUntilIdle();

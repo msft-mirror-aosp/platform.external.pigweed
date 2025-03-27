@@ -22,9 +22,9 @@ namespace bt::gap::testing {
 
 FakeAdapter::FakeAdapter(pw::async::Dispatcher& pw_dispatcher)
     : init_state_(InitState::kNotInitialized),
+      pw_dispatcher_(pw_dispatcher),
       fake_le_(std::make_unique<FakeLowEnergy>(this)),
       fake_bredr_(std::make_unique<FakeBrEdr>()),
-      pw_dispatcher_(pw_dispatcher),
       heap_dispatcher_(pw_dispatcher),
       peer_cache_(pw_dispatcher),
       weak_self_(this) {}
@@ -228,20 +228,16 @@ void FakeAdapter::FakeLowEnergy::StartAdvertising(
 
 void FakeAdapter::FakeLowEnergy::StartDiscovery(
     bool active,
-    std::vector<hci::DiscoveryFilter> discovery_filters,
+    std::vector<hci::DiscoveryFilter> /*discovery_filters*/,
     SessionCallback callback) {
   auto session = std::make_unique<LowEnergyDiscoverySession>(
       next_scan_id_++,
       active,
-      std::move(discovery_filters),
-      *adapter_->peer_cache(),
       adapter_->pw_dispatcher_,
+      /*=notify_cached_results_cb=*/
+      [](LowEnergyDiscoverySession* /*s*/) {},
       /*on_stop_cb=*/
-      [this](LowEnergyDiscoverySession* s) { discovery_sessions_.erase(s); },
-      /*cached_scan_results_fn=*/
-      [this]() -> const std::unordered_set<PeerId>& {
-        return cached_scan_results_;
-      });
+      [this](LowEnergyDiscoverySession* s) { discovery_sessions_.erase(s); });
   discovery_sessions_.insert(session.get());
   callback(std::move(session));
 }

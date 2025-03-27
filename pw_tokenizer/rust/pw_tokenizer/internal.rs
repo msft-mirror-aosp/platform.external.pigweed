@@ -24,9 +24,8 @@ use crate::MessageWriter;
 // engine.
 pub enum Argument<'a> {
     String(&'a str),
-    Varint(i32),
-    Varint64(i64),
     Char(u8),
+    Varint(i64),
 }
 
 impl<'a> From<&'a str> for Argument<'a> {
@@ -35,15 +34,47 @@ impl<'a> From<&'a str> for Argument<'a> {
     }
 }
 
+impl From<char> for Argument<'_> {
+    fn from(val: char) -> Self {
+        Self::Char(val as u8)
+    }
+}
+
+impl From<u8> for Argument<'_> {
+    fn from(val: u8) -> Self {
+        Self::Varint(val as i64)
+    }
+}
+
 impl From<i32> for Argument<'_> {
     fn from(val: i32) -> Self {
-        Self::Varint(val)
+        Self::Varint(val as i64)
     }
 }
 
 impl From<u32> for Argument<'_> {
     fn from(val: u32) -> Self {
-        Self::Varint64(val as i64)
+        Self::Varint(val as i64)
+    }
+}
+
+// TODO: b/400978670 - investigate whether changing these
+// 64bit values to references saves space on 32bit systems.
+impl From<i64> for Argument<'_> {
+    fn from(val: i64) -> Self {
+        Self::Varint(val)
+    }
+}
+
+impl From<u64> for Argument<'_> {
+    fn from(val: u64) -> Self {
+        Self::Varint(val as i64)
+    }
+}
+
+impl From<usize> for Argument<'_> {
+    fn from(val: usize) -> Self {
+        Self::Varint(val as i64)
     }
 }
 
@@ -114,11 +145,6 @@ fn tokenize_engine<W: crate::MessageWriter>(
                 let len = i.varint_encode(&mut encode_buffer)?;
                 writer.write(&encode_buffer[..len])?;
             }
-            Argument::Varint64(i) => {
-                let mut encode_buffer = [0u8; 10];
-                let len = i.varint_encode(&mut encode_buffer)?;
-                writer.write(&encode_buffer[..len])?;
-            }
             Argument::Char(c) => writer.write(&[*c])?,
         }
     }
@@ -153,15 +179,28 @@ pub fn tokenize_to_writer<W: crate::MessageWriter>(
     args: &[Argument<'_>],
 ) -> Result<()> {
     let mut writer = W::new();
-    tokenize_engine(&mut writer, token, args)?;
-    writer.finalize()
+
+    match tokenize_engine(&mut writer, token, args) {
+        // Still finalize the writer even if the buffer
+        // is full so as to avoid loosing the entire
+        // log message.
+        Ok(_) | Err(Error::OutOfRange) =>  writer.finalize(),
+        Err(error) => Err(error),
+    }
 }
 
 #[inline(never)]
 pub fn tokenize_to_writer_no_args<W: crate::MessageWriter>(token: u32) -> Result<()> {
     let mut writer = W::new();
-    writer.write(&token.to_le_bytes()[..])?;
-    writer.finalize()
+    let result = writer.write(&token.to_le_bytes()[..]);
+
+    match result {
+        // Still finalize the writer even if the buffer
+        // is full so as to avoid loosing the entire
+        // log message.
+        Ok(_) | Err(Error::OutOfRange) =>  writer.finalize(),
+        Err(error) => Err(error),
+    }
 }
 
 #[cfg(test)]

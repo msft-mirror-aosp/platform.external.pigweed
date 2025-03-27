@@ -42,11 +42,8 @@ fn token_backend(domain: &str, fragments: &[TokenStream2]) -> TokenStream2 {
     // pw_tokenizer is intended for use with ELF files only. Mach-O files (macOS
     // executables) do not support section names longer than 16 characters, so a
     // short, unused section name is used on macOS.
-    let section = if cfg!(target_os = "macos") {
-        ",pw,".to_string()
-    } else {
-        ".pw_tokenizer.entries.rust".to_string()
-    };
+    let section = ".pw_tokenizer.entries.rust".to_string();
+    let mac_section = ",pw,".to_string();
 
     let domain = CString::new(domain).unwrap();
     let domain_bytes = domain.as_bytes_with_nul();
@@ -74,7 +71,8 @@ fn token_backend(domain: &str, fragments: &[TokenStream2]) -> TokenStream2 {
             };
             // This is currently manually verified to be correct.
             // TODO: b/287132907 - Add integration tests for token database.
-            #[link_section = #section ]
+            #[cfg_attr(target_os = "macos", link_section = #mac_section)]
+            #[cfg_attr(not(target_os = "macos"), link_section = #section)]
             #[used]
             static #ident: TokenEntry = TokenEntry {
                 magic: #TOKENIZER_ENTRY_MAGIC,
@@ -183,7 +181,7 @@ impl PrintfFormatMacroGenerator for TokenizeToBufferGenerator<'_> {
 
     fn integer_conversion(&mut self, ty: Ident, expression: Arg) -> Result<Option<String>> {
         self.encoding_fragments.push(quote! {
-          Argument::Varint(#ty::from(#expression) as i32)
+          Argument::Varint(#ty::from(#expression) as i64)
         });
 
         Ok(None)
@@ -315,6 +313,12 @@ impl PrintfFormatMacroGenerator for TokenizeToWriterGenerator<'_> {
         } else {
             Ok(quote! {
               {
+                // A limitation of the tokenizer macro is that untyped formats
+                // are not supported, so instead of ("{}", x), the following
+                // ("{}", x as type) must be used  instead.  This
+                // can lead to clippy errors about unnecessary casts, so ensure
+                // it's disabled inside this macro.
+                #![allow(clippy::unnecessary_cast)]
                 use __pw_tokenizer_crate::internal::Argument;
                 __pw_tokenizer_crate::internal::tokenize_to_writer::<#ty>(
                   #token,
@@ -332,7 +336,7 @@ impl PrintfFormatMacroGenerator for TokenizeToWriterGenerator<'_> {
 
     fn integer_conversion(&mut self, ty: Ident, expression: Arg) -> Result<Option<String>> {
         self.encoding_fragments.push(quote! {
-          Argument::Varint(#ty::from(#expression) as i32)
+          Argument::Varint(#ty::from(#expression) as i64)
         });
 
         Ok(None)
