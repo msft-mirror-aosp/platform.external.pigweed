@@ -187,6 +187,12 @@
             "//docs"
           ]
         ],
+        "lintformat": [
+          [
+            "run",
+            "//pw_presubmit/py:check_formatting"
+          ]
+        ],
         "integration": [
           [
             "test",
@@ -219,6 +225,16 @@
           [
             "test",
             "--config=k_qemu_mps2_an505",
+            "//pw_kernel/..."
+          ],
+          [
+            "build",
+            "--config=k_qemu_virt_riscv32",
+            "//pw_kernel/..."
+          ],
+          [
+            "test",
+            "--config=k_qemu_virt_riscv32",
             "//pw_kernel/..."
           ],
           [

@@ -30,22 +30,18 @@ import {
   bazel_codelens,
   workingDir,
 } from './settings/vscode';
-import { fileTypeExists } from './utils';
-
-/** Are Bazel build files present in the workspace? */
-export async function bazelFilesArePresent(): Promise<boolean> {
-  return fileTypeExists(`${workingDir.get()}/**/*.bazel`);
-}
+import { getPigweedProjectRoot, isBazelProject } from './project';
 
 /** Should we try to generate compile commands for Bazel targets? */
 export async function shouldSupportBazel(): Promise<boolean> {
+  const projectRoot = await getPigweedProjectRoot(settings, workingDir);
   const settingValue = settings.supportBazelTargets();
 
   if (settingValue !== undefined && settingValue !== 'auto') {
     return settingValue;
   }
 
-  return await bazelFilesArePresent();
+  return isBazelProject(projectRoot!);
 }
 
 /**
@@ -254,27 +250,40 @@ export async function configureBazelSettings() {
 
   if (settings.disableBazelSettingsRecommendations()) return;
 
-  await vscode.window
-    .showInformationMessage(
-      "Would you like to use Pigweed's recommended Bazel settings?",
-      'Yes',
-      'No',
-      'Disable',
-    )
-    .then(async (value) => {
-      switch (value) {
-        case 'Yes': {
-          await setBazelRecommendedSettings();
-          await settings.disableBazelSettingsRecommendations(true);
-          break;
+  return new Promise((resolve) => {
+    const timeoutId = setTimeout(async () => {
+      logger.info('Auto-configuring Pigweed Bazel settings.');
+      await setBazelRecommendedSettings();
+      await settings.disableBazelSettingsRecommendations(true);
+      vscode.window.showInformationMessage(
+        "Configuring Pigweed's Bazel settings automatically...",
+      );
+      resolve(undefined);
+    }, 10000);
+    vscode.window
+      .showInformationMessage(
+        'Configure Pigweed with recommended Bazel settings?',
+        'Yes',
+        'No',
+        'Disable',
+      )
+      .then(async (value) => {
+        clearTimeout(timeoutId);
+        switch (value) {
+          case 'Yes': {
+            await setBazelRecommendedSettings();
+            await settings.disableBazelSettingsRecommendations(true);
+            break;
+          }
+          case 'Disable': {
+            await settings.disableBazelSettingsRecommendations(true);
+            vscode.window.showInformationMessage("Okay, I won't ask again.");
+            break;
+          }
         }
-        case 'Disable': {
-          await settings.disableBazelSettingsRecommendations(true);
-          vscode.window.showInformationMessage("Okay, I won't ask again.");
-          break;
-        }
-      }
-    });
+        resolve(undefined);
+      });
+  });
 }
 
 export async function updateVendoredBazelisk() {

@@ -1241,7 +1241,7 @@ def _read_notice_lines(file: TextIO) -> Iterable[str]:
         for _ in range(12):  # The notice is 13 lines; read the remaining 12.
             yield next(lines)
     except StopIteration:
-        return
+        pass
 
 
 @filter_paths(exclude=_EXCLUDE_FROM_COPYRIGHT_NOTICE)
@@ -1519,6 +1519,7 @@ SOURCE_FILES_FILTER_GN_EXCLUDE = FileFilter(
     exclude=(
         # keep-sorted: start
         r'\bpw_bluetooth_sapphire/fuchsia',
+        r'\bpw_kernel',
         # keep-sorted: end
     ),
 )
@@ -1527,6 +1528,7 @@ SOURCE_FILES_FILTER_CMAKE_EXCLUDE = FileFilter(
     exclude=(
         # keep-sorted: start
         r'\bpw_bluetooth_sapphire/fuchsia',
+        r'\bpw_kernel',
         # keep-sorted: end
     ),
 )
@@ -1581,8 +1583,6 @@ INCLUDE_CHECK_EXCEPTIONS = (
     "//pw_interrupt_cortex_m:context",
     "//pw_log_fuchsia:pw_log_fuchsia",
     "//pw_log_null:headers",
-    "//pw_log_tokenized:gcc_partially_tokenized",
-    "//pw_log_tokenized:pw_log_tokenized",
     "//pw_metric:metric_service_pwpb",
     "//pw_multibuf:internal_test_utils",
     "//pw_perf_test:arm_cortex_timer",
@@ -1642,10 +1642,6 @@ INCLUDE_CHECK_EXCEPTIONS = (
     "//pw_unit_test:googletest",
     "//pw_unit_test:light",
     "//pw_unit_test:rpc_service",
-    "//targets/mimxrt595_evk_freertos:freertos_config",
-    "//targets/rp2040:freertos_config",
-    "//targets/stm32f429i_disc1_stm32cube:freertos_config",
-    "//targets/stm32f429i_disc1_stm32cube:hal_config",
     "//third_party/fuchsia:fit_impl",
     "//third_party/fuchsia:stdcompat",
     # keep-sorted: end

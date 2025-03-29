@@ -16,8 +16,10 @@
 #include <cstddef>
 
 #include "pw_allocator/capability.h"
+#include "pw_allocator/config.h"
 #include "pw_allocator/deallocator.h"
 #include "pw_allocator/layout.h"
+#include "pw_allocator/shared_ptr.h"
 #include "pw_allocator/unique_ptr.h"
 #include "pw_numeric/checked_arithmetic.h"
 #include "pw_result/result.h"
@@ -123,8 +125,7 @@ class Allocator : public Deallocator {
     return Deallocator::WrapUnique<T>(New<T>(std::forward<Args>(args)...));
   }
 
-  /// Constructs an `alignment`-byte aligned array of `count` objects, and wraps
-  /// it in a `UniquePtr`
+  /// Constructs an array of `count` objects, and wraps it in a `UniquePtr`
   ///
   /// The returned value may contain null if allocating memory for the object
   /// fails. Callers must check for null before using the `UniquePtr`.
@@ -172,11 +173,71 @@ class Allocator : public Deallocator {
     return MakeUnique<T[]>(size, alignment);
   }
 
+  // Disallow calls with explicitly-sized array types like `T[kN]`.
   template <typename T,
             int&... kExplicitGuard,
             std::enable_if_t<is_bounded_array_v<T>, int> = 0,
             typename... Args>
   void MakeUnique(Args&&...) = delete;
+
+// TODO(b/402489948): Remove when portable atomics are provided by `pw_atomic`.
+#if PW_ALLOCATOR_HAS_ATOMICS
+
+  /// Constructs and object of type `T` from the given `args`, and wraps it in a
+  /// `SharedPtr`
+  ///
+  /// The returned value may contain null if allocating memory for the object
+  /// fails. Callers must check for null before using the `SharedPtr`.
+  ///
+  /// @param[in]  args...     Arguments passed to the object constructor.
+  template <typename T,
+            int&... kExplicitGuard,
+            std::enable_if_t<!std::is_array_v<T>, int> = 0,
+            typename... Args>
+  [[nodiscard]] SharedPtr<T> MakeShared(Args&&... args) {
+    return SharedPtr<T>::template Create<Args...>(this,
+                                                  std::forward<Args>(args)...);
+  }
+
+  /// Constructs an array of `count` objects, and wraps it in a `UniquePtr`
+  ///
+  /// The returned value may contain null if allocating memory for the object
+  /// fails. Callers must check for null before using the `UniquePtr`.
+  ///
+  /// @tparam     T            An array type.
+  /// @param[in]  count        Number of objects to allocate.
+  template <typename T,
+            int&... kExplicitGuard,
+            std::enable_if_t<is_unbounded_array_v<T>, int> = 0>
+  [[nodiscard]] SharedPtr<T> MakeShared(size_t size) {
+    return MakeShared<T>(size, alignof(std::remove_extent_t<T>));
+  }
+
+  /// Constructs an `alignment`-byte aligned array of `count` objects, and wraps
+  /// it in a `SharedPtr`
+  ///
+  /// The returned value may contain null if allocating memory for the object
+  /// fails. Callers must check for null before using the `SharedPtr`.
+  ///
+  /// @tparam     T            An array type.
+  /// @param[in]  count        Number of objects to allocate.
+  /// @param[in]  alignment    Object alignment.
+  template <typename T,
+            int&... kExplicitGuard,
+            std::enable_if_t<is_unbounded_array_v<T>, int> = 0>
+  [[nodiscard]] SharedPtr<T> MakeShared(size_t size, size_t alignment) {
+    return SharedPtr<T>::Create(this, size, alignment);
+  }
+
+  // Disallow calls with explicitly-sized array types like `T[kN]`.
+  template <typename T,
+            int&... kExplicitGuard,
+            std::enable_if_t<is_bounded_array_v<T>, int> = 0,
+            typename... Args>
+  std::enable_if_t<is_bounded_array_v<T>> MakeShared(Args&&...) = delete;
+
+// TODO(b/402489948): Remove when portable atomics are provided by `pw_atomic`.
+#endif  // PW_ALLOCATOR_HAS_ATOMICS
 
   /// Modifies the size of an previously-allocated block of memory without
   /// copying any data.

@@ -156,9 +156,11 @@ void FakePeer::WriteScanResponseReport(
           ? pw::bluetooth::emboss::LEAddressType::RANDOM
           : pw::bluetooth::emboss::LEAddressType::PUBLIC);
 
-  std::memcpy(report.data().BackingStorage().data(),
-              scan_response_.data(),
-              scan_response_.size());
+  if (scan_response_.data() != nullptr) {
+    std::memcpy(report.data().BackingStorage().data(),
+                scan_response_.data(),
+                scan_response_.size());
+  }
 
   report.rssi().Write(rssi());
 }
@@ -226,9 +228,13 @@ DynamicByteBuffer FakePeer::BuildLegacyAdvertisingReportEvent(
             : pw::bluetooth::emboss::LEAddressType::PUBLIC);
   }
   report.address().CopyFrom(address_.value().view());
-  std::memcpy(report.data().BackingStorage().data(),
-              advertising_data_.data(),
-              advertising_data_.size());
+
+  if (advertising_data_.data() != nullptr) {
+    std::memcpy(report.data().BackingStorage().data(),
+                advertising_data_.data(),
+                advertising_data_.size());
+  }
+
   report.rssi().Write(rssi());
 
   if (include_scan_rsp) {
@@ -324,16 +330,20 @@ void FakePeer::FillExtendedAdvertisingReport(
       pw::bluetooth::emboss::LEPrimaryAdvertisingPHY::LE_1M);
   report.secondary_phy().Write(
       pw::bluetooth::emboss::LESecondaryAdvertisingPHY::NONE);
-  report.advertising_sid().Write(0);
+  report.advertising_sid().Write(advertising_sid());
   report.tx_power().Write(tx_power());
   report.rssi().Write(rssi());
-  report.periodic_advertising_interval().Write(0);
+  report.periodic_advertising_interval().Write(periodic_advertising_interval());
 
   // skip direct_address_type and direct_address for now since we don't use it
 
   PW_DCHECK(data.size() < 0xFF);
   report.data_length().Write(static_cast<uint8_t>(data.size()));
-  std::memcpy(report.data().BackingStorage().begin(), data.data(), data.size());
+
+  if (!data.empty()) {
+    std::memcpy(
+        report.data().BackingStorage().begin(), data.data(), data.size());
+  }
 }
 
 DynamicByteBuffer FakePeer::BuildExtendedAdvertisingReports(

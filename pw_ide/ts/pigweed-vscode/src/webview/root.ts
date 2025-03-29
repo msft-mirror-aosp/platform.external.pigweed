@@ -26,6 +26,7 @@ type ExtensionData = {
 };
 
 type CipdReport = {
+  clangdPath?: string;
   bazelPath?: string;
   targetSelected?: string;
   isCompileCommandsGenerated?: boolean;
@@ -45,8 +46,6 @@ export class Root extends LitElement {
     }
   `;
 
-  @property() name = 'World';
-  @state() count = 0;
   @state() extensionData: ExtensionData = { unwanted: [], recommended: [] };
   @state() cipdReport: CipdReport = {};
 
@@ -65,6 +64,10 @@ export class Root extends LitElement {
           <div>
             <b>Recommended Extensions</b><br/>
             <div class="container">
+              ${
+                this.extensionData.recommended.length === 0 &&
+                html` <p><i>No recommended extensions found.</i></p> `
+              }
               ${this.extensionData.recommended.map(
                 (ext) =>
                   html`<div class="row">
@@ -91,6 +94,10 @@ export class Root extends LitElement {
             </div>
             <b>Unwanted Extensions</b><br/>
             <div class="container">
+              ${
+                this.extensionData.unwanted.length === 0 &&
+                html` <p><i>No unwanted extensions found.</i></p> `
+              }
               ${this.extensionData.unwanted.map(
                 (ext) =>
                   html`<div class="row">
@@ -147,8 +154,15 @@ export class Root extends LitElement {
             <b class="title"> Clangd Dashboard </b>
           </summary>
         <div>
-          <span>If code navigation is broken, see what is wrong below.</span>
+          <span>Settings for code navigation.</span>
           <div class="container">
+            <div class="row">
+              <div>
+                <b>Clangd is available</b><br/>
+                <sub>${this.cipdReport.clangdPath || 'N/A'}</sub>
+              </div>
+              <div>${this.cipdReport.clangdPath ? '✅' : '❌'}</div>
+            </div>
             <div class="row">
               <div>
                 <b>Bazel is available</b><br/>
@@ -214,10 +228,6 @@ export class Root extends LitElement {
         </detail>
       </div>
     `;
-  }
-
-  modify(val: number) {
-    this.count += val;
   }
 
   async firstUpdated() {

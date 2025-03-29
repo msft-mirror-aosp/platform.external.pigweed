@@ -15,11 +15,9 @@
 #pragma once
 
 #include <cstdint>
-#include <numeric>
 #include <variant>
 #include <vector>
 
-#include "pw_assert/check.h"
 #include "pw_bluetooth/emboss_util.h"
 #include "pw_bluetooth/hci_common.emb.h"
 #include "pw_bluetooth/hci_data.emb.h"
@@ -27,13 +25,13 @@
 #include "pw_bluetooth/hci_h4.emb.h"
 #include "pw_bluetooth/l2cap_frames.emb.h"
 #include "pw_bluetooth_proxy/basic_l2cap_channel.h"
+#include "pw_bluetooth_proxy/direction.h"
 #include "pw_bluetooth_proxy/gatt_notify_channel.h"
 #include "pw_bluetooth_proxy/h4_packet.h"
 #include "pw_bluetooth_proxy/internal/l2cap_channel.h"
 #include "pw_bluetooth_proxy/internal/logical_transport.h"
 #include "pw_bluetooth_proxy/l2cap_channel_common.h"
 #include "pw_bluetooth_proxy/l2cap_coc.h"
-#include "pw_bluetooth_proxy/l2cap_status_delegate.h"
 #include "pw_bluetooth_proxy/proxy_host.h"
 #include "pw_bluetooth_proxy/rfcomm_channel.h"
 #include "pw_containers/flat_map.h"
@@ -198,10 +196,26 @@ Status SendDisconnectionCompleteEvent(
     Direction direction = Direction::kFromController,
     bool successful = true);
 
+struct L2capOptions {
+  std::optional<MtuOption> mtu;
+};
+
 Status SendL2capConnectionReq(ProxyHost& proxy,
                               uint16_t handle,
                               uint16_t source_cid,
                               uint16_t psm);
+
+Status SendL2capConfigureReq(ProxyHost& proxy,
+                             Direction direction,
+                             uint16_t handle,
+                             uint16_t destination_cid,
+                             L2capOptions& l2cap_options);
+
+Status SendL2capConfigureRsp(ProxyHost& proxy,
+                             Direction direction,
+                             uint16_t handle,
+                             uint16_t local_cid,
+                             emboss::L2capConfigurationResult result);
 
 Status SendL2capConnectionRsp(ProxyHost& proxy,
                               uint16_t handle,
@@ -249,6 +263,7 @@ struct CocParameters {
 };
 
 struct BasicL2capParameters {
+  multibuf::MultiBufAllocator* rx_multibuf_allocator = nullptr;
   uint16_t handle = 123;
   uint16_t local_cid = 234;
   uint16_t remote_cid = 456;

@@ -16,7 +16,6 @@ load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
 load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@rules_java//java:defs.bzl", "java_binary")
-load("@rules_jvm_external//:defs.bzl", "artifact")
 load("@rules_python//python:defs.bzl", "py_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
@@ -28,6 +27,7 @@ package(features = ["-layering_check"])
 pw_cc_binary(
     name = "server",
     srcs = ["server.cc"],
+    features = ["-conversion_warnings"],
     deps = [
         ":config_cc_proto",
         "//pw_assert:check",
@@ -74,11 +74,13 @@ pw_py_test(
 proto_library(
     name = "config_proto",
     srcs = ["config.proto"],
+    features = ["-conversion_warnings"],
     deps = ["//pw_protobuf:status_proto"],
 )
 
 cc_proto_library(
     name = "config_cc_proto",
+    features = ["-conversion_warnings"],
     # cc_proto_library pulls in the regular proto library, which is only
     # needed for host tests.
     target_compatible_with = incompatible_with_mcu(),
@@ -99,6 +101,7 @@ pw_cc_binary(
     name = "cpp_client",
     testonly = True,
     srcs = ["client.cc"],
+    features = ["-conversion_warnings"],
     deps = [
         ":config_cc_proto",
         "//pw_assert:check",
@@ -127,6 +130,7 @@ py_library(
         ":python_client",
         ":server",
     ],
+    features = ["-conversion_warnings"],
     imports = ["."],
     deps = [
         ":config_pb2",
@@ -183,6 +187,7 @@ pw_py_test(
     srcs = [
         "cross_language_medium_read_test.py",
     ],
+    features = ["-conversion_warnings"],
     tags = [
         "integration",
     ],
@@ -201,6 +206,7 @@ pw_py_test(
     srcs = [
         "cross_language_medium_write_test.py",
     ],
+    features = ["-conversion_warnings"],
     tags = [
         "integration",
     ],
@@ -219,6 +225,7 @@ pw_py_test(
     srcs = [
         "cross_language_small_test.py",
     ],
+    features = ["-conversion_warnings"],
     tags = [
         "integration",
     ],
@@ -236,6 +243,7 @@ pw_py_test(
     srcs = [
         "multi_transfer_test.py",
     ],
+    features = ["-conversion_warnings"],
     tags = [
         "integration",
     ],
@@ -251,6 +259,7 @@ pw_py_test(
     name = "expected_errors_test",
     timeout = "long",
     srcs = ["expected_errors_test.py"],
+    features = ["-conversion_warnings"],
     tags = [
         "integration",
     ],
@@ -271,6 +280,7 @@ pw_py_test(
     data = [
         "@pw_transfer_test_binaries//:all",
     ],
+    features = ["-conversion_warnings"],
     tags = [
         "integration",
     ],
@@ -297,8 +307,8 @@ java_binary(
         "//pw_rpc/java/main/dev/pigweed/pw_rpc:client",
         "//pw_transfer/java/main/dev/pigweed/pw_transfer:client",
         "@com_google_protobuf//:protobuf_java",
-        artifact("com.google.flogger:flogger-system-backend"),
-        artifact("com.google.guava:guava"),
+        "@pigweed_maven_deps//:com_google_flogger_flogger_system_backend",
+        "@pigweed_maven_deps//:com_google_guava_guava",
     ],
 )
 

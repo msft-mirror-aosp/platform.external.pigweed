@@ -118,6 +118,7 @@ py_library(
     # Nobody in the Bazel ecosystem should ever use these parts of pw_env_setup.
     visibility = ["//docs:__pkg__"],
     deps = [
+        "@python_packages//setuptools",  # For import pkg_resources
         "@python_packages//six",
     ],
 )
@@ -153,14 +154,5 @@ pw_py_test(
     srcs = ["environment_test.py"],
     deps = [
         ":pw_env_setup_private",
-    ],
-)
-
-pw_py_test(
-    name = "python_packages_test",
-    srcs = ["python_packages_test.py"],
-    deps = [
-        ":pw_env_setup_private",
-        "@python_packages//toml",
     ],
 )

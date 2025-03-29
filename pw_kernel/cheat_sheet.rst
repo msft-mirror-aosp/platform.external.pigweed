@@ -60,12 +60,20 @@ Test
 QEMU
 ====
 
+Supported QEMU platforms:
+* ``k_qemu_mps2_an505`` - a cortex-m33 based system
+* ``k_qemu_virt_riscv32`` - a riscv32 based system
+
 Test
 ----
 
 .. code-block:: shell
 
    bazelisk test --config k_qemu_mps2_an505 //pw_kernel/...
+
+.. code-block:: shell
+
+   bazelisk test --config k_qemu_virt_riscv32 //pw_kernel/...
 
 Run
 ---
@@ -74,7 +82,11 @@ Run
 
 .. code-block:: shell
 
-   bazelisk run --config k_qemu_mps2_an505 //pw_kernel/entry:kernel
+   bazelisk run --config k_qemu_mps2_an505 //pw_kernel:console
+
+.. code-block:: shell
+
+   bazelisk run --config k_qemu_virt_riscv32 //pw_kernel:console
 
 RP2350 Target Board
 ===================
@@ -86,9 +98,23 @@ Build
 
    bazelisk build --config k_rp2350 //pw_kernel/entry:kernel
 
+Console
+---
+
+.. code-block:: shell
+
+   bazelisk run --config k_rp2350 //pw_kernel:console -- -d <SERIAL_DEVICE>
+
+Running the console will trigger a build of the kernel if required.
+
 Flash
 -----
 
 .. code-block:: shell
 
    probe-rs download --chip rp2350 bazel-bin/pw_kernel/entry/kernel && probe-rs reset
+
+Note that any logging messages between boot and connecting a console to the device will be missed,
+so it's best to start the console in one terminal first, before flashing the device.  This will also
+ensure that the image that's flashed to the device matches the image that's being used to detokenize
+the logs.

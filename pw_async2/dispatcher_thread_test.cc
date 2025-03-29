@@ -14,12 +14,12 @@
 
 #include <atomic>
 
-#include "gtest/gtest.h"
 #include "pw_async2/dispatcher.h"
 #include "pw_function/function.h"
 #include "pw_thread/sleep.h"
 #include "pw_thread/thread.h"
 #include "pw_thread_stl/options.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::async2 {
 namespace {
@@ -65,6 +65,7 @@ TEST(Dispatcher, RunToCompletion_SleepsUntilWoken) {
   // Poll once when sleeping then once when woken.
   EXPECT_EQ(task.polled, 2);
   EXPECT_EQ(task.destroyed, 1);
+  EXPECT_EQ(dispatcher.tasks_polled(), 2u);
 }
 
 }  // namespace

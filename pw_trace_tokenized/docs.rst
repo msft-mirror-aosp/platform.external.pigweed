@@ -161,6 +161,11 @@ be done in one of a few ways.
 .. cpp:function:: PW_TRACE_TIME_TYPE pw_trace_GetTraceTime()
 .. cpp:function:: size_t pw_trace_GetTraceTimeTicksPerSecond()
 
+In the Bazel build, set the ``@pigweed//pw_trace_tokenized:trace_time`` `label
+flag <https://bazel.build/extending/config#label-typed-build-settings>`__ to
+select the implementation of trace time to use. This label flag should point to
+a ``cc_library`` target that provides implementations of the two functions
+above.
 
 ------
 Buffer
@@ -179,6 +184,10 @@ The buffer has two configurable options:
 2. PW_TRACE_BUFFER_MAX_BLOCK_SIZE_BYTES: The maximum single trace object size.
    Including the token, time, and any attached data. Any trace object larger
    then this will be dropped.
+
+In the Bazel build, set the ``@pigweed//pw_trace_tokenized:config_backend`` to
+define the value of PW_TRACE_BUFFER_SIZE_BYTES. This label flag should point to
+a ``cc_library`` target that has a "defines" field for PW_TRACE_BUFFER_SIZE_BYTES.
 
 .. cpp:function:: ConstByteSpan DeringAndViewRawBuffer()
 
