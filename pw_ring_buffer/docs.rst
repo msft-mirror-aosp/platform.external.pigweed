@@ -77,6 +77,12 @@ iterator will progress until it sees the corrupted section and instead move to
      PW_LOG_WARN("Iterator failed to read some entries!");
    }
 
+Iterators come in 2 different flavors:
+* ``PrefixedEntryRingBufferMulti::iterator`` which will provide ``Entry``
+objects with ``pw::span<std::byte>`` buffer type.
+* ``PrefixedEntryRingBufferMulti::const_iterator`` which will provide ``Entry``
+objects with ``pw::span<const std::byte>`` buffer type.
+
 Data corruption
 ===============
 ``PrefixedEntryRingBufferMulti`` offers a circular ring buffer for arbitrary
@@ -86,3 +92,38 @@ entry to delimit the size of the entry. Unlike the iterator, the methods in
 When these methods encounter data corruption, there is no generic way to
 recover, and thus, the application crashes. Data corruption is indicative of
 other issues.
+
+Deleting from the back
+=======================
+While most use cases for the ring buffer involve writing to the back and reading
+from the front, there are cases where we might want to remove entries from the
+back. Consider the following:
+
+.. code-block:: cpp
+
+   // A test string to push into the buffer.
+   constexpr char kExampleEntry[] = "Example!";
+
+   // Setting up buffers and attaching a reader.
+   std::byte buffer[1024];
+   std::byte read_buffer[256];
+   PrefixedEntryRingBuffer ring_buffer;
+   ring_buffer.SetBuffer(buffer);
+
+   // Try to insert some entries. If any fail, remove everything to reset.
+   auto push_status = ring_buffer.TryPushBack(kExampleEntry);
+   if (!push_status.ok()) {
+     return push_status;
+   }
+   push_status = ring_buffer.TryPushBack(kExampleEntry);
+   if (!push_status.ok()) {
+     PW_ASSERT(ring_buffer.DeleteBack(1).ok());
+     return push_status;
+   }
+   push_status = ring_buffer.TryPushBack(kExampleEntry);
+   if (!push_status.ok()) {
+     PW_ASSERT(ring_buffer.DeleteBack(2).ok());
+     return push_status;
+   }
+
+   return pw::OkStatus();
