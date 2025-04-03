@@ -14,7 +14,7 @@
 
 #![no_std]
 #![no_main]
-use core::{mem::offset_of, ptr::NonNull};
+use core::ptr::NonNull;
 
 use foreign_box::ForeignBox;
 use list::*;
@@ -50,10 +50,7 @@ impl Ord for TestMember {
     }
 }
 
-struct TestAdapter {}
-impl Adapter for TestAdapter {
-    const LINK_OFFSET: usize = offset_of!(TestMember, link);
-}
+define_adapter!(TestAdapter => TestMember.link);
 
 fn validate_list(
     list: &ForeignList<TestMember, TestAdapter>,
