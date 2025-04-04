@@ -11,7 +11,6 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
-#![allow(non_snake_case)]
 
 use core::arch::{asm, naked_asm};
 use core::mem;
@@ -97,7 +96,12 @@ impl super::super::ThreadState for ArchThreadState {
     }
 
     #[inline(never)]
-    fn initialize_frame(&mut self, stack: Stack, initial_function: fn(usize), arg0: usize) {
+    fn initialize_frame(
+        &mut self,
+        stack: Stack,
+        initial_function: extern "C" fn(usize, usize),
+        (arg0, arg1): (usize, usize),
+    ) {
         // Calculate the first 8 byte aligned full exception frame from the top
         // of the thread's stack.
         let mut frame = stack.end().wrapping_sub(size_of::<FullExceptionFrame>());
@@ -107,12 +111,14 @@ impl super::super::ThreadState for ArchThreadState {
         }
         let frame: *mut FullExceptionFrame = frame as *mut FullExceptionFrame;
 
-        // Clear the stack and set up the exception frame such that it would return to the
-        // function passed in with arg0 passed in the first argument slot.
+        // Clear the stack and set up the exception frame such that it would
+        // return to the function passed in with arg0 and arg1 passed in the
+        // first two argument slots.
         unsafe {
             (*frame) = mem::zeroed();
             (*frame).r0 = initial_function as u32;
             (*frame).r1 = arg0 as u32;
+            (*frame).r2 = arg1 as u32;
             (*frame).pc = trampoline as u32;
             (*frame).psr = 1 << 24; // T bit
             (*frame).return_address = 0xfffffff9; // return to state using MSP and no FP
@@ -122,7 +128,7 @@ impl super::super::ThreadState for ArchThreadState {
     }
 }
 
-fn trampoline(initial_function: fn(usize), arg0: usize) {
+extern "C" fn trampoline(initial_function: extern "C" fn(usize, usize), arg0: usize, arg1: usize) {
     // info!(
     //     "cortex-m trampoline: initial function {:#x} arg {:#x}",
     //     initial_function as usize, arg0
@@ -131,7 +137,7 @@ fn trampoline(initial_function: fn(usize), arg0: usize) {
     pw_assert::assert!(Arch::interrupts_enabled());
 
     // Call the actual initial function of the thread.
-    initial_function(arg0);
+    initial_function(arg0, arg1);
 
     // Get a pointer to the current thread and call exit.
     // Note: must let the scope of the lock guard close,
@@ -144,7 +150,7 @@ fn trampoline(initial_function: fn(usize), arg0: usize) {
 // Called by the pendsv handler, returns the new stack to switch to after
 // performing some housekeeping.
 #[no_mangle]
-unsafe fn pendsv_swap_sp(frame: *mut FullExceptionFrame) -> *mut FullExceptionFrame {
+unsafe extern "C" fn pendsv_swap_sp(frame: *mut FullExceptionFrame) -> *mut FullExceptionFrame {
     // TODO:
     // save incoming frame to active_thread.archstate
     // clear active_thread
@@ -160,13 +166,14 @@ unsafe fn pendsv_swap_sp(frame: *mut FullExceptionFrame) -> *mut FullExceptionFr
     // Save the incoming frame to the current active thread's arch state, that will function
     // as the context switch frame for when it is returned to later. Clear active thread
     // afterwards.
-    let at = get_active_thread();
+    let active_thread = get_active_thread();
     // info!("inside pendsv: currently active thread {:08x}", at as usize);
     // info!("old frame {:08x}: pc {:08x}", frame as usize, (*frame).pc);
 
-    pw_assert::assert!(at != core::ptr::null_mut());
+    pw_assert::assert!(active_thread != core::ptr::null_mut());
 
-    (*at).frame = frame;
+    (*active_thread).frame = frame;
+
     set_active_thread(core::ptr::null_mut());
 
     // Return the arch frame for the current thread

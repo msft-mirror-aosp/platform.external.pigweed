@@ -11,14 +11,20 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
-#![no_std]
+use pw_status::Result;
 
-use target_interface::{declare_target, TargetInterface};
+use syscall_defs::SysCallInterface;
 
-pub struct Target {}
+pub struct SysCall {}
 
-impl TargetInterface for Target {
-    const NAME: &'static str = "QEMU-VIRT-RISCV";
+impl SysCallInterface for SysCall {
+    #[inline(always)]
+    fn debug_noop() -> Result<()> {
+        Err(pw_status::Error::Unimplemented)
+    }
+
+    #[inline(always)]
+    fn debug_add(_a: u32, _b: u32) -> Result<u32> {
+        Err(pw_status::Error::Unimplemented)
+    }
 }
-
-declare_target!(Target);
