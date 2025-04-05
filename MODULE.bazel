@@ -38,7 +38,7 @@ bazel_dep(name = "protobuf", version = "28.2", repo_name = "com_google_protobuf"
 # A transitive dependency requires this.
 bazel_dep(name = "re2", version = "2024-07-02.bcr.1")
 bazel_dep(name = "rules_android", version = "0.1.1")
-bazel_dep(name = "rules_cc", version = "0.0.17")
+bazel_dep(name = "rules_cc", version = "0.1.1")
 bazel_dep(name = "rules_fuzzing", version = "0.5.2")
 bazel_dep(name = "rules_go", version = "0.52.0", repo_name = "io_bazel_rules_go")
 bazel_dep(name = "rules_java", version = "8.6.1")
@@ -49,7 +49,7 @@ bazel_dep(name = "rules_nodejs", version = "6.3.0")
 bazel_dep(name = "rules_platform", version = "0.1.0")
 bazel_dep(name = "rules_probe_rs", version = "0.0.2")
 bazel_dep(name = "rules_python", version = "0.40.0")
-bazel_dep(name = "rules_rust", version = "0.56.0")
+bazel_dep(name = "rules_rust", version = "0.59.2")
 
 # LINT.IfChange(emboss)
 bazel_dep(name = "emboss", version = "2024.1017.203246", repo_name = "com_google_emboss")
@@ -109,14 +109,6 @@ single_version_override(
         # gets the path to those files wrong.
         # TODO: https://pwbug.dev/3392708481 - Upstream below patch
         "//pw_rust/bazel_patches:0004-Add-rust_srcs_subdir-to-rust_analyzer_toolchain.patch",
-
-        # rust_analyzer: Support passing a --config option to Bazel
-        # https://github.com/bazelbuild/rules_rust/pull/3254
-        "//pw_rust/bazel_patches:0005-rust_analyzer-Support-passing-a-config-option-to-Baz.patch",
-
-        # Adds more riscv32 triples
-        # TODO: https://pwbug.dev/401293971 - Upstream below patch
-        "//pw_rust/bazel_patches:0006-Add-riscv32-triples.patch",
     ],
 )
 
@@ -301,27 +293,27 @@ use_repo(python, "pythons_hub")
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
-    hub_name = "python_packages",
+    hub_name = "pigweed_python_packages",
     python_version = "3.10",
     requirements_darwin = "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_darwin_lock.txt",
     requirements_linux = "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_linux_lock.txt",
     requirements_windows = "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_windows_lock.txt",
 )
 pip.parse(
-    hub_name = "python_packages",
+    hub_name = "pigweed_python_packages",
     python_version = "3.11",
     requirements_darwin = "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_darwin_lock.txt",
     requirements_linux = "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_linux_lock.txt",
     requirements_windows = "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_windows_lock.txt",
 )
 pip.parse(
-    hub_name = "python_packages",
+    hub_name = "pigweed_python_packages",
     python_version = "3.12",
     requirements_darwin = "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_darwin_lock.txt",
     requirements_linux = "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_linux_lock.txt",
     requirements_windows = "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_windows_lock.txt",
 )
-use_repo(pip, "python_packages")
+use_repo(pip, "pigweed_python_packages")
 
 # TODO: b/354241571 - The next two lines are only required because the Fuchsia
 # SDK doesn't correctly restrict the target platform compatibility of all its
