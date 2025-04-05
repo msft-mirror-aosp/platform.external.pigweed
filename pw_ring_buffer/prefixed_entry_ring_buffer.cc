@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <optional>
 
 #include "pw_assert/assert.h"
 #include "pw_assert/check.h"
@@ -26,9 +27,7 @@ namespace pw {
 namespace ring_buffer {
 
 using std::byte;
-using Entry = PrefixedEntryRingBufferMulti::Entry;
 using Reader = PrefixedEntryRingBufferMulti::Reader;
-using iterator = PrefixedEntryRingBufferMulti::iterator;
 
 void PrefixedEntryRingBufferMulti::Clear() {
   write_idx_ = 0;
@@ -36,6 +35,30 @@ void PrefixedEntryRingBufferMulti::Clear() {
     reader.read_idx_ = 0;
     reader.entry_count_ = 0;
   }
+}
+
+pw::Status PrefixedEntryRingBufferMulti::PopBack(size_t num_entries) {
+  std::optional<size_t> min_entry_count;
+  for (Reader& reader : readers_) {
+    if (min_entry_count.has_value()) {
+      min_entry_count = std::min(min_entry_count.value(), reader.EntryCount());
+    } else {
+      min_entry_count = reader.EntryCount();
+    }
+  }
+
+  if (!min_entry_count.has_value()) {
+    return pw::Status::OutOfRange();
+  }
+
+  if (num_entries > min_entry_count.value()) {
+    return pw::Status::OutOfRange();
+  }
+
+  for (Reader& reader : readers_) {
+    reader.entry_count_ -= num_entries;
+  }
+  return pw::OkStatus();
 }
 
 Status PrefixedEntryRingBufferMulti::SetBuffer(span<byte> buffer) {
@@ -465,83 +488,6 @@ size_t PrefixedEntryRingBufferMulti::Reader::EntriesSize() const {
   }
 
   return buffer_->buffer_bytes_;
-}
-
-iterator& iterator::operator++() {
-  PW_DCHECK_OK(iteration_status_);
-  PW_DCHECK_INT_NE(entry_count_, 0);
-
-  Result<EntryInfo> info = ring_buffer_->RawFrontEntryInfo(read_idx_);
-  if (!info.status().ok()) {
-    SkipToEnd(info.status());
-    return *this;
-  }
-
-  // It is guaranteed that the buffer is deringed at this point.
-  read_idx_ += info.value().preamble_bytes + info.value().data_bytes;
-  entry_count_--;
-
-  if (entry_count_ == 0) {
-    SkipToEnd(OkStatus());
-    return *this;
-  }
-
-  if (read_idx_ >= ring_buffer_->TotalUsedBytes()) {
-    SkipToEnd(Status::DataLoss());
-    return *this;
-  }
-
-  info = ring_buffer_->RawFrontEntryInfo(read_idx_);
-  if (!info.status().ok()) {
-    SkipToEnd(info.status());
-    return *this;
-  }
-  return *this;
-}
-
-iterator& iterator::operator--() {
-  PW_DCHECK_OK(iteration_status_);
-  PW_DCHECK_INT_NE(entry_count_, 0);
-
-  Result<EntryInfo> info = ring_buffer_->RawFrontEntryInfo(read_idx_);
-  if (!info.status().ok()) {
-    SkipToEnd(info.status());
-    return *this;
-  }
-
-  // It is guaranteed that the buffer is deringed at this point.
-  read_idx_ -= info.value().preamble_bytes + info.value().data_bytes;
-  entry_count_++;
-
-  // If read_idx_ is larger that the total bytes, it's wrapped
-  // as the iterator has decremented past the last element.
-  if (read_idx_ > ring_buffer_->TotalSizeBytes()) {
-    SkipToEnd(Status::DataLoss());
-    return *this;
-  }
-
-  info = ring_buffer_->RawFrontEntryInfo(read_idx_);
-  if (!info.status().ok()) {
-    SkipToEnd(info.status());
-    return *this;
-  }
-  return *this;
-}
-
-const Entry& iterator::operator*() const {
-  PW_DCHECK_OK(iteration_status_);
-  PW_DCHECK_INT_NE(entry_count_, 0);
-
-  Result<EntryInfo> info = ring_buffer_->RawFrontEntryInfo(read_idx_);
-  PW_DCHECK_OK(info.status());
-
-  entry_ = {
-      .buffer = span<const byte>(
-          ring_buffer_->buffer_ + read_idx_ + info.value().preamble_bytes,
-          info.value().data_bytes),
-      .preamble = info.value().user_preamble,
-  };
-  return entry_;
 }
 
 }  // namespace ring_buffer

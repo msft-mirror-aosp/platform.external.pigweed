@@ -12,7 +12,7 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-use core::{mem::offset_of, ptr::NonNull};
+use core::ptr::NonNull;
 
 use foreign_box::ForeignBox;
 use list::{ForeignList, Link};
@@ -24,11 +24,7 @@ pub type Clock = <Arch as ArchInterface>::Clock;
 pub type Instant = time::Instant<Clock>;
 pub type Duration = time::Duration<Clock>;
 
-struct TimerCallbackListAdapter {}
-
-impl list::Adapter for TimerCallbackListAdapter {
-    const LINK_OFFSET: usize = offset_of!(TimerCallback, link);
-}
+list::define_adapter!(pub TimerCallbackListAdapter => TimerCallback.link);
 
 pub type TimerCallbackFn = dyn FnMut(ForeignBox<TimerCallback>, Instant);
 #[allow(dead_code)]

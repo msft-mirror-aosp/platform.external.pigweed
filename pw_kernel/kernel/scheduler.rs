@@ -13,7 +13,6 @@
 // the License.
 
 use core::cell::UnsafeCell;
-use core::mem::offset_of;
 use core::ptr::NonNull;
 
 use foreign_box::ForeignBox;
@@ -107,17 +106,8 @@ pub struct Thread {
     pub name: &'static str,
 }
 
-pub struct ThreadListAdapter {}
-
-impl list::Adapter for ThreadListAdapter {
-    const LINK_OFFSET: usize = offset_of!(Thread, active_link);
-}
-
-pub struct GlobalThreadListAdapter {}
-
-impl list::Adapter for GlobalThreadListAdapter {
-    const LINK_OFFSET: usize = offset_of!(Thread, global_link);
-}
+list::define_adapter!(pub ThreadListAdapter => Thread.active_link);
+list::define_adapter!(pub GlobalThreadListAdapter => Thread.global_link);
 
 impl Thread {
     // Create an empty, uninitialzed thread
