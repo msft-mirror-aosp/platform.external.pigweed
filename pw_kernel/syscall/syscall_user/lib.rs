@@ -12,13 +12,21 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 #![no_std]
+#![feature(naked_functions)]
 
-use target_interface::{declare_target, TargetInterface};
+pub use syscall_defs::SysCallInterface;
 
-pub struct Target {}
+#[cfg(feature = "arch_arm_cortex_m")]
+mod arm_cortex_m;
+#[cfg(feature = "arch_arm_cortex_m")]
+pub use arm_cortex_m::SysCall;
 
-impl TargetInterface for Target {
-    const NAME: &'static str = "QEMU-VIRT-RISCV";
-}
+#[cfg(feature = "arch_riscv")]
+mod riscv;
+#[cfg(feature = "arch_riscv")]
+pub use riscv::SysCall;
 
-declare_target!(Target);
+#[cfg(feature = "arch_host")]
+mod host;
+#[cfg(feature = "arch_host")]
+pub use host::SysCall;
