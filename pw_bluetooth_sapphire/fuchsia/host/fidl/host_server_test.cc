@@ -23,6 +23,7 @@
 #include <zircon/errors.h>
 
 #include "fuchsia/bluetooth/host/cpp/fidl.h"
+#include "pw_bluetooth_sapphire/fake_lease_provider.h"
 #include "pw_bluetooth_sapphire/fuchsia/host/fidl/adapter_test_fixture.h"
 #include "pw_bluetooth_sapphire/fuchsia/host/fidl/fake_adapter_test_fixture.h"
 #include "pw_bluetooth_sapphire/fuchsia/host/fidl/helpers.h"
@@ -147,7 +148,8 @@ class HostServerTest : public bthost::testing::AdapterTestFixture {
     host_server_ =
         std::make_unique<HostServer>(host_handle.NewRequest().TakeChannel(),
                                      adapter()->AsWeakPtr(),
-                                     gatt_->GetWeakPtr());
+                                     gatt_->GetWeakPtr(),
+                                     lease_provider());
     host_.Bind(std::move(host_handle));
   }
 
@@ -1003,11 +1005,15 @@ TEST_F(HostServerTest, PeerWatcherGetNextRepliesOnFirstCallWithExistingPeers) {
   [[maybe_unused]] bt::gap::Peer* peer =
       adapter()->peer_cache()->NewPeer(kLeTestAddr, /*connectable=*/true);
   ResetHostServer();
+  EXPECT_EQ(lease_provider().lease_count(), 0u);
 
   // The first call to GetNext immediately resolves with the contents of the
   // peer cache.
   bool replied = false;
   fidl::InterfacePtr<fhost::PeerWatcher> client = SetPeerWatcher();
+  RunLoopUntilIdle();
+  EXPECT_NE(lease_provider().lease_count(), 0u);
+
   client->GetNext([&](fhost::PeerWatcher_GetNext_Result result) {
     ASSERT_TRUE(result.is_response());
     ASSERT_TRUE(result.response().is_updated());
@@ -1016,6 +1022,7 @@ TEST_F(HostServerTest, PeerWatcherGetNextRepliesOnFirstCallWithExistingPeers) {
   });
   RunLoopUntilIdle();
   EXPECT_TRUE(replied);
+  EXPECT_NE(lease_provider().lease_count(), 0u);
 }
 
 TEST_F(HostServerTest, PeerWatcherHandlesNonEnumeratedAppearanceInPeer) {
@@ -1060,7 +1067,9 @@ TEST_F(HostServerTest, PeerWatcherStateMachine) {
     ASSERT_TRUE(result.is_response());
     response = std::move(result.response());
   });
+  RunLoopUntilIdle();
   ASSERT_FALSE(response.has_value());
+  EXPECT_EQ(lease_provider().lease_count(), 0u);
 
   // Adding a new peer should resolve the hanging get.
   bt::gap::Peer* peer =
@@ -1072,6 +1081,7 @@ TEST_F(HostServerTest, PeerWatcherStateMachine) {
   EXPECT_TRUE(
       fidl::Equals(fidl_helpers::PeerToFidl(*peer), response->updated()[0]));
   response.reset();
+  EXPECT_NE(lease_provider().lease_count(), 0u);
 
   // The next call should hang.
   client->GetNext([&](fhost::PeerWatcher_GetNext_Result result) {
@@ -1080,6 +1090,7 @@ TEST_F(HostServerTest, PeerWatcherStateMachine) {
   });
   RunLoopUntilIdle();
   ASSERT_FALSE(response.has_value());
+  EXPECT_EQ(lease_provider().lease_count(), 0u);
 
   // Removing the peer should resolve the hanging get.
   auto peer_id = peer->identifier();
@@ -1091,6 +1102,17 @@ TEST_F(HostServerTest, PeerWatcherStateMachine) {
   EXPECT_EQ(1u, response->removed().size());
   EXPECT_TRUE(
       fidl::Equals(fbt::PeerId{peer_id.value()}, response->removed()[0]));
+  response.reset();
+  EXPECT_NE(lease_provider().lease_count(), 0u);
+
+  // The next call should hang.
+  client->GetNext([&](fhost::PeerWatcher_GetNext_Result result) {
+    ASSERT_TRUE(result.is_response());
+    response = std::move(result.response());
+  });
+  RunLoopUntilIdle();
+  ASSERT_FALSE(response.has_value());
+  EXPECT_EQ(lease_provider().lease_count(), 0u);
 }
 
 TEST_F(HostServerTest, WatchPeersUpdatedThenRemoved) {
@@ -1611,7 +1633,8 @@ class HostServerTestFakeAdapter
     host_server_ =
         std::make_unique<HostServer>(host_handle.NewRequest().TakeChannel(),
                                      adapter()->AsWeakPtr(),
-                                     gatt_->GetWeakPtr());
+                                     gatt_->GetWeakPtr(),
+                                     lease_provider_);
     host_.Bind(std::move(host_handle));
   }
 
@@ -1631,6 +1654,7 @@ class HostServerTestFakeAdapter
   fuchsia::bluetooth::host::HostPtr& host_client_ptr() { return host_; }
 
  private:
+  pw::bluetooth_sapphire::testing::FakeLeaseProvider lease_provider_;
   std::unique_ptr<HostServer> host_server_;
   fuchsia::bluetooth::host::HostPtr host_;
   std::unique_ptr<bt::gatt::GATT> gatt_;
