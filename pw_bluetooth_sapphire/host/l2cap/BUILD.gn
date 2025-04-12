@@ -102,6 +102,7 @@ pw_source_set("l2cap") {
   public_deps = [
     ":definitions",
     "$dir_pw_bluetooth:emboss_hci_android",
+    "$dir_pw_bluetooth_sapphire:lease",
     "$dir_pw_bluetooth_sapphire/host/common",
     "$dir_pw_bluetooth_sapphire/host/hci",
     "$dir_pw_bluetooth_sapphire/host/sm:definitions",
@@ -201,6 +202,7 @@ pw_test("l2cap_tests") {
     ":l2cap",
     ":testing",
     "$dir_pw_async:fake_dispatcher_fixture",
+    "$dir_pw_bluetooth_sapphire:null_lease_provider",
     "$dir_pw_bluetooth_sapphire/host/hci",
     "$dir_pw_bluetooth_sapphire/host/hci:testing",
     "$dir_pw_bluetooth_sapphire/host/testing",
@@ -231,6 +233,7 @@ pw_fuzzer("bredr_dynamic_channel_registry_fuzzer") {
   deps = [
     ":l2cap",
     ":testing",
+    "$dir_pw_bluetooth_sapphire:null_lease_provider",
     "$dir_pw_random:fuzzer_generator",
   ]
 }

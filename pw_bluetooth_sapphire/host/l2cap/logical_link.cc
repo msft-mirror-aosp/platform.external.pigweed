@@ -84,17 +84,20 @@ FixedChannelsSupported FixedChannelsSupportedBitForChannelId(
 
 }  // namespace
 
-LogicalLink::LogicalLink(hci_spec::ConnectionHandle handle,
-                         bt::LinkType type,
-                         pw::bluetooth::emboss::ConnectionRole role,
-                         uint16_t max_acl_payload_size,
-                         QueryServiceCallback query_service_cb,
-                         hci::AclDataChannel* acl_data_channel,
-                         hci::CommandChannel* cmd_channel,
-                         bool random_channel_ids,
-                         A2dpOffloadManager& a2dp_offload_manager,
-                         pw::async::Dispatcher& dispatcher)
-    : pw_dispatcher_(dispatcher),
+LogicalLink::LogicalLink(
+    hci_spec::ConnectionHandle handle,
+    bt::LinkType type,
+    pw::bluetooth::emboss::ConnectionRole role,
+    uint16_t max_acl_payload_size,
+    QueryServiceCallback query_service_cb,
+    hci::AclDataChannel* acl_data_channel,
+    hci::CommandChannel* cmd_channel,
+    bool random_channel_ids,
+    A2dpOffloadManager& a2dp_offload_manager,
+    pw::async::Dispatcher& dispatcher,
+    pw::bluetooth_sapphire::LeaseProvider& wake_lease_provider)
+    : wake_lease_provider_(wake_lease_provider),
+      pw_dispatcher_(dispatcher),
       handle_(handle),
       type_(type),
       role_(role),
@@ -106,7 +109,7 @@ LogicalLink::LogicalLink(hci_spec::ConnectionHandle handle,
                 .count();
           }),
       closed_(false),
-      recombiner_(handle),
+      recombiner_(handle, wake_lease_provider),
       acl_data_channel_(acl_data_channel),
       cmd_channel_(cmd_channel),
       query_service_cb_(std::move(query_service_cb)),
@@ -124,7 +127,10 @@ LogicalLink::LogicalLink(hci_spec::ConnectionHandle handle,
   // Set up the signaling channel and dynamic channels.
   if (type_ == bt::LinkType::kLE) {
     signaling_channel_ = std::make_unique<LESignalingChannel>(
-        OpenFixedChannel(kLESignalingChannelId), role_, pw_dispatcher_);
+        OpenFixedChannel(kLESignalingChannelId),
+        role_,
+        pw_dispatcher_,
+        wake_lease_provider_);
     dynamic_registry_ = std::make_unique<LeDynamicChannelRegistry>(
         signaling_channel_.get(),
         fit::bind_member<&LogicalLink::OnChannelDisconnectRequest>(this),
@@ -135,7 +141,10 @@ LogicalLink::LogicalLink(hci_spec::ConnectionHandle handle,
     ServeFlowControlCreditInd();
   } else {
     signaling_channel_ = std::make_unique<BrEdrSignalingChannel>(
-        OpenFixedChannel(kSignalingChannelId), role_, pw_dispatcher_);
+        OpenFixedChannel(kSignalingChannelId),
+        role_,
+        pw_dispatcher_,
+        wake_lease_provider_);
     dynamic_registry_ = std::make_unique<BrEdrDynamicChannelRegistry>(
         signaling_channel_.get(),
         fit::bind_member<&LogicalLink::OnChannelDisconnectRequest>(this),
@@ -183,7 +192,8 @@ Channel::WeakPtr LogicalLink::OpenFixedChannel(ChannelId id) {
                                       GetWeakPtr(),
                                       cmd_channel_->AsWeakPtr(),
                                       max_acl_payload_size_,
-                                      a2dp_offload_manager_);
+                                      a2dp_offload_manager_,
+                                      wake_lease_provider_);
 
   auto pp_iter = pending_pdus_.find(id);
   if (pp_iter != pending_pdus_.end()) {
@@ -630,11 +640,13 @@ void LogicalLink::CompleteDynamicOpen(const DynamicChannel* dyn_chan,
   const ChannelId remote_cid = dyn_chan->remote_cid();
   bt_log(DEBUG,
          "l2cap",
-         "Link %#.4x: Channel opened with ID %#.4x (remote ID: %#.4x, psm: %s)",
+         "Link %#.4x: Channel opened with ID %#.4x (remote ID: %#.4x, psm: %s, "
+         "mode: %s)",
          handle_,
          local_cid,
          remote_cid,
-         PsmToString(dyn_chan->psm()).c_str());
+         PsmToString(dyn_chan->psm()).c_str(),
+         AnyChannelModeToString(dyn_chan->info().mode).c_str());
 
   auto chan_info = dyn_chan->info();
   // Extract preferred flush timeout to avoid creating channel with a flush
@@ -650,7 +662,8 @@ void LogicalLink::CompleteDynamicOpen(const DynamicChannel* dyn_chan,
                                         chan_info,
                                         cmd_channel_->AsWeakPtr(),
                                         max_acl_payload_size_,
-                                        a2dp_offload_manager_);
+                                        a2dp_offload_manager_,
+                                        wake_lease_provider_);
   auto chan_weak = chan->GetWeakPtr();
   channels_[local_cid] = std::move(chan);
 

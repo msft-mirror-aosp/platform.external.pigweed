@@ -34,6 +34,7 @@
 #include "pw_bluetooth_sapphire/internal/host/gap/low_energy_discovery_manager.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/pairing_delegate.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/types.h"
+#include "pw_bluetooth_sapphire/lease.h"
 
 namespace bthost {
 
@@ -44,7 +45,8 @@ class HostServer : public AdapterServerBase<fuchsia::bluetooth::host::Host>,
  public:
   HostServer(zx::channel channel,
              const bt::gap::Adapter::WeakPtr& adapter,
-             bt::gatt::GATT::WeakPtr gatt);
+             bt::gatt::GATT::WeakPtr gatt,
+             pw::bluetooth_sapphire::LeaseProvider& wake_lease_provider);
   ~HostServer() override;
 
   // ::fuchsia::bluetooth::host::Host overrides:
@@ -152,6 +154,8 @@ class HostServer : public AdapterServerBase<fuchsia::bluetooth::host::Host>,
     ::fuchsia::bluetooth::host::PeerWatcher::GetNextCallback callback_ =
         nullptr;
 
+    std::optional<pw::bluetooth_sapphire::Lease> wake_lease_;
+
     HostServer* host_;
 
     // Keep this as the last member to make sure that all weak pointers are
@@ -245,8 +249,8 @@ class HostServer : public AdapterServerBase<fuchsia::bluetooth::host::Host>,
   // Helper for binding a fidl::InterfaceRequest to a FIDL server of type
   // ServerType.
   template <typename ServerType, typename... Args>
-  void BindServer(Args... args) {
-    auto server = std::make_unique<ServerType>(std::move(args)...);
+  void BindServer(Args&&... args) {
+    auto server = std::make_unique<ServerType>(std::forward<Args>(args)...);
     Server* s = server.get();
     server->set_error_handler(
         [this, s](zx_status_t status) { this->OnConnectionError(s); });
@@ -257,6 +261,8 @@ class HostServer : public AdapterServerBase<fuchsia::bluetooth::host::Host>,
 
   // We hold a weak pointer to GATT for dispatching GATT FIDL requests.
   bt::gatt::GATT::WeakPtr gatt_;
+
+  pw::bluetooth_sapphire::LeaseProvider& wake_lease_provider_;
 
   std::unordered_map<DiscoverySessionServer*,
                      std::unique_ptr<DiscoverySessionServer>>

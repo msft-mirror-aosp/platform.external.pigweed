@@ -122,6 +122,7 @@ cc_library(
         ":definitions",
         "//pw_bluetooth",
         "//pw_bluetooth:emboss_hci_android",
+        "//pw_bluetooth_sapphire:lease",
         "//pw_bluetooth_sapphire/host/common",
         "//pw_bluetooth_sapphire/host/hci",
         "//pw_bluetooth_sapphire/host/sm:definitions",
@@ -222,6 +223,7 @@ pw_cc_test(
         ":l2cap",
         ":testing",
         "//pw_async:fake_dispatcher_fixture",
+        "//pw_bluetooth_sapphire:null_lease_provider",
         "//pw_bluetooth_sapphire/host/hci",
         "//pw_bluetooth_sapphire/host/hci:testing",
         "//pw_bluetooth_sapphire/host/testing",
@@ -256,6 +258,7 @@ pw_cc_fuzz_test(
     deps = [
         ":l2cap",
         ":testing",
+        "//pw_bluetooth_sapphire:null_lease_provider",
         "//pw_random:fuzzer_generator",
     ],
 )
