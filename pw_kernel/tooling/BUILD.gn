@@ -1,4 +1,4 @@
-# Copyright 2020 The Pigweed Authors
+# Copyright 2025 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -12,28 +12,14 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
+import("//build_overrides/pigweed.gni")
 
-pw_add_library(pw_base64 STATIC
-  HEADERS
-    public/pw_base64/base64.h
-  PUBLIC_INCLUDES
-    public
-  PUBLIC_DEPS
-    pw_span
-    pw_string.string
-  SOURCES
-    base64.cc
-)
+import("$dir_pw_build/python.gni")
 
-pw_add_test(pw_base64.base64_test
-  SOURCES
-    base64_test.cc
-    base64_test_c.c
-  PRIVATE_DEPS
-    pw_base64
-    pw_unit_test.constexpr
-  GROUPS
-    modules
-    pw_base64
-)
+pw_python_script("qemu_runner") {
+  sources = [ "qemu_runner.py" ]
+  python_deps = [ "$dir_pw_tokenizer/py" ]
+  pylintrc = "$dir_pigweed/.pylintrc"
+  mypy_ini = "$dir_pigweed/.mypy.ini"
+  ruff_toml = "$dir_pigweed/.ruff.toml"
+}

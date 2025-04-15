@@ -18,21 +18,14 @@ workspace(
 
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
-# TODO: b/383856665 - rules_fuchsia requires host_platform. Once this is fixed
-# we can remove this entry.
-load("@platforms//host:extension.bzl", "host_platform_repo")
-
-host_platform_repo(
-    name = "host_platform",
-)
-
 # Setup Fuchsia SDK.
+# TODO: https://pwbug.dev/308624902 - This piece lacks bzlmod support.
 git_repository(
     name = "fuchsia_infra",
     # ROLL: Warning: this entry is automatically updated.
-    # ROLL: Last updated 2025-03-08.
-    # ROLL: By https://cr-buildbucket.appspot.com/build/8720929999673875025.
-    commit = "1a9eeb160bb46c2d089f3d10dd2db64083c767e2",
+    # ROLL: Last updated 2025-04-14.
+    # ROLL: By amontanez.
+    commit = "434a27e66908d795cc2302738b13951e750c450e",
     remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
 )
 
