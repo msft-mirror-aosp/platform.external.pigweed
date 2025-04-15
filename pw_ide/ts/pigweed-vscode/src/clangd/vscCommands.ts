@@ -15,15 +15,27 @@
 import * as vscode from 'vscode';
 import { ClangdActiveFilesCache } from './activeFilesCache';
 import { clangdPath as bazelClangdPath } from './bazel';
-import { availableTargets, getTarget, baseSetTarget, Target } from './paths';
+import {
+  availableTargets,
+  getTarget,
+  baseSetTarget,
+  Target,
+  CDB_FILE_DIR,
+  CDB_FILE_NAME,
+} from './paths';
 
 import { didChangeClangdConfig, didChangeTarget } from '../events';
 
 import { launchTroubleshootingLink } from '../links';
 import logger from '../logging';
-import { RefreshManager } from '../refreshManager';
-import { settingFor, settings, stringSettingFor } from '../settings/vscode';
-import { processCompDbs } from './parser';
+import { OK, RefreshCallbackResult, RefreshManager } from '../refreshManager';
+import {
+  settingFor,
+  settings,
+  stringSettingFor,
+  workingDir,
+} from '../settings/vscode';
+import { processCompDbs } from './compileCommandsUtils';
 import {
   getTargetType,
   loadProcessedMapping,
@@ -145,7 +157,7 @@ export async function setCompileCommandsTarget(
     });
 }
 
-export async function refreshNonBazelCompileCommands() {
+async function refreshNonBazelCompileCommandsInternal(): Promise<RefreshCallbackResult> {
   const { processedCompDbs, unprocessedCompDbs } = await processCompDbs();
 
   const currentProcessedMapping = await loadProcessedMapping();
@@ -160,7 +172,7 @@ export async function refreshNonBazelCompileCommands() {
   };
 
   const writePromises = [
-    processedCompDbs.writeAll(),
+    processedCompDbs.writeAll(workingDir.get(), CDB_FILE_DIR, CDB_FILE_NAME),
     saveProcessedMapping(newProcessedMapping),
   ];
 
@@ -169,6 +181,14 @@ export async function refreshNonBazelCompileCommands() {
   }
 
   await Promise.all(writePromises);
+  return OK;
+}
+
+export async function refreshNonBazelCompileCommands(
+  refreshManager: RefreshManager<any>,
+) {
+  refreshManager.onOnce(refreshNonBazelCompileCommandsInternal, 'refreshing');
+  refreshManager.refresh();
 }
 
 export async function refreshCompileCommandsAndSetTarget(
