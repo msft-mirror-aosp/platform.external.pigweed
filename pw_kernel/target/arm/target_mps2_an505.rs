@@ -11,24 +11,18 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
+#![no_std]
 
-unsafe extern "Rust" {
-    fn pw_kernel_target_name() -> &'static str;
-    fn pw_kernel_target_console_init();
-    fn pw_kernel_target_main() -> !;
+use target_interface::{declare_target, TargetInterface};
+
+pub struct Target {}
+
+impl TargetInterface for Target {
+    const NAME: &'static str = "MPS2-AN505";
+
+    fn main() -> ! {
+        demo::main()
+    }
 }
 
-#[inline(always)]
-pub fn name() -> &'static str {
-    unsafe { pw_kernel_target_name() }
-}
-
-#[inline(always)]
-pub fn console_init() {
-    unsafe { pw_kernel_target_console_init() }
-}
-
-#[inline(always)]
-pub fn main() -> ! {
-    unsafe { pw_kernel_target_main() }
-}
+declare_target!(Target);

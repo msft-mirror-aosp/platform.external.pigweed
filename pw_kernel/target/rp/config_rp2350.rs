@@ -11,24 +11,14 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
+#![no_std]
 
-unsafe extern "Rust" {
-    fn pw_kernel_target_name() -> &'static str;
-    fn pw_kernel_target_console_init();
-    fn pw_kernel_target_main() -> !;
-}
+pub use kernel_config::{CortexMKernelConfigInterface, KernelConfigInterface};
 
-#[inline(always)]
-pub fn name() -> &'static str {
-    unsafe { pw_kernel_target_name() }
-}
+pub struct KernelConfig;
 
-#[inline(always)]
-pub fn console_init() {
-    unsafe { pw_kernel_target_console_init() }
-}
+impl KernelConfigInterface for KernelConfig {}
 
-#[inline(always)]
-pub fn main() -> ! {
-    unsafe { pw_kernel_target_main() }
+impl CortexMKernelConfigInterface for KernelConfig {
+    const SYS_TICK_HZ: u32 = 1_000_000;
 }
