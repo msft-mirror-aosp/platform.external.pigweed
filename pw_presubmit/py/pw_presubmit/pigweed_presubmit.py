@@ -19,18 +19,19 @@ import argparse
 import json
 import logging
 import os
-from pathlib import Path
 import platform
 import re
 import shlex
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 from typing import Callable, Iterable, Sequence, TextIO
 
-from pw_cli.plural import plural
-from pw_cli.file_filter import FileFilter
 import pw_package.pigweed_packages
+from pw_cli.file_filter import FileFilter
+from pw_cli.plural import plural
+
 from pw_presubmit import (
     bazel_checks,
     block_submission,
@@ -52,17 +53,10 @@ from pw_presubmit import (
     source_in_build,
     todo_check,
 )
-from pw_presubmit.presubmit import (
-    Programs,
-    call,
-    filter_paths,
-)
-from pw_presubmit.presubmit_context import (
-    PresubmitContext,
-    PresubmitFailure,
-)
-from pw_presubmit.tools import log_run
 from pw_presubmit.install_hook import install_git_hook
+from pw_presubmit.presubmit import Programs, call, filter_paths
+from pw_presubmit.presubmit_context import PresubmitContext, PresubmitFailure
+from pw_presubmit.tools import log_run
 
 _LOG = logging.getLogger(__name__)
 
@@ -497,7 +491,7 @@ gn_chre_googletest_nanopb_sapphire_build = PigweedGnGenNinja(
 gn_fuzz_build = PigweedGnGenNinja(
     name='gn_fuzz_build',
     path_filter=_BUILD_FILE_FILTER,
-    packages=('abseil-cpp', 'fuzztest', 'googletest', 're2'),
+    packages=('abseil-cpp', 'fuzztest', 'googletest'),
     gn_args={
         'dir_pw_third_party_abseil_cpp': lambda ctx: '"{}"'.format(
             ctx.package_root / 'abseil-cpp'
@@ -507,15 +501,6 @@ gn_fuzz_build = PigweedGnGenNinja(
         ),
         'dir_pw_third_party_googletest': lambda ctx: '"{}"'.format(
             ctx.package_root / 'googletest'
-        ),
-        'dir_pw_third_party_re2': lambda ctx: '"{}"'.format(
-            ctx.package_root / 're2'
-        ),
-        'pw_unit_test_MAIN': lambda ctx: '"{}"'.format(
-            ctx.root / 'third_party/googletest:gmock_main'
-        ),
-        'pw_unit_test_BACKEND': lambda ctx: '"{}"'.format(
-            ctx.root / 'pw_unit_test:googletest'
         ),
     },
     ninja_targets=('fuzzers',),
@@ -1515,11 +1500,18 @@ SOURCE_FILES_FILTER = FileFilter(
     ),
 )
 
+SOURCE_FILES_FILTER_BAZEL_EXCLUDE = FileFilter(
+    exclude=(
+        # keep-sorted: start
+        r'\bpw_docgen/py/tests',
+        # keep-sorted: end
+    ),
+)
+
 SOURCE_FILES_FILTER_GN_EXCLUDE = FileFilter(
     exclude=(
         # keep-sorted: start
         r'\bpw_bluetooth_sapphire/fuchsia',
-        r'\bpw_kernel',
         # keep-sorted: end
     ),
 )
@@ -1758,7 +1750,9 @@ LINTFORMAT = (
     # a bazel query that pulls in all of Pigweed's external dependencies
     # (https://stackoverflow.com/q/71024130/1224002). These are cached, but
     # after a roll it can be quite slow.
-    source_in_build.bazel(SOURCE_FILES_FILTER),
+    source_in_build.bazel(SOURCE_FILES_FILTER).with_file_filter(
+        SOURCE_FILES_FILTER_BAZEL_EXCLUDE
+    ),
     python_checks.check_python_versions,
     python_checks.gn_python_lint,
 )

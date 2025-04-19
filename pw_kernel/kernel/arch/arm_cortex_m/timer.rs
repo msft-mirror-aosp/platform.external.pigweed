@@ -11,58 +11,85 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
+use crate::arch::arm_cortex_m::regs::Regs;
+
 use crate::scheduler;
-use core::sync::atomic;
-use cortex_m::peripheral::*;
+use crate::sync::spinlock::SpinLock;
+use kernel_config::{CortexMKernelConfigInterface, KernelConfig, KernelConfigInterface};
 use pw_log::info;
 use time::Clock as _;
 
-const TICKS_PER_SEC: u32 = 1000000; // 1Mhz
-const TICK_HZ: u32 = 100;
+static TICKS: SpinLock<u64> = SpinLock::new(0);
+const SYSTICK_RELOAD_VALUE: u32 = KernelConfig::SYS_TICK_HZ / KernelConfig::SCHEDULER_TICK_HZ;
 
-pub struct Clock;
+pub struct Clock {}
 
 impl time::Clock for Clock {
-    const TICKS_PER_SEC: u64 = TICK_HZ as u64;
+    const TICKS_PER_SEC: u64 = KernelConfig::SYS_TICK_HZ as u64;
 
     fn now() -> time::Instant<Self> {
-        time::Instant::from_ticks(TICKS.load(atomic::Ordering::SeqCst) as u64)
+        let mut ticks = TICKS.lock();
+        let systick_regs = Regs::get().systick;
+        let mut current = systick_regs.cvr.read().current();
+        let reload = systick_regs.rvr.read().reload();
+        if systick_regs.csr.read().countflag() {
+            // Update the global tick count, as reading the control bit
+            // when it's 1 will clear it.
+            *ticks += SYSTICK_RELOAD_VALUE as u64;
+            current = systick_regs.cvr.read().current();
+        }
+
+        let delta = (reload - current) as u64;
+        // The cortex-m systick is a count down timer which triggers
+        // ever reload period, which we define as (SYS_TICK_HZ / SCHEDULER_TICK_HZ).
+        // The current time is calculated as the number of ticks + delta where:
+        // - ticks is the systick count * reload period
+        // - delta is the amount of time that has passed within the current systick
+        let res = *ticks + delta;
+        time::Instant::from_ticks(res)
     }
 }
 
-// Store the total number of 100hz ticks we've accumulated to service
-// current_time below.
-static TICKS: atomic::AtomicU32 = atomic::AtomicU32::new(0);
-
 #[allow(dead_code)]
 pub fn systick_dump() {
-    info!(
-        "counter {} reload {}",
-        SYST::get_current() as u32,
-        SYST::get_reload() as u32
-    );
+    let systick_regs = Regs::get().systick;
+    let current = systick_regs.cvr.read().current();
+    let reload = systick_regs.rvr.read().reload();
+
+    info!("current {} reload {}", current as u32, reload as u32);
 }
 
-pub fn systick_early_init(syst: &mut SYST) {
+pub fn systick_early_init() {
     info!("starting monotonic systick\n");
 
-    syst.disable_counter();
-    syst.disable_interrupt();
-    syst.clear_current();
+    let mut csr = Regs::get().systick.csr;
+    // disable counter and interrupts
+    let mut csr_val = csr.read().with_enable(false).with_tickint(false);
+    csr.write(csr_val);
 
-    // set a 100Hz timer
-    syst.set_reload(TICKS_PER_SEC / TICK_HZ);
-    syst.enable_counter();
+    // clear current value
+    let mut cvr = Regs::get().systick.cvr;
+    let cvr_val = cvr.read().with_current(0);
+    cvr.write(cvr_val);
 
-    syst.enable_interrupt();
+    // set a timer
+    let mut rvr = Regs::get().systick.rvr;
+    let rvr_val = rvr.read().with_reload(SYSTICK_RELOAD_VALUE - 1);
+    rvr.write(rvr_val);
+
+    // enable counter and interrupts
+    csr_val = csr.read().with_enable(true).with_tickint(true);
+    csr.write(csr_val);
 }
 
 pub fn systick_init() {
-    info!("ticks_per_10ms: {}", SYST::get_ticks_per_10ms() as u32);
-    if SYST::get_ticks_per_10ms() > 0 {
+    let systick_regs = Regs::get().systick;
+    let ticks_per_10ms = systick_regs.calib.read().tenms();
+    info!("ticks_per_10ms: {}", ticks_per_10ms as u32);
+    if ticks_per_10ms > 0 {
         pw_assert::eq!(
-            (SYST::get_ticks_per_10ms() * 100) as u64,
-            TICKS_PER_SEC as u64
+            (ticks_per_10ms * 100) as u64,
+            KernelConfig::SYS_TICK_HZ as u64
         );
     }
 }
@@ -70,9 +97,10 @@ pub fn systick_init() {
 #[no_mangle]
 #[allow(non_snake_case)]
 pub unsafe extern "C" fn SysTick() {
-    TICKS.fetch_add(1, atomic::Ordering::SeqCst);
+    let mut ticks = TICKS.lock();
+    *ticks += SYSTICK_RELOAD_VALUE as u64;
 
-    //info!("SysTick {}", current_time_ms());
+    //info!("SysTick {}", *ticks as u64);
 
     scheduler::tick(Clock::now());
 }
