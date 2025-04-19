@@ -73,6 +73,7 @@ rust_library(
     proc_macro_deps = ["@rust_crates//:paste"],
     tags = ["kernel"],
     deps = [
+        "//pw_kernel/config:kernel_config",
         "//pw_kernel/lib/foreign_box",
         "//pw_kernel/lib/list",
         "//pw_kernel/lib/log_if",
@@ -81,8 +82,6 @@ rust_library(
         "//pw_kernel/lib/regs",
         "//pw_kernel/lib/time",
         "//pw_kernel/syscall:syscall_defs",
-        # TODO - konkers: remove this once we have userspace.
-        "//pw_kernel/syscall:syscall_user",
         "@pigweed//pw_log/rust:pw_log",
     ] + select({
         "@pigweed//pw_build/constraints/arm:cortex-m0": CORTEX_M_DEPS,

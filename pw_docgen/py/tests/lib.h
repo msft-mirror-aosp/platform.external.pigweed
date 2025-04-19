@@ -12,23 +12,8 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-unsafe extern "Rust" {
-    fn pw_kernel_target_name() -> &'static str;
-    fn pw_kernel_target_console_init();
-    fn pw_kernel_target_main() -> !;
-}
+#pragma once
 
-#[inline(always)]
-pub fn name() -> &'static str {
-    unsafe { pw_kernel_target_name() }
-}
-
-#[inline(always)]
-pub fn console_init() {
-    unsafe { pw_kernel_target_console_init() }
-}
-
-#[inline(always)]
-pub fn main() -> ! {
-    unsafe { pw_kernel_target_main() }
-}
+/// This isn't a real function. It's part of the GN docs build tests.
+/// Sentinel value that's used in a test: x91lfm4lg78
+bool gn_docs_build_tests_function();
