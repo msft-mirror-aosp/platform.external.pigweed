@@ -47,6 +47,8 @@
             config: "fuchsia.bluetooth.ScoOffloadPathIndex",
             key: "sco_offload_path_index",
             type: "uint8",
+            availability: "optional",
+            default: 6,
         },
         {
             directory: "dev-bt-hci",
