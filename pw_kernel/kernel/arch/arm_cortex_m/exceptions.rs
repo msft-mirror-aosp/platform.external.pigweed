@@ -13,9 +13,15 @@
 // the License.
 #![allow(non_snake_case)]
 
-//use core::sync::atomic::{self, Ordering};
-use core::arch::naked_asm;
+#[cfg(not(feature = "user_space"))]
+pub(crate) use arm_cortex_m_macro::kernel_only_exception as exception;
+#[cfg(feature = "user_space")]
+pub(crate) use arm_cortex_m_macro::user_space_exception as exception;
+
 use pw_log::info;
+
+#[allow(dead_code)]
+pub type ExceptionHandler = extern "C" fn(*mut KernelExceptionFrame) -> *mut KernelExceptionFrame;
 
 /// Exception frame with all registers
 #[repr(C)]
@@ -39,7 +45,8 @@ pub struct ExceptionFrame {
 
 impl ExceptionFrame {
     #[inline(never)]
-    fn dump(&self) {
+    #[allow(dead_code)]
+    pub fn dump(&self) {
         info!("Exception frame {:#08x}:", &raw const *self as usize);
         info!(
             "r0  {:#010x} r1 {:#010x} r2  {:#010x} r3  {:#010x}",
@@ -60,12 +67,14 @@ pub struct KernelExceptionFrame {
     pub r9: u32,
     pub r10: u32,
     pub r11: u32,
+    #[cfg(feature = "user_space")]
+    pub psp: u32,
     pub return_address: u32,
 }
 
 impl KernelExceptionFrame {
     #[inline(never)]
-    fn dump(&self) {
+    pub fn dump(&self) {
         info!("Kernel exception frame {:#08x}:", &raw const *self as usize);
         info!(
             "r4  {:#010x} r5 {:#010x} r6  {:#010x} r7  {:#010x}",
@@ -78,103 +87,81 @@ impl KernelExceptionFrame {
     }
 }
 
-#[inline(never)]
-fn dump_exception_frame(frame: &FullExceptionFrame) {
-    frame.user.dump();
-    frame.kernel.dump();
-}
-
-macro_rules! exception_trampoline {
-    ($exception:ident, $handler:ident) => {
-        #[no_mangle]
-        #[naked]
-        pub unsafe extern "C" fn $exception() -> ! {
-            unsafe {
-                naked_asm!(concat!(
-                    "
-            push    {{ r4 - r11, lr }}  // save the additional registers
-            mov     r0, sp
-            sub     sp, 4               // realign the stack to 8 byte boundary
-            bl      ",
-                    stringify!($handler),
-                    "
-            mov     sp, r0
-            pop     {{ r4 - r11, pc }}
-
-        "
-                ))
-            }
-        }
-    };
-}
-
+#[exception(exception = "HardFault")]
 #[no_mangle]
-pub unsafe extern "C" fn pw_kernel_hard_fault(frame: *mut FullExceptionFrame) -> ! {
+extern "C" fn pw_kernel_hard_fault(frame: *mut KernelExceptionFrame) -> *mut KernelExceptionFrame {
     info!("HardFault");
-    dump_exception_frame(&*frame);
+    unsafe { &*frame }.dump();
     #[allow(clippy::empty_loop)]
     loop {}
 }
-exception_trampoline!(HardFault, pw_kernel_hard_fault);
 
+#[exception(exception = "DefaultHandler")]
 #[no_mangle]
-pub unsafe extern "C" fn pw_kernel_default(frame: *mut FullExceptionFrame) -> ! {
+extern "C" fn pw_kernel_default(frame: *mut KernelExceptionFrame) -> *mut KernelExceptionFrame {
     info!("DefaultHandler");
-    dump_exception_frame(&*frame);
+    unsafe { &*frame }.dump();
     #[allow(clippy::empty_loop)]
     loop {}
 }
-exception_trampoline!(DefaultHandler, pw_kernel_default);
 
+#[exception(exception = "NonMaskableInt")]
 #[no_mangle]
-pub unsafe extern "C" fn pw_kernel_non_maskable_int(frame: *mut FullExceptionFrame) -> ! {
+extern "C" fn pw_kernel_non_maskable_int(
+    frame: *mut KernelExceptionFrame,
+) -> *mut KernelExceptionFrame {
     info!("NonMaskableInt");
-    dump_exception_frame(&*frame);
+    unsafe { &*frame }.dump();
     #[allow(clippy::empty_loop)]
     loop {}
 }
-exception_trampoline!(NonMaskableInt, pw_kernel_non_maskable_int);
 
+#[exception(exception = "MemoryManagement")]
 #[no_mangle]
-pub unsafe extern "C" fn pw_kernel_memory_management(frame: *mut FullExceptionFrame) -> ! {
+extern "C" fn pw_kernel_memory_management(
+    frame: *mut KernelExceptionFrame,
+) -> *mut KernelExceptionFrame {
     let mmfar = 0xE000ED34 as *const u32;
     info!(
         "MemoryManagement exception at {:08x}",
-        mmfar.read_volatile() as u32
+        unsafe { mmfar.read_volatile() } as u32
     );
-    dump_exception_frame(&*frame);
+    unsafe { &*frame }.dump();
 
     #[allow(clippy::empty_loop)]
     loop {}
 }
-exception_trampoline!(MemoryManagement, pw_kernel_memory_management);
 
+#[exception(exception = "BusFault")]
 #[no_mangle]
-pub unsafe extern "C" fn pw_kernel_bus_fault(frame: *mut FullExceptionFrame) -> ! {
+extern "C" fn pw_kernel_bus_fault(frame: *mut KernelExceptionFrame) -> *mut KernelExceptionFrame {
     let bfar = 0xE000ED38 as *const u32;
-    info!("BusFault exception at {:08x}", bfar.read_volatile() as u32);
-    dump_exception_frame(&*frame);
-    #[allow(clippy::empty_loop)]
+    info!(
+        "BusFault exception at {:08x}",
+        unsafe { bfar.read_volatile() } as u32
+    );
+    unsafe { &*frame }.dump();
     loop {}
 }
-exception_trampoline!(BusFault, pw_kernel_bus_fault);
 
+#[exception(exception = "UsageFault")]
 #[no_mangle]
-pub unsafe extern "C" fn pw_kernel_usage_fault(frame: *mut FullExceptionFrame) -> ! {
+extern "C" fn pw_kernel_usage_fault(frame: *mut KernelExceptionFrame) -> *mut KernelExceptionFrame {
     info!("UsageFault");
-    dump_exception_frame(&*frame);
-    #[allow(clippy::empty_loop)]
+    unsafe { &*frame }.dump();
     loop {}
 }
-exception_trampoline!(UsageFault, pw_kernel_usage_fault);
 
 // PendSV is defined in thread.rs
 // SVCall is defined in syscall.rs
 
+#[exception(exception = "DebugMonitor")]
 #[no_mangle]
-pub unsafe extern "C" fn pw_kernel_debug_monitor(frame: *mut FullExceptionFrame) -> ! {
+extern "C" fn pw_kernel_debug_monitor(
+    frame: *mut KernelExceptionFrame,
+) -> *mut KernelExceptionFrame {
     info!("DebugMonitor");
-    dump_exception_frame(&*frame);
+    unsafe { &*frame }.dump();
     #[allow(clippy::empty_loop)]
     loop {}
 }
