@@ -1,4 +1,4 @@
-# Copyright 2024 The Pigweed Authors
+# Copyright 2025 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -11,22 +11,9 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
+"""Required config overrides for pw_rpc to use pw_grpc"""
 
-load("//pw_bloat:pw_cc_size_binary.bzl", "pw_cc_size_binary")
-
-package(
-    default_visibility = ["//visibility:public"],
-    features = ["-layering_check"],
-)
-
-licenses(["notice"])
-
-pw_cc_size_binary(
-    name = "use_passthrough_proxy",
-    srcs = ["use_passthrough_proxy.cc"],
-    features = ["-conversion_warnings"],
-    deps = [
-        "//pw_bloat:bloat_this_binary",
-        "//pw_bluetooth_proxy",
-    ],
-)
+PW_GRPC_PW_RPC_CONFIG_OVERRIDES = [
+    "PW_RPC_COMPLETION_REQUEST_CALLBACK=1",
+    "PW_RPC_METHOD_STORES_TYPE=1",
+]
