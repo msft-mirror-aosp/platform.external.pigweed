@@ -18,6 +18,8 @@ load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_bloat:pw_size_diff.bzl", "pw_size_diff")
+load("//pw_bloat:pw_size_table.bzl", "pw_size_table")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_build:copy_to_bin.bzl", "copy_to_bin")
 load(
@@ -110,6 +112,22 @@ cc_library(
     deps = [":pw_rpc"],
 )
 
+# See https://pigweed.dev/pw_rpc/cpp.html#c.PW_RPC_USE_GLOBAL_MUTEX for documentation.
+constraint_setting(
+    name = "use_global_mutex",
+    default_constraint_value = ":use_global_mutex_true",
+)
+
+constraint_value(
+    name = "use_global_mutex_false",
+    constraint_setting = ":use_global_mutex",
+)
+
+constraint_value(
+    name = "use_global_mutex_true",
+    constraint_setting = ":use_global_mutex",
+)
+
 # See https://pigweed.dev/pw_rpc/cpp.html#c.PW_RPC_YIELD_MODE for documentation.
 constraint_setting(
     name = "yield_mode",
@@ -181,6 +199,9 @@ cc_library(
         ":yield_mode_busy_loop": ["PW_RPC_YIELD_MODE=PW_RPC_YIELD_MODE_BUSY_LOOP"],
         ":yield_mode_sleep": ["PW_RPC_YIELD_MODE=PW_RPC_YIELD_MODE_SLEEP"],
         ":yield_mode_yield": ["PW_RPC_YIELD_MODE=PW_RPC_YIELD_MODE_YIELD"],
+    }) + select({
+        ":use_global_mutex_false": ["PW_RPC_USE_GLOBAL_MUTEX=0"],
+        ":use_global_mutex_true": ["PW_RPC_USE_GLOBAL_MUTEX=1"],
     }),
     # LINT.ThenChange(//pw_rpc/public/pw_rpc/internal/config.h)
     implementation_deps = ["//pw_assert:check"],
@@ -199,12 +220,14 @@ cc_library(
         "//pw_span",
         "//pw_status",
         "//pw_sync:lock_annotations",
-        "//pw_sync:mutex",
         "//pw_toolchain:no_destructor",
     ] + select({
         ":yield_mode_busy_loop": [],
         ":yield_mode_sleep": ["//pw_thread:sleep"],
         ":yield_mode_yield": ["//pw_thread:yield"],
+    }) + select({
+        ":use_global_mutex_false": [],
+        ":use_global_mutex_true": ["//pw_sync:mutex"],
     }),
 )
 
@@ -612,6 +635,28 @@ filegroup(
     ],
 )
 
+pw_size_diff(
+    name = "server_only_size_diff",
+    base = "//pw_rpc/size_report:base",
+    label = "Server by itself",
+    target = "//pw_rpc/size_report:server_only",
+)
+
+pw_size_diff(
+    name = "server_with_echo_service_size_diff",
+    base = "//pw_rpc/size_report:base_with_nanopb",
+    label = "Server with a registered nanopb EchoService",
+    target = "//pw_rpc/size_report:server_with_echo_service",
+)
+
+pw_size_table(
+    name = "server_size",
+    reports = [
+        ":server_only_size_diff",
+        ":server_with_echo_service_size_diff",
+    ],
+)
+
 sphinx_docs_library(
     name = "docs",
     srcs = [
@@ -625,6 +670,7 @@ sphinx_docs_library(
         "internal/packet.proto",
         "libraries.rst",
         "protocol.rst",
+        ":server_size",
         "//pw_rpc/nanopb:docs",
         "//pw_rpc/pwpb:docs",
         "//pw_rpc/py:docs",

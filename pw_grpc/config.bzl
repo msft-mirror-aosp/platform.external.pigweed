@@ -11,16 +11,9 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
+"""Required config overrides for pw_rpc to use pw_grpc"""
 
-load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
-load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
-
-package(default_visibility = ["//visibility:public"])
-
-sphinx_docs_library(
-    name = "docs",
-    srcs = [
-        "docs.rst",
-    ],
-    target_compatible_with = incompatible_with_mcu(),
-)
+PW_GRPC_PW_RPC_CONFIG_OVERRIDES = [
+    "PW_RPC_COMPLETION_REQUEST_CALLBACK=1",
+    "PW_RPC_METHOD_STORES_TYPE=1",
+]

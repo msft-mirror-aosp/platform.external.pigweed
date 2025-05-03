@@ -54,7 +54,7 @@ Flags can also be passed to the test binary:
 .. code-block:: console
 
    bazelisk run --config=fuchsia //pw_bluetooth_sapphire/fuchsia/host/l2cap:test_pkg \
-     -- --gtest-filter="*Example" --severity=DEBUG
+     -- --gtest_filter="*Example" --severity=DEBUG
 
 .. note::
    If the test is unable to connect to the emulator, run ``pw ffx target
@@ -69,13 +69,11 @@ all tests, but this is slow:
 
 Emulator
 ========
-To start the emulator, use one of the following commands:
+To start the emulator, use the following command:
 
 .. code-block::
 
-   bazelisk run @fuchsia_products//:core.x64.emu -- --headless
-   # OR
-   bazelisk run @fuchsia_products//:minimal.arm64.emu -- --headless
+   bazelisk run --config=fuchsia @fuchsia_products//:core.x64.emu -- --headless
 
 To stop the running emulator, use the following command:
 
