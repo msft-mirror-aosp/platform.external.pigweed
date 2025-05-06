@@ -30,8 +30,16 @@ mod timer;
 use arch::{Arch, ArchInterface};
 use kernel_config::{KernelConfig, KernelConfigInterface};
 use scheduler::SCHEDULER_STATE;
-pub use scheduler::{sleep_until, yield_timeslice, Stack, Thread};
+pub use scheduler::{
+    sleep_until, start_thread,
+    thread::{Stack, Thread},
+    yield_timeslice,
+};
 pub use timer::{Clock, Duration};
+
+// Used by the `init_thread!` macro.
+#[doc(hidden)]
+pub use scheduler::thread::{StackStorage, StackStorageExt};
 
 #[no_mangle]
 #[allow(non_snake_case)]
@@ -95,10 +103,11 @@ macro_rules! init_thread {
         info!("initializing thread: {}", $name as &'static str);
         thread.initialize_kernel_thread(
             {
-                static mut STACK: [u8; $stack_size] = [0; $stack_size];
+                static mut STACK_STORAGE: $crate::StackStorage<{ $stack_size }> =
+                    $crate::StackStorageExt::ZEROED;
                 #[allow(static_mut_refs)]
                 unsafe {
-                    Stack::from_slice(&STACK)
+                    Stack::from_slice(&STACK_STORAGE)
                 }
             },
             $entry,
@@ -132,17 +141,19 @@ macro_rules! init_non_priv_thread {
         );
         thread.initialize_non_priv_thread(
             {
-                static mut STACK: [u8; $stack_size] = [0; $stack_size];
+                static mut STACK_STORAGE: $crate::StackStorage<{ $stack_size }> =
+                    $crate::StackStorageExt::ZEROED;
                 #[allow(static_mut_refs)]
                 unsafe {
-                    Stack::from_slice(&STACK)
+                    Stack::from_slice(&STACK_STORAGE)
                 }
             },
             {
-                static mut STACK: [u8; $stack_size] = [0; $stack_size];
+                static mut STACK_STORAGE: $crate::StackStorage<{ $stack_size }> =
+                    $crate::StackStorageExt::ZEROED;
                 #[allow(static_mut_refs)]
                 unsafe {
-                    Stack::from_slice(&STACK)
+                    Stack::from_slice(&STACK_STORAGE)
                 }
             },
             $entry,
@@ -194,7 +205,7 @@ fn bootstrap_thread_entry(_arg: usize) {
 
     SCHEDULER_STATE.lock().dump_all_threads();
 
-    Thread::start(idle_thread);
+    scheduler::start_thread(idle_thread);
 
     target::main()
 }
