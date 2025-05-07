@@ -13,7 +13,7 @@
 // the License.
 
 use core::arch::asm;
-use core::mem;
+use core::mem::{self, MaybeUninit};
 
 use cortex_m::peripheral::SCB;
 
@@ -25,7 +25,7 @@ use crate::arch::arm_cortex_m::exceptions::{
 };
 use crate::arch::arm_cortex_m::{in_interrupt_handler, Arch};
 use crate::arch::ArchInterface;
-use crate::scheduler::{self, SchedulerState, Stack, SCHEDULER_STATE};
+use crate::scheduler::{self, thread::Stack, SchedulerState, SCHEDULER_STATE};
 use crate::sync::spinlock::SpinLockGuard;
 
 const STACK_ALIGNMENT: usize = 8;
@@ -169,7 +169,7 @@ impl super::super::ThreadState for ArchThreadState {
     fn initialize_user_frame(
         &mut self,
         kernel_stack: Stack,
-        initial_sp: *mut u8,
+        initial_sp: *mut MaybeUninit<u8>,
         initial_function: extern "C" fn(usize, usize),
         args: (usize, usize),
     ) {
