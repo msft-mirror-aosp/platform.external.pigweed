@@ -106,12 +106,13 @@ class IsoStreamImpl final : public IsoStream {
     return cis_hci_handle_;
   }
   void Close() override;
-  std::unique_ptr<IsoDataPacket> ReadNextQueuedIncomingPacket() override;
+  std::optional<IsoDataPacket> ReadNextQueuedIncomingPacket() override;
   void Send(pw::ConstByteSpan data) override;
   IsoStream::WeakPtr GetWeakPtr() override { return weak_self_.GetWeakPtr(); }
 
   // IsoDataChannel::ConnectionInterface override
   void ReceiveInboundPacket(pw::span<const std::byte> packet) override;
+  std::optional<DynamicByteBuffer> GetNextOutboundPdu() override;
 
  private:
   struct SduHeaderInfo {
@@ -151,7 +152,8 @@ class IsoStreamImpl final : public IsoStream {
   // arrives. Otherwise, we will just queue it up.
   bool inbound_client_is_waiting_ = false;
 
-  std::queue<std::unique_ptr<std::vector<std::byte>>> incoming_data_queue_;
+  std::queue<IsoDataPacket> incoming_data_queue_;
+  std::queue<DynamicByteBuffer> outbound_pdu_queue_;
 
   // Called when stream is closed
   pw::Callback<void()> on_closed_cb_;
@@ -453,6 +455,15 @@ void IsoStreamImpl::ReceiveInboundPacket(pw::span<const std::byte> packet) {
   inbound_assembler_.ProcessNext(packet);
 }
 
+std::optional<DynamicByteBuffer> IsoStreamImpl::GetNextOutboundPdu() {
+  if (outbound_pdu_queue_.empty()) {
+    return std::nullopt;
+  }
+  DynamicByteBuffer pdu = std::move(outbound_pdu_queue_.front());
+  outbound_pdu_queue_.pop();
+  return pdu;
+}
+
 void IsoStreamImpl::HandleCompletePacket(
     const pw::span<const std::byte>& packet) {
   if (!on_incoming_data_available_cb_) {
@@ -478,8 +489,7 @@ void IsoStreamImpl::HandleCompletePacket(
   }
 
   // Client not ready to handle packet, queue it up until they ask for it
-  incoming_data_queue_.push(
-      std::make_unique<IsoDataPacket>(packet.begin(), packet.end()));
+  incoming_data_queue_.emplace(packet.begin(), packet.end());
 }
 
 DynamicByteBuffer IsoStreamImpl::BuildPacketForSending(
@@ -526,14 +536,13 @@ DynamicByteBuffer IsoStreamImpl::BuildPacketForSending(
   return packet;
 }
 
-std::unique_ptr<IsoDataPacket> IsoStreamImpl::ReadNextQueuedIncomingPacket() {
+std::optional<IsoDataPacket> IsoStreamImpl::ReadNextQueuedIncomingPacket() {
   if (incoming_data_queue_.empty()) {
     inbound_client_is_waiting_ = true;
-    return nullptr;
+    return std::nullopt;
   }
 
-  std::unique_ptr<IsoDataPacket> packet =
-      std::move(incoming_data_queue_.front());
+  IsoDataPacket packet = std::move(incoming_data_queue_.front());
   incoming_data_queue_.pop();
   return packet;
 }
@@ -598,10 +607,13 @@ void IsoStreamImpl::Send(pw::ConstByteSpan data) {
     pw::ConstByteSpan fragment;
     size_t fragment_length = FragmentDataLength(false, is_first, max_length);
     std::tie(fragment, data) = SplitSpan(data, fragment_length);
-    data_channel_->SendData(BuildPacketForSending(fragment, flag, sdu_header));
+    outbound_pdu_queue_.emplace(
+        BuildPacketForSending(fragment, flag, sdu_header));
     sdu_header.reset();
   }
   next_sdu_sequence_number_ = current_sequence_num + 1;
+
+  data_channel_->TrySendPackets();
 }
 
 void IsoStreamImpl::Close() { on_closed_cb_(); }
