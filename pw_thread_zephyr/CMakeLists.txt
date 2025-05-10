@@ -39,6 +39,10 @@ pw_add_library(pw_thread_zephyr.id INTERFACE
     pw_interrupt.context
     pw_thread.thread.facade
 )
+pw_zephyrize_libraries_ifdef(
+  CONFIG_PIGWEED_THREAD
+  pw_thread_zephyr.id
+)
 
 pw_add_library(pw_thread_zephyr.sleep STATIC
   HEADERS
@@ -55,6 +59,10 @@ pw_add_library(pw_thread_zephyr.sleep STATIC
   PRIVATE_DEPS
     pw_chrono_zephyr.system_clock
     pw_assert.check
+)
+pw_zephyrize_libraries_ifdef(
+  CONFIG_PIGWEED_THREAD_SLEEP
+  pw_thread_zephyr.sleep
 )
 
 # This target provides the backend for pw::Thread and the headers needed for
@@ -80,6 +88,27 @@ pw_add_library(pw_thread_zephyr.thread STATIC
   SOURCES
     thread.cc
 )
+pw_zephyrize_libraries_ifdef(
+  CONFIG_PIGWEED_THREAD
+  pw_thread_zephyr.thread
+)
+
+# This target provides the backend for pw::this_thread::yield.
+pw_add_library(pw_thread_zephyr.yield INTERFACE
+  HEADERS
+    public/pw_thread_zephyr/yield_inline.h
+    yield_public_overrides/pw_thread_backend/yield_inline.h
+  PUBLIC_INCLUDES
+    public
+    yield_public_overrides
+  PUBLIC_DEPS
+    pw_assert
+    pw_thread.yield.facade
+)
+pw_zephyrize_libraries_ifdef(
+    CONFIG_PIGWEED_THREAD_YIELD
+    pw_thread_zephyr.yield
+)
 
 pw_add_library(pw_thread_zephyr.thread_iteration STATIC
   PUBLIC_INCLUDES
@@ -91,4 +120,8 @@ pw_add_library(pw_thread_zephyr.thread_iteration STATIC
   SOURCES
     pw_thread_zephyr_private/thread_iteration.h
     thread_iteration.cc
+)
+pw_zephyrize_libraries_ifdef(
+  CONFIG_PIGWEED_THREAD_ITERATION
+  pw_thread_zephyr.thread_iteration
 )
