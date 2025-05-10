@@ -18,12 +18,7 @@ import("$dir_pw_build/python.gni")
 import("$dir_pw_build/python_dist.gni")
 import("$dir_pw_build/python_gn_args.gni")
 import("$dir_pw_build/python_venv.gni")
-import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_unit_test/test.gni")
-
-pw_doc_group("docs") {
-  sources = [ "docs.rst" ]
-}
 
 pw_python_group("core_pigweed_python_packages") {
   python_deps = [
@@ -107,8 +102,8 @@ pw_python_group("python") {
     "$dir_pw_emu/py:mock_emu_frontend",
     "$dir_pw_kernel/tooling:qemu_runner",
     "$dir_pw_preprocessor/py:generate_apply_macros",
-    "$dir_pw_third_party/nanopb:generate_nanopb_proto",
     "$pw_external_fuchsia:generate_fuchsia_patch",
+    "$pw_external_nanopb:generate_nanopb_proto",
   ]
 }
 

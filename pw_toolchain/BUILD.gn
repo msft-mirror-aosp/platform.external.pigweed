@@ -14,7 +14,6 @@
 
 import("//build_overrides/pigweed.gni")
 
-import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_unit_test/test.gni")
 import("arm_gcc/toolchains.gni")
 import("generate_toolchain.gni")
@@ -46,16 +45,7 @@ config("public_include_path") {
 }
 
 group("builtins") {
-  deps = [ "$dir_pw_third_party/llvm_builtins" ]
-}
-
-pw_doc_group("docs") {
-  sources = [
-    "bazel.rst",
-    "docs.rst",
-    "gn.rst",
-  ]
-  inputs = [ "globals_test.cc" ]
+  deps = [ "$pw_external_llvm_builtins" ]
 }
 
 pw_source_set("constexpr_tag") {

@@ -17,6 +17,8 @@
 #include <pw_assert/check.h>
 #include <pw_bluetooth/hci_data.emb.h>
 
+#include <map>
+
 namespace bt::hci {
 namespace {
 
@@ -30,25 +32,29 @@ class IsoDataChannelImpl final : public IsoDataChannel {
   IsoDataChannelImpl(const DataBufferInfo& buffer_info,
                      CommandChannel* command_channel,
                      pw::bluetooth::Controller* hci);
-  ~IsoDataChannelImpl();
+  ~IsoDataChannelImpl() override;
 
   // IsoDataChannel overrides:
-  virtual bool RegisterConnection(
-      hci_spec::ConnectionHandle handle,
-      WeakPtr<ConnectionInterface> connection) override;
-  virtual bool UnregisterConnection(hci_spec::ConnectionHandle handle) override;
-  virtual void SendData(DynamicByteBuffer packet) override;
-  virtual const DataBufferInfo& buffer_info() const override {
-    return buffer_info_;
-  }
+  bool RegisterConnection(hci_spec::ConnectionHandle handle,
+                          WeakPtr<ConnectionInterface> connection) override;
+  bool UnregisterConnection(hci_spec::ConnectionHandle handle) override;
+  void TrySendPackets() override;
+  void ClearControllerPacketCount(hci_spec::ConnectionHandle handle) override;
+  const DataBufferInfo& buffer_info() const override { return buffer_info_; }
 
  private:
+  using ConnectionMap =
+      std::map<hci_spec::ConnectionHandle, WeakPtr<ConnectionInterface>>;
+
+  void SendData(DynamicByteBuffer packet);
   void OnRxPacket(pw::span<const std::byte> buffer);
-  void TrySendPackets();
 
   // Handle a NumberOfCompletedPackets event.
   CommandChannel::EventCallbackResult OnNumberOfCompletedPacketsEvent(
       const EventPacket& event);
+
+  // Increment next_connection_iter_, with wrapping.
+  void IncrementConnectionIter();
 
   CommandChannel* command_channel_ __attribute__((unused));
   pw::bluetooth::Controller* hci_;
@@ -57,11 +63,14 @@ class IsoDataChannelImpl final : public IsoDataChannel {
   size_t available_buffers_;
 
   // Stores connections registered by RegisterConnection()
-  std::unordered_map<hci_spec::ConnectionHandle, WeakPtr<ConnectionInterface>>
-      connections_;
+  ConnectionMap connections_;
+  ConnectionMap::iterator next_connection_iter_ = connections_.end();
 
-  // Stores queued packets ready for sending
-  std::deque<DynamicByteBuffer> outbound_queue_;
+  // Stores per-connection information of unacknowledged packets sent to the
+  // controller. Entries are updated/removed on the HCI Number Of Completed
+  // Packets event and when ClearControllerPacketCount() is called (the
+  // controller does not acknowledge packets of disconnected links).
+  std::unordered_map<hci_spec::ConnectionHandle, size_t> pending_packets_;
 
   // Event handler ID for the NumberOfCompletedPackets event
   CommandChannel::EventHandlerId num_completed_packets_event_handler_id_ = 0;
@@ -122,6 +131,12 @@ bool IsoDataChannelImpl::RegisterConnection(
     return false;
   }
   connections_[handle] = std::move(connection);
+
+  // Reset round robin iterator.
+  next_connection_iter_ = connections_.begin();
+
+  TrySendPackets();
+
   return true;
 }
 
@@ -136,21 +151,72 @@ bool IsoDataChannelImpl::UnregisterConnection(
     return false;
   }
   connections_.erase(handle);
+
+  // Reset round robin iterator.
+  next_connection_iter_ = connections_.begin();
+
   return true;
 }
 
-void IsoDataChannelImpl::SendData(DynamicByteBuffer packet) {
-  PW_CHECK((packet.size() - kFrameHeaderSize) <= buffer_info_.max_data_length(),
-           "Unfragmented packet received, cannot send.");
-  outbound_queue_.push_back(std::move(packet));
+void IsoDataChannelImpl::ClearControllerPacketCount(
+    hci_spec::ConnectionHandle handle) {
+  PW_CHECK(connections_.find(handle) == connections_.end());
+
+  bt_log(INFO, "hci", "clearing pending packets (handle: %#.4x)", handle);
+
+  auto pending_packets_iter = pending_packets_.find(handle);
+  if (pending_packets_iter == pending_packets_.end()) {
+    bt_log(DEBUG,
+           "hci",
+           "no pending packets on connection (handle: %#.4x)",
+           handle);
+    return;
+  }
+
+  // Add pending packets to available buffers because controller does
+  // not send HCI Number of Completed Packets events for disconnected
+  // connections.
+  available_buffers_ += pending_packets_iter->second;
+  pending_packets_.erase(pending_packets_iter);
+
+  // Try sending the next batch of packets in case buffer space opened up.
   TrySendPackets();
 }
 
 void IsoDataChannelImpl::TrySendPackets() {
-  while (available_buffers_ && !outbound_queue_.empty()) {
-    hci_->SendIsoData(outbound_queue_.front().view().subspan());
-    outbound_queue_.pop_front();
+  if (connections_.empty()) {
+    return;
+  }
+  // Use Round Robin fairness algorithm to send packets from multiple streams.
+  ConnectionMap::iterator start_iter = next_connection_iter_;
+  // Initialize to true to ensure the connection map is looped over at least
+  // once.
+  bool packet_sent_this_iteration = true;
+  for (; available_buffers_ > 0; IncrementConnectionIter()) {
+    if (next_connection_iter_ == start_iter) {
+      if (!packet_sent_this_iteration) {
+        // All streams are empty.
+        break;
+      }
+      packet_sent_this_iteration = false;
+    }
+
+    std::optional<DynamicByteBuffer> packet =
+        next_connection_iter_->second->GetNextOutboundPdu();
+    if (!packet) {
+      continue;
+    }
+    packet_sent_this_iteration = true;
+
+    PW_CHECK(
+        (packet->size() - kFrameHeaderSize) <= buffer_info_.max_data_length(),
+        "Unfragmented packet received, cannot send.");
+    hci_->SendIsoData(packet->view().subspan());
+
     --available_buffers_;
+    auto [iter, _] =
+        pending_packets_.try_emplace(next_connection_iter_->first, 0);
+    iter->second++;
   }
 }
 
@@ -187,7 +253,8 @@ IsoDataChannelImpl::OnNumberOfCompletedPacketsEvent(const EventPacket& event) {
     uint16_t handle = view.nocp_data()[i].connection_handle().Read();
     uint16_t num_completed_packets =
         view.nocp_data()[i].num_completed_packets().Read();
-    if (connections_.count(handle) == 0) {
+    auto pending_packets_iter = pending_packets_.find(handle);
+    if (pending_packets_iter == pending_packets_.end()) {
       // This is expected if the completed packet is an ACL or SCO packet.
       bt_log(TRACE,
              "hci",
@@ -198,7 +265,32 @@ IsoDataChannelImpl::OnNumberOfCompletedPacketsEvent(const EventPacket& event) {
       continue;
     }
 
+    if (pending_packets_iter->second < num_completed_packets) {
+      // TODO(fxbug.dev/42102535): This can be caused by the controller
+      // reusing the connection handle of a connection that just disconnected.
+      // We should somehow avoid sending the controller packets for a connection
+      // that has disconnected. IsoDataChannel already dequeues such packets,
+      // but this is insufficient: packets can be queued in the channel to the
+      // transport driver, and possibly in the transport driver or USB/UART
+      // drivers.
+      bt_log(ERROR,
+             "hci",
+             "ISO NOCP count mismatch! (handle: %#.4x, expected: %zu, "
+             "actual : %u)",
+             handle,
+             pending_packets_iter->second,
+             num_completed_packets);
+      // This should eventually result in convergence with the correct pending
+      // packet count. If it undercounts the true number of pending packets,
+      // this branch will be reached again when the controller sends an updated
+      // Number of Completed Packets event. However, IsoDataChannel may overflow
+      // the controller's buffer in the meantime!
+      num_completed_packets =
+          static_cast<uint16_t>(pending_packets_iter->second);
+    }
+
     available_buffers_ += num_completed_packets;
+    pending_packets_iter->second -= num_completed_packets;
   }
 
   TrySendPackets();
@@ -212,6 +304,17 @@ std::unique_ptr<IsoDataChannel> IsoDataChannel::Create(
   bt_log(DEBUG, "hci", "Creating a new IsoDataChannel");
   return std::make_unique<IsoDataChannelImpl>(
       buffer_info, command_channel, hci);
+}
+
+void IsoDataChannelImpl::IncrementConnectionIter() {
+  if (connections_.empty()) {
+    next_connection_iter_ = connections_.end();
+    return;
+  }
+  ++next_connection_iter_;
+  if (next_connection_iter_ == connections_.end()) {
+    next_connection_iter_ = connections_.begin();
+  }
 }
 
 }  // namespace bt::hci

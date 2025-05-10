@@ -12,10 +12,12 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+use core::mem::MaybeUninit;
+
 use pw_log::info;
 
 use crate::arch::ArchInterface;
-use crate::scheduler::{SchedulerState, Stack};
+use crate::scheduler::{thread::Stack, SchedulerState};
 use crate::sync::spinlock::SpinLockGuard;
 
 mod spinlock;
@@ -34,9 +36,21 @@ impl super::ThreadState for ThreadState {
     ) -> SpinLockGuard<'_, SchedulerState> {
         pw_assert::panic!("unimplemented");
     }
-    fn initialize_frame(
+
+    fn initialize_kernel_frame(
         &mut self,
-        _stack: Stack,
+        _kernel_stack: Stack,
+        _initial_function: extern "C" fn(usize, usize),
+        _args: (usize, usize),
+    ) {
+        pw_assert::panic!("unimplemented");
+    }
+
+    #[cfg(feature = "user_space")]
+    fn initialize_user_frame(
+        &mut self,
+        _kernel_stack: Stack,
+        _initial_sp: *mut MaybeUninit<u8>,
         _initial_function: extern "C" fn(usize, usize),
         _args: (usize, usize),
     ) {

@@ -151,6 +151,11 @@
             "//..."
           ],
           [
+            "test",
+            "--config=lm3s6965evb",
+            "//pw_status/..."
+          ],
+          [
             "build",
             "--@rules_rust//rust/toolchain/channel=nightly",
             "//..."
@@ -183,6 +188,16 @@
             "--config=asan",
             "--config=fuzztest",
             "//..."
+          ],
+          [
+            "test",
+            "--//pw_rpc:config_override=//pw_rpc:completion_request_callback_config_enabled",
+            "//pw_rpc/..."
+          ],
+          [
+            "test",
+            "--platforms=//pw_grpc:test_platform",
+            "//pw_grpc/..."
           ]
         ],
         "docs": [

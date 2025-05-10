@@ -554,6 +554,7 @@ def zephyr_build(ctx: PresubmitContext) -> None:
         ctx.pw_root / dir
         for dir in os.listdir(ctx.pw_root)
         if dir.startswith('pw_')
+        and (ctx.pw_root / dir / 'testcase.yaml').is_file()
     ]
     testsuite_roots_list = [
         args for dir in testsuite_roots for args in ('--testsuite-root', dir)
@@ -580,7 +581,11 @@ def zephyr_build(ctx: PresubmitContext) -> None:
         '--clobber-output',
         '--inline-logs',
         '--verbose',
+        '--coverage',
+        '--coverage-basedir',
+        str(ctx.pw_root),
         *platform_filters,
+        '-x=CONFIG_COVERAGE=y',
         '-x=CONFIG_LLVM_USE_LLD=y',
         '-x=CONFIG_COMPILER_RT_RTLIB=y',
         f'-x=TOOLCHAIN_C_FLAGS=--sysroot={sysroot_dir}',
@@ -792,41 +797,6 @@ def cmake_gcc(ctx: PresubmitContext):
     _run_cmake(ctx, toolchain='host_gcc')
     build.ninja(ctx, *CMAKE_TARGETS)
     build.gn_check(ctx)
-
-
-@filter_paths(
-    endswith=(*format_code.C_FORMAT.extensions, '.bazel', '.bzl', 'BUILD')
-)
-def bazel_test(ctx: PresubmitContext) -> None:
-    """Runs bazel test on the entire repo."""
-    build_bazel(
-        ctx,
-        'test',
-        '--config=cxx20',
-        '--',
-        '//...',
-    )
-
-    # Run tests for non-default config options
-
-    # pw_rpc
-    build_bazel(
-        ctx,
-        'test',
-        '--//pw_rpc:config_override='
-        '//pw_rpc:completion_request_callback_config_enabled',
-        '--',
-        '//pw_rpc/...',
-    )
-
-    # pw_grpc
-    build_bazel(
-        ctx,
-        'test',
-        '--//pw_rpc:config_override=//pw_grpc:pw_rpc_config',
-        '--',
-        '//pw_grpc/...',
-    )
 
 
 def bthost_package(ctx: PresubmitContext) -> None:
@@ -1508,6 +1478,8 @@ SOURCE_FILES_FILTER_BAZEL_EXCLUDE = FileFilter(
 SOURCE_FILES_FILTER_GN_EXCLUDE = FileFilter(
     exclude=(
         # keep-sorted: start
+        r'.*\.rst$',
+        r'\bdocs',
         r'\bpw_bluetooth_sapphire/fuchsia',
         # keep-sorted: end
     ),
@@ -1647,7 +1619,6 @@ INCLUDE_CHECK_TARGET_PATTERN = "//... " + " ".join(
 OTHER_CHECKS = (
     # keep-sorted: start
     bazel_checks.lockfile_check,
-    bazel_test,
     bthost_package,
     build.gn_gen_check,
     cmake_clang,
@@ -1763,7 +1734,6 @@ FULL = (
     _LINTFORMAT,
     gn_combined_build_check,
     gn_host_tools,
-    bazel_test,
     bazel_build,
     python_checks.gn_python_check,
     python_checks.gn_python_test_coverage,
