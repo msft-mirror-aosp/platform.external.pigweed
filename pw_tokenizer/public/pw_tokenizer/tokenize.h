@@ -17,6 +17,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 
 #else
 
@@ -45,18 +46,6 @@ typedef uint32_t pw_tokenizer_Token;
 // The default domain is an empty string.
 #define PW_TOKENIZER_DEFAULT_DOMAIN ""
 
-/// Tokenizes a string literal along with an optional domain value. If the
-/// domain value is present, will tokenize the string using that domain,
-/// otherwise will tokenize the string using the default domain value.
-#define PW_TOKENIZE_STRING_OPTIONAL_DOMAIN(...) \
-  PW_DELEGATE_BY_ARG_COUNT(_PW_TOKENIZE_STRING_OPTIONAL_DOMAIN_, __VA_ARGS__)
-
-#define _PW_TOKENIZE_STRING_OPTIONAL_DOMAIN_1(string_literal) \
-  PW_TOKENIZE_STRING(string_literal)
-
-#define _PW_TOKENIZE_STRING_OPTIONAL_DOMAIN_2(domain, string_literal) \
-  PW_TOKENIZE_STRING_DOMAIN(domain, string_literal)
-
 /// Converts a string literal to a `pw_tokenizer_Token` (`uint32_t`) token in a
 /// standalone statement. C and C++ compatible. In C++, the string may be a
 /// literal or a constexpr char array, including function variables like
@@ -64,26 +53,47 @@ typedef uint32_t pw_tokenizer_Token;
 /// string must be null terminated, but may contain any characters (including
 /// '\0').
 ///
-/// @code
+/// @code{cpp}
 ///
-///   constexpr uint32_t token = PW_TOKENIZE_STRING("Any string literal!");
+///   // Tokenizes a string literal in the given domain.
+///   constexpr uint32_t token = PW_TOKENIZE_STRING("domain", "string literal");
+///
+///   // Tokenizes a string literal in the default domain ("").
+///   constexpr uint32_t other = PW_TOKENIZE_STRING("string literal");
 ///
 /// @endcode
-#define PW_TOKENIZE_STRING(string_literal) \
+#define PW_TOKENIZE_STRING(...) \
+  PW_DELEGATE_BY_ARG_COUNT(_PW_TOKENIZE_STRING_, __VA_ARGS__)
+
+#define _PW_TOKENIZE_STRING_1(string_literal) \
   PW_TOKENIZE_STRING_DOMAIN(PW_TOKENIZER_DEFAULT_DOMAIN, string_literal)
+
+#define _PW_TOKENIZE_STRING_2(domain, string_literal) \
+  PW_TOKENIZE_STRING_DOMAIN(domain, string_literal)
 
 /// Converts a string literal to a ``uint32_t`` token within an expression.
 /// Requires C++.
 ///
-/// @code
+/// @code{cpp}
 ///
-///   DoSomething(PW_TOKENIZE_STRING_EXPR("Succeed"));
+///   // Tokenizes a string literal in the given domain within an expression.
+///   DoSomethingWithToken(PW_TOKENIZE_STRING_EXPR("domain", "Succeed"));
+///
+///   // Tokenizes a string literal in the default domain within an expression.
+///   DoSomethingWithToken(PW_TOKENIZE_STRING_EXPR("Succeed"));
 ///
 /// @endcode
-#define PW_TOKENIZE_STRING_EXPR(string_literal)                               \
-  [&] {                                                                       \
-    constexpr uint32_t lambda_ret_token = PW_TOKENIZE_STRING(string_literal); \
-    return lambda_ret_token;                                                  \
+#define PW_TOKENIZE_STRING_EXPR(...) \
+  PW_DELEGATE_BY_ARG_COUNT(_PW_TOKENIZE_STRING_EXPR_, __VA_ARGS__)
+
+#define _PW_TOKENIZE_STRING_EXPR_1(string_literal) \
+  _PW_TOKENIZE_STRING_EXPR_2(PW_TOKENIZER_DEFAULT_DOMAIN, string_literal)
+
+#define _PW_TOKENIZE_STRING_EXPR_2(domain, string_literal) \
+  [&] {                                                    \
+    constexpr uint32_t lambda_ret_token =                  \
+        PW_TOKENIZE_STRING_DOMAIN(domain, string_literal); \
+    return lambda_ret_token;                               \
   }()
 
 /// Tokenizes a string literal in a standalone statement using the specified
@@ -279,10 +289,15 @@ PW_EXTERN_C_END
 /// - The format string supports a variable number of arguments of only one
 ///   type. In this case, @c_macro{PW_FUNCTION_ARG_COUNT} may be used to pass
 ///   the argument count to the function.
+///
+/// NOTE: The `%.*s` format specifier cannot be used. See
+/// https://pwbug.dev/408040194 for details.
 #define PW_TOKENIZE_FORMAT_STRING_ANY_ARG_COUNT(domain, mask, format, ...)     \
   if (0) { /* Do not execute to prevent double evaluation of the arguments. */ \
     pw_tokenizer_CheckFormatString(format PW_COMMA_ARGS(__VA_ARGS__));         \
   }                                                                            \
+                                                                               \
+  _PW_TOKENIZE_VALIDATE_FORMAT_STRING(format);                                 \
                                                                                \
   /* Tokenize the string to a pw_tokenizer_Token at compile time. */           \
   static _PW_TOKENIZER_CONST pw_tokenizer_Token _pw_tokenizer_token =          \
@@ -312,11 +327,28 @@ PW_EXTERN_C_END
       _pw_tokenizer_string_entry_) =                                           \
       ::pw::tokenizer::internal::MakeEntry(token, domain, string)
 
+// Validates the format string provided to PW_TOKENIZE_FORMAT_STRING and
+// friends.
+#define _PW_TOKENIZE_VALIDATE_FORMAT_STRING(format)                     \
+  do {                                                                  \
+    static_assert(!::pw::tokenizer::internal::Contains(format, "%.*s"), \
+                  "The %.*s specifier is not supported."                \
+                  " See https://pwbug.dev/408040194");                  \
+  } while (0)
+
 namespace pw::tokenizer {
 
 using Token = ::pw_tokenizer_Token;
 inline constexpr const char* kDefaultDomain = PW_TOKENIZER_DEFAULT_DOMAIN;
 
+namespace internal {
+
+constexpr bool Contains(const char* haystack, const char* needle) {
+  std::string_view haystack_view(haystack);
+  return haystack_view.find(needle) != std::string_view::npos;
+}
+
+}  // namespace internal
 }  // namespace pw::tokenizer
 
 #else
@@ -326,6 +358,11 @@ inline constexpr const char* kDefaultDomain = PW_TOKENIZER_DEFAULT_DOMAIN;
 
 #define PW_TOKENIZER_DEFINE_TOKEN(token, domain, string) \
   _PW_ALIGNAS(1) static const _PW_TOKENIZER_STRING_ENTRY(token, domain, string)
+
+// There is no way to do this in C.
+#define _PW_TOKENIZE_VALIDATE_FORMAT_STRING(format) \
+  do {                                              \
+  } while (0)
 
 #endif  // __cplusplus
 
