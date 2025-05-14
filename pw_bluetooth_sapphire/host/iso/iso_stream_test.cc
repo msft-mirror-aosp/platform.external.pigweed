@@ -36,6 +36,31 @@ constexpr size_t kMaxControllerPacketCount = 9;
 
 constexpr size_t kSduHeaderSize = 4;
 
+class MockConnection : public hci::IsoDataChannel::ConnectionInterface,
+                       public WeakSelf<MockConnection> {
+ public:
+  MockConnection(hci::IsoDataChannel& iso_data_channel)
+      : WeakSelf(this), iso_data_channel_(iso_data_channel) {}
+  ~MockConnection() override = default;
+  void Send(DynamicByteBuffer pdu) {
+    send_queue_.emplace(std::move(pdu));
+    iso_data_channel_.TrySendPackets();
+  }
+
+ private:
+  void ReceiveInboundPacket(pw::span<const std::byte>) override {}
+  std::optional<DynamicByteBuffer> GetNextOutboundPdu() override {
+    if (send_queue_.empty()) {
+      return std::nullopt;
+    }
+    DynamicByteBuffer pdu = std::move(send_queue_.front());
+    send_queue_.pop();
+    return pdu;
+  }
+  hci::IsoDataChannel& iso_data_channel_;
+  std::queue<DynamicByteBuffer> send_queue_;
+};
+
 using MockControllerTestBase =
     bt::testing::FakeDispatcherControllerTest<bt::testing::MockController>;
 
@@ -67,13 +92,17 @@ class IsoStreamTest : public MockControllerTestBase {
         [this]() {
           ASSERT_FALSE(closed_);
           closed_ = true;
+          transport()->iso_data_channel()->UnregisterConnection(kCisHandleId);
+          iso_stream_.reset();
         },
-        test_clock_);
+        stream_lease_provider_,
+        dispatcher());
   }
 
   void TearDown() override {
     RunUntilIdle();
-    if (establishment_status_ == pw::bluetooth::emboss::StatusCode::SUCCESS) {
+    if (iso_stream_ &&
+        establishment_status_ == pw::bluetooth::emboss::StatusCode::SUCCESS) {
       EXPECT_CMD_PACKET_OUT(test_device(),
                             testing::DisconnectPacket(kCisHandleId));
     }
@@ -121,9 +150,12 @@ class IsoStreamTest : public MockControllerTestBase {
 
   bool closed() { return closed_; }
 
+  pw::bluetooth_sapphire::testing::FakeLeaseProvider& stream_lease_provider() {
+    return stream_lease_provider_;
+  }
+
  protected:
   bool accept_incoming_sdus_ = true;
-  pw::chrono::SimulatedSystemClock test_clock_;
 
  private:
   std::unique_ptr<IsoStream> iso_stream_;
@@ -131,6 +163,7 @@ class IsoStreamTest : public MockControllerTestBase {
   std::optional<CisEstablishedParameters> established_parameters_;
   std::queue<std::vector<std::byte>> complete_incoming_sdus_;
   bool closed_ = false;
+  pw::bluetooth_sapphire::testing::FakeLeaseProvider stream_lease_provider_;
 };
 
 static DynamicByteBuffer LECisEstablishedPacketWithDefaultValues(
@@ -346,6 +379,7 @@ TEST_F(IsoStreamTest, PendingRead) {
       /*codec_configuration=*/std::nullopt,
       /*cmd_complete_status=*/pw::bluetooth::emboss::StatusCode::SUCCESS,
       iso::IsoStream::SetupDataPathError::kSuccess);
+  EXPECT_EQ(stream_lease_provider().lease_count(), 0u);
   const size_t kIsoSduLength = 212;
   std::vector<uint8_t> sdu_data =
       testing::GenDataBlob(kIsoSduLength, /*starting_value=*/14);
@@ -365,6 +399,7 @@ TEST_F(IsoStreamTest, PendingRead) {
   ASSERT_EQ(packet0_span.size(), received_frame.size());
   EXPECT_TRUE(std::equal(
       packet0_span.begin(), packet0_span.end(), received_frame.begin()));
+  EXPECT_EQ(stream_lease_provider().lease_count(), 0u);
 }
 
 // If the client does not ask for frames it will not receive any notifications
@@ -376,6 +411,7 @@ TEST_F(IsoStreamTest, UnreadData) {
       /*codec_configuration=*/std::nullopt,
       /*cmd_complete_status=*/pw::bluetooth::emboss::StatusCode::SUCCESS,
       iso::IsoStream::SetupDataPathError::kSuccess);
+  EXPECT_EQ(stream_lease_provider().lease_count(), 0u);
   const size_t kTotalFrameCount = 5;
   for (size_t i = 0; i < kTotalFrameCount; i++) {
     std::vector<uint8_t> sdu_data = testing::GenDataBlob(
@@ -389,6 +425,7 @@ TEST_F(IsoStreamTest, UnreadData) {
         pw::bluetooth::emboss::IsoDataPacketStatus::VALID_DATA,
         sdu_data);
     iso_stream()->ReceiveInboundPacket(packet.subspan());
+    EXPECT_NE(stream_lease_provider().lease_count(), 0u);
   }
   EXPECT_EQ(complete_incoming_sdus()->size(), 0u);
 }
@@ -484,6 +521,7 @@ TEST_F(IsoStreamTest, BadPacket) {
   ASSERT_FALSE(iso_stream()->ReadNextQueuedIncomingPacket());
   iso_stream()->ReceiveInboundPacket(packet0_as_span);
   ASSERT_EQ(complete_incoming_sdus()->size(), 0u);
+  EXPECT_EQ(stream_lease_provider().lease_count(), 0u);
 }
 
 // Extra data at the end of the frame will be removed
@@ -523,6 +561,7 @@ TEST_F(IsoStreamTest, SendPacket) {
       /*cmd_complete_status=*/pw::bluetooth::emboss::StatusCode::SUCCESS,
       iso::IsoStream::SetupDataPathError::kSuccess);
   RegisterStream();
+  EXPECT_EQ(stream_lease_provider().lease_count(), 0u);
 
   uint32_t iso_interval_usec =
       established_parameters()->iso_interval *
@@ -548,13 +587,16 @@ TEST_F(IsoStreamTest, SendPacket) {
             sdu));
 
     iso_stream()->Send(pw::as_bytes(pw::span(sdu)));
+    // The stream lease will be acquired but quickly dropped.
+    EXPECT_EQ(stream_lease_provider().lease_count(), 0u);
+    EXPECT_NE(lease_provider().lease_count(), 0u);
     RunUntilIdle();
     EXPECT_TRUE(test_device()->AllExpectedIsoPacketsSent());
 
     ++expected_sequence_num;
 
     // Advance the clock by one ISO interval
-    test_clock_.AdvanceTime(std::chrono::microseconds(iso_interval_usec));
+    RunFor(std::chrono::microseconds(iso_interval_usec));
   }
 
   {
@@ -579,7 +621,7 @@ TEST_F(IsoStreamTest, SendPacket) {
     ++expected_sequence_num;
 
     // Advance the clock by one ISO interval
-    test_clock_.AdvanceTime(std::chrono::microseconds(iso_interval_usec));
+    RunFor(std::chrono::microseconds(iso_interval_usec));
   }
 
   {
@@ -627,7 +669,7 @@ TEST_F(IsoStreamTest, SendPacket) {
     expected_sequence_num += 2;
 
     // Advance the clock by two ISO intervals to simulate a skipped interval
-    test_clock_.AdvanceTime(std::chrono::microseconds(2 * iso_interval_usec));
+    RunFor(std::chrono::microseconds(2 * iso_interval_usec));
   }
 
   {
@@ -672,6 +714,10 @@ TEST_F(IsoStreamTest, SendPacket) {
     RunUntilIdle();
     EXPECT_TRUE(test_device()->AllExpectedIsoPacketsSent());
   }
+
+  // Only IsoDataChannel should be holding a lease now.
+  EXPECT_EQ(stream_lease_provider().lease_count(), 0u);
+  EXPECT_NE(lease_provider().lease_count(), 0u);
 }
 
 TEST_F(IsoStreamTest, PacketReceivedBeforeNextInterval) {
@@ -735,7 +781,7 @@ TEST_F(IsoStreamTest, PacketReceivedBeforeNextInterval) {
     EXPECT_TRUE(test_device()->AllExpectedIsoPacketsSent());
     ++expected_sequence_num;
 
-    test_clock_.AdvanceTime(std::chrono::microseconds(iso_interval_usec));
+    RunFor(std::chrono::microseconds(iso_interval_usec));
   }
 
   // Send a third packet after the interval has passed
@@ -800,7 +846,7 @@ TEST_F(IsoStreamTest, PacketReceivedAtIntervalBoundaries) {
     ++expected_sequence_num;
 
     // Advance the clock by almost one ISO interval
-    test_clock_.AdvanceTime(std::chrono::microseconds(iso_interval_usec - 1));
+    RunFor(std::chrono::microseconds(iso_interval_usec - 1));
   }
 
   {
@@ -823,7 +869,7 @@ TEST_F(IsoStreamTest, PacketReceivedAtIntervalBoundaries) {
     EXPECT_TRUE(test_device()->AllExpectedIsoPacketsSent());
 
     // Advance the clock by one more microsecond to reach the next interval
-    test_clock_.AdvanceTime(std::chrono::microseconds(1));
+    RunFor(std::chrono::microseconds(1));
     ++expected_sequence_num;
   }
 
@@ -848,6 +894,126 @@ TEST_F(IsoStreamTest, PacketReceivedAtIntervalBoundaries) {
     RunUntilIdle();
     EXPECT_TRUE(test_device()->AllExpectedIsoPacketsSent());
   }
+}
+
+TEST_F(IsoStreamTest, ClearControllerPacketCountOnDisconnectComplete) {
+  EstablishCis(pw::bluetooth::emboss::StatusCode::SUCCESS);
+  SetupDataPath(
+      pw::bluetooth::emboss::DataPathDirection::OUTPUT,
+      /*codec_config=*/std::nullopt,
+      /*cmd_complete_status=*/pw::bluetooth::emboss::StatusCode::SUCCESS,
+      iso::IsoStream::SetupDataPathError::kSuccess);
+  RegisterStream();
+
+  uint32_t iso_interval_usec =
+      established_parameters()->iso_interval *
+      CisEstablishedParameters::kIsoIntervalToMicroseconds;
+
+  constexpr size_t kMaxFirstPacketSize =
+      kMaxControllerSDUFragmentSize - kSduHeaderSize;
+
+  uint16_t expected_sequence_num = 0;
+
+  // FIll up controller buffer + 1 packet queued.
+  for (size_t i = 0; i < kMaxControllerPacketCount; i++) {
+    std::vector<uint8_t> sdu =
+        testing::GenDataBlob(kMaxFirstPacketSize / 2, /*starting_value=*/i);
+    EXPECT_ISO_PACKET_OUT(
+        test_device(),
+        testing::IsoDataPacket(iso_stream()->cis_handle(),
+                               IsoDataPbFlag::COMPLETE_SDU,
+                               std::nullopt,
+                               expected_sequence_num,
+                               sdu.size(),
+                               IsoDataPacketStatus::VALID_DATA,
+                               sdu));
+    iso_stream()->Send(pw::as_bytes(pw::span(sdu)));
+    RunUntilIdle();
+    EXPECT_TRUE(test_device()->AllExpectedIsoPacketsSent());
+    ++expected_sequence_num;
+    // Advance the clock by one ISO interval
+    RunFor(std::chrono::microseconds(iso_interval_usec));
+  }
+
+  // Queue a packet on a different connection. IsoDataChannel should not send it
+  // yet.
+  const hci_spec::ConnectionHandle kIsoHandle2 = 0x0002;
+  MockConnection connection(*transport()->iso_data_channel());
+  transport()->iso_data_channel()->RegisterConnection(kIsoHandle2,
+                                                      connection.GetWeakPtr());
+  DynamicByteBuffer pdu(kMaxFirstPacketSize);
+  pdu.Fill(3);
+  EXPECT_ISO_PACKET_OUT(test_device(), pdu);
+  connection.Send(std::move(pdu));
+  RunUntilIdle();
+  EXPECT_FALSE(test_device()->AllExpectedIsoPacketsSent());
+
+  EXPECT_CMD_PACKET_OUT(test_device(), testing::DisconnectPacket(kCisHandleId));
+  iso_stream()->Close();
+  RunUntilIdle();
+  EXPECT_FALSE(test_device()->AllExpectedIsoPacketsSent());
+  EXPECT_TRUE(test_device()->AllExpectedCommandPacketsSent());
+
+  // The Disconnect Complete event should clear the pending packets in
+  // IsoDataChannel, allowing the queued packet to be sent.
+  test_device()->SendCommandChannelPacket(
+      testing::DisconnectionCompletePacket(kCisHandleId));
+  RunUntilIdle();
+  EXPECT_TRUE(test_device()->AllExpectedIsoPacketsSent());
+
+  transport()->iso_data_channel()->UnregisterConnection(kIsoHandle2);
+}
+
+TEST_F(IsoStreamTest, HoldWakeLeaseWhileTxPacketQueued) {
+  EstablishCis(pw::bluetooth::emboss::StatusCode::SUCCESS);
+  SetupDataPath(
+      pw::bluetooth::emboss::DataPathDirection::OUTPUT,
+      /*codec_config=*/std::nullopt,
+      /*cmd_complete_status=*/pw::bluetooth::emboss::StatusCode::SUCCESS,
+      iso::IsoStream::SetupDataPathError::kSuccess);
+  RegisterStream();
+
+  constexpr size_t kMaxFirstPacketSize =
+      kMaxControllerSDUFragmentSize - kSduHeaderSize;
+
+  // Fill up the controller buffer with packets from a different connection.
+  const hci_spec::ConnectionHandle kIsoHandle2 = 0x0002;
+  MockConnection connection(*transport()->iso_data_channel());
+  transport()->iso_data_channel()->RegisterConnection(kIsoHandle2,
+                                                      connection.GetWeakPtr());
+  for (size_t i = 0; i < kMaxControllerPacketCount; ++i) {
+    DynamicByteBuffer pdu(kMaxFirstPacketSize);
+    pdu.Fill(3);
+    EXPECT_ISO_PACKET_OUT(test_device(), pdu);
+    connection.Send(std::move(pdu));
+    RunUntilIdle();
+    EXPECT_TRUE(test_device()->AllExpectedIsoPacketsSent());
+  }
+
+  EXPECT_EQ(stream_lease_provider().lease_count(), 0u);
+  std::vector<uint8_t> sdu =
+      testing::GenDataBlob(kMaxFirstPacketSize / 2, /*starting_value=*/0);
+  EXPECT_ISO_PACKET_OUT(test_device(),
+                        testing::IsoDataPacket(iso_stream()->cis_handle(),
+                                               IsoDataPbFlag::COMPLETE_SDU,
+                                               std::nullopt,
+                                               /*packet_sequence_number=*/0,
+                                               sdu.size(),
+                                               IsoDataPacketStatus::VALID_DATA,
+                                               sdu));
+  iso_stream()->Send(pw::as_bytes(pw::span(sdu)));
+  RunUntilIdle();
+  EXPECT_FALSE(test_device()->AllExpectedIsoPacketsSent());
+  // A lease should be held while the packet is queued.
+  EXPECT_NE(stream_lease_provider().lease_count(), 0u);
+
+  // Clear the pending packets in IsoDataChannel, allowing the queued packet to
+  // be sent.
+  transport()->iso_data_channel()->UnregisterConnection(kIsoHandle2);
+  transport()->iso_data_channel()->ClearControllerPacketCount(kIsoHandle2);
+  RunUntilIdle();
+  EXPECT_TRUE(test_device()->AllExpectedIsoPacketsSent());
+  EXPECT_EQ(stream_lease_provider().lease_count(), 0u);
 }
 
 }  // namespace

@@ -115,10 +115,18 @@ pw_source_set("raw_storage") {
 
 pw_source_set("test_helpers") {
   public_configs = [ ":public_include_path" ]
-  public = [ "public/pw_containers/internal/test_helpers.h" ]
+  public = [
+    "public/pw_containers/internal/container_tests.h",
+    "public/pw_containers/internal/test_helpers.h",
+  ]
   sources = [ "test_helpers.cc" ]
+  public_deps = [
+    ":algorithm",
+    dir_pw_unit_test,
+  ]
   deps = [ dir_pw_assert ]
   visibility = [ ":*" ]
+  testonly = pw_unit_test_TESTONLY
 }
 
 pw_source_set("to_array") {
@@ -308,7 +316,6 @@ pw_test("flat_map_test") {
 pw_test("inline_deque_test") {
   sources = [ "inline_deque_test.cc" ]
   deps = [
-    ":algorithm",
     ":inline_deque",
     ":test_helpers",
   ]
