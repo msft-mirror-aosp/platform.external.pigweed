@@ -1,4 +1,4 @@
-// Copyright 2024 The Pigweed Authors
+// Copyright 2025 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -16,86 +16,68 @@ package {
     default_applicable_licenses: ["external_pigweed_license"],
 }
 
-filegroup {
-    name: "pw_multibuf_src_files",
-}
-
 cc_library_static {
-    name: "pw_multibuf",
-    srcs: [
-        "chunk.cc",
-        "from_span.cc",
-        "multibuf.cc",
-    ],
+    name: "pw_i2c_linux",
     cpp_std: "c++20",
-    export_include_dirs: [
-        "public",
-    ],
+    vendor_available: true,
     defaults: [
         "pw_android_common_backends",
     ],
+    export_include_dirs: [
+        "public",
+    ],
+    srcs: [
+        "initiator.cc",
+    ],
     header_libs: [
-        "pw_assert",
+        "pw_chrono",
         "pw_log",
         "pw_sync",
     ],
     export_header_lib_headers: [
-        "pw_assert",
+        "pw_chrono",
         "pw_log",
         "pw_sync",
     ],
-    cmake_snapshot_supported: true,
-    vendor_available: true,
-    host_supported: true,
     static_libs: [
-        "pw_allocator",
         "pw_bytes",
-        "pw_function",
+        "pw_i2c",
+        "pw_result",
         "pw_span",
         "pw_status",
     ],
     export_static_lib_headers: [
-        "pw_allocator",
         "pw_bytes",
-        "pw_function",
+        "pw_i2c",
+        "pw_result",
         "pw_span",
         "pw_status",
     ],
 }
 
-cc_library_static {
-    name: "pw_multibuf_allocator",
-    srcs: [
-        "allocator.cc",
-        "simple_allocator.cc",
-    ],
+cc_binary {
+    name: "pw_i2c_linux_cli",
     cpp_std: "c++20",
-    export_include_dirs: [
-        "public",
-    ],
+    vendor_available: true,
     defaults: [
         "pw_android_common_backends",
     ],
-    header_libs: [
-        "pw_sync",
+    srcs: [
+        "cli.cc",
     ],
-    export_header_lib_headers: [
-        "pw_sync",
+    header_libs: [
+        "pw_log",
     ],
     static_libs: [
-        "pw_containers",
-        "pw_multibuf",
+        "pw_i2c",
+        "pw_i2c_linux",
+        "pw_preprocessor",
         "pw_result",
+        "pw_status",
     ],
-    export_static_lib_headers: [
-        "pw_containers",
-        "pw_multibuf",
-        "pw_result",
+    whole_static_libs: [
+        // Force logs to stderr rather than logd.
+        // NOTE: Only use this on cc_binary() targets.
+        "pw_log_android_stderr",
     ],
-    cmake_snapshot_supported: true,
-    vendor_available: true,
-    host_supported: true,
 }
-
-// # TODO: https://pwbug.dev/384615147 - Add targets for other multibuf targets
-// including allocator_async.

@@ -1,4 +1,4 @@
-// Copyright 2023 The Pigweed Authors
+// Copyright 2025 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -12,23 +12,25 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-package {
-    default_applicable_licenses: ["external_pigweed_license"],
+#include "pw_async2/waker_queue.h"
+
+#include "pw_log/tokenized_args.h"
+
+namespace pw::async2::internal {
+
+bool StoreWaker(Context& cx, WakerQueueBase& queue, log::Token wait_reason) {
+  Waker waker;
+  CloneWaker(*cx.waker_, waker, wait_reason);
+  return queue.Add(std::move(waker));
 }
 
-cc_library_headers {
-    name: "pw_chrono",
-    cpp_std: "c++20",
-    export_include_dirs: [
-        "public",
-    ],
-    cmake_snapshot_supported: true,
-    vendor_available: true,
-    host_supported: true,
-    static_libs: [
-        "pw_preprocessor",
-    ],
-    export_static_lib_headers: [
-        "pw_preprocessor",
-    ],
+void WakerQueueBase::WakeMany(size_t count) {
+  while (count > 0 && !empty()) {
+    Waker& waker = queue_.front();
+    std::move(waker).Wake();
+    queue_.pop();
+    count--;
+  }
 }
+
+}  // namespace pw::async2::internal
