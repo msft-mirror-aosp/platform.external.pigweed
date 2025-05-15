@@ -199,10 +199,8 @@ async function runCquery(
     spawnedProcess.on('exit', (code) => {
       if (code !== 0) {
         // Log error through TUI Manager's stderr handler before rejecting/resolving null
-        const message = `cquery failed with exit code ${code}`;
+        const message = `cquery failed with exit code ${code}. Attempting to use partial output...`;
         tuiManager?.addStderr(message);
-        resolve(null); // Resolve null as before, error is visible in TUI
-        return;
       }
       try {
         const parsedHeaders: CQueryItem[] = output
@@ -229,8 +227,7 @@ async function runCquery(
     });
   });
 
-  if (!headersArray) throw new Error('Running cquery failed.');
-  return headersArray;
+  return headersArray || [];
 }
 
 async function runAquery(
@@ -272,10 +269,8 @@ async function runAquery(
 
     spawnedProcess.on('exit', (code) => {
       if (code !== 0) {
-        const message = `aquery failed with exit code ${code}`;
+        const message = `aquery failed with exit code ${code}. Attempting to use partial output...`;
         tuiManager?.addStderr(message);
-        resolve(null);
-        return;
       }
       try {
         const aqueryJson: AQueryOutput = JSON.parse(output);
@@ -309,7 +304,8 @@ async function runAquery(
     });
   });
 
-  if (!outputJson) throw new Error('Running aquery failed.');
+  if (!outputJson)
+    throw new Error('Running aquery failed for target ' + bazelTarget + '.');
   return outputJson;
 }
 
@@ -567,6 +563,13 @@ export async function generateCompileCommands(
       cqueryJson,
       tuiManager,
     );
+
+  // Delete and recreate the compile_commands directory.
+  tuiManager?.updateStatus(`⏳ Cleaning output directory: ${cdbFileDir}`);
+  const fullCdbDirPath = path.join(cwd, cdbFileDir);
+  deleteFilesInSubDir(fullCdbDirPath, 'compile_commands.json');
+  fs.mkdirSync(fullCdbDirPath, { recursive: true });
+
   await compileCommandsPerPlatform.writeAll(cwd, cdbFileDir, cdbFilename);
 
   tuiManager?.addStdout(
@@ -878,12 +881,6 @@ async function runAsCli() {
   );
 
   const cdbFileDir = parsedArgs['cdbFileDir'] || '.compile_commands';
-
-  // Delete and recreate the compile_commands directory.
-  tuiManager?.updateStatus(`⏳ Cleaning output directory: ${cdbFileDir}`);
-  const fullCdbDirPath = path.join(parsedArgs['cwd'], cdbFileDir);
-  deleteFilesInSubDir(fullCdbDirPath, 'compile_commands.json');
-  fs.mkdirSync(fullCdbDirPath, { recursive: true });
 
   await generateCompileCommandsWithStatus(
     parsedArgs['bazelCmd'],

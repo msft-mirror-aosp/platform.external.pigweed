@@ -34,8 +34,8 @@ class GattNotifyChannel : public L2capChannel {
   /// Return the attribute handle of this GattNotify channel.
   uint16_t attribute_handle() const { return attribute_handle_; }
 
-  // Overridden here to do additional length checks.
-  StatusWithMultiBuf Write(multibuf::MultiBuf&& attribute_value) override;
+  /// Check if the passed Write parameter is acceptable.
+  Status DoCheckWriteParameter(pw::multibuf::MultiBuf& payload) override;
 
  protected:
   static pw::Result<GattNotifyChannel> Create(
@@ -58,7 +58,7 @@ class GattNotifyChannel : public L2capChannel {
 
  private:
   [[nodiscard]] std::optional<H4PacketWithH4> GenerateNextTxPacket()
-      PW_EXCLUSIVE_LOCKS_REQUIRED(send_queue_mutex()) override;
+      PW_EXCLUSIVE_LOCKS_REQUIRED(l2cap_tx_mutex()) override;
 
   // TODO: https://pwbug.dev/349602172 - Define ATT CID in pw_bluetooth.
   static constexpr uint16_t kAttributeProtocolCID = 0x0004;
