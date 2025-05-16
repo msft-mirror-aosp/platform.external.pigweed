@@ -182,19 +182,48 @@ cc_library(
 )
 
 cc_library(
-    name = "inline_deque",
+    name = "deque_common",
     hdrs = [
-        "public/pw_containers/inline_deque.h",
+        "public/pw_containers/internal/deque_iterator.h",
+        "public/pw_containers/internal/generic_deque.h",
     ],
     strip_include_prefix = "public",
+    visibility = ["//visibility:private"],
     deps = [
         ":common",
+        "//pw_assert:assert",
+        "//pw_span",
+    ],
+)
+
+cc_library(
+    name = "dynamic_deque",
+    hdrs = ["public/pw_containers/dynamic_deque.h"],
+    strip_include_prefix = "public",
+    deps = [
+        ":deque_common",
+        "//pw_allocator:allocator",
+        "//pw_numeric:saturating_arithmetic",
+    ],
+)
+
+cc_library(
+    name = "inline_deque",
+    hdrs = ["public/pw_containers/inline_deque.h"],
+    strip_include_prefix = "public",
+    deps = [
+        ":deque_common",
         ":raw_storage",
         "//pw_assert:assert",
-        "//pw_preprocessor",
-        "//pw_span",
         "//pw_toolchain:constexpr_tag",
     ],
+)
+
+cc_library(
+    name = "dynamic_queue",
+    hdrs = ["public/pw_containers/dynamic_queue.h"],
+    strip_include_prefix = "public",
+    deps = [":dynamic_deque"],
 )
 
 cc_library(
@@ -307,6 +336,7 @@ pw_cc_test(
 pw_cc_test(
     name = "filtered_view_test",
     srcs = ["filtered_view_test.cc"],
+    features = ["-ctad_warnings"],
     deps = [
         ":algorithm",
         ":filtered_view",
@@ -354,6 +384,19 @@ pw_cc_test(
 )
 
 pw_cc_test(
+    name = "dynamic_deque_test",
+    srcs = ["dynamic_deque_test.cc"],
+    deps = [
+        ":dynamic_deque",
+        ":test_helpers",
+        "//pw_allocator:null_allocator",
+        "//pw_allocator:testing",
+        "//pw_containers:algorithm",
+        "//pw_polyfill",
+    ],
+)
+
+pw_cc_test(
     name = "inline_deque_test",
     srcs = [
         "inline_deque_test.cc",
@@ -362,6 +405,16 @@ pw_cc_test(
         ":inline_deque",
         ":test_helpers",
         "//pw_compilation_testing:negative_compilation_testing",
+    ],
+)
+
+pw_cc_test(
+    name = "dynamic_queue_test",
+    srcs = ["dynamic_queue_test.cc"],
+    deps = [
+        ":dynamic_queue",
+        ":test_helpers",
+        "//pw_allocator:testing",
     ],
 )
 
@@ -490,11 +543,14 @@ filegroup(
     name = "doxygen",
     srcs = [
         "public/pw_containers/algorithm.h",
+        "public/pw_containers/dynamic_deque.h",
+        "public/pw_containers/dynamic_queue.h",
         "public/pw_containers/filtered_view.h",
         "public/pw_containers/inline_deque.h",
         "public/pw_containers/inline_queue.h",
         "public/pw_containers/inline_var_len_entry_queue.h",
         "public/pw_containers/internal/aa_tree.h",
+        "public/pw_containers/internal/generic_deque.h",
         "public/pw_containers/internal/intrusive_list.h",
         "public/pw_containers/intrusive_forward_list.h",
         "public/pw_containers/intrusive_list.h",
