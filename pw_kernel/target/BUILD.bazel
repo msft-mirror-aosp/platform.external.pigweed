@@ -18,21 +18,6 @@ load("@rules_rust//rust:defs.bzl", "rust_library")
 package(default_visibility = ["//visibility:public"])
 
 rust_library(
-    name = "demo",
-    srcs = ["demo.rs"],
-    tags = ["kernel"],
-    deps = [
-        "//pw_kernel/config:kernel_config",
-        "//pw_kernel/kernel",
-        "//pw_kernel/lib/pw_assert",
-        "//pw_kernel/lib/time",
-        # TODO - konkers: remove this once we have userspace.
-        "//pw_kernel/syscall:syscall_user",
-        "//pw_log/rust:pw_log",
-    ],
-)
-
-rust_library(
     name = "target_common",
     srcs = ["target_common.rs"],
     tags = ["kernel"],

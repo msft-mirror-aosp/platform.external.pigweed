@@ -11,24 +11,17 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
-#![no_main]
-#![no_std]
 
-use pw_tokenizer::tokenize_core_fmt_to_buffer;
+#if !__has_include("pw_build/internal/test_header_with_dep.h")
+#error "pw_build/internal/test_header_with_dep.h must be visible"
+#endif  // __has_include("pw_build/internal/test_header_with_dep.h")
 
-// Cortex-M runtime entry macro.
-#[cfg(feature = "arch_arm_cortex_m")]
-use cortex_m_rt::entry;
+#if __has_include("pw_build/internal/test_header_without_dep.h")
+#define NO_DEP_HEADER_IS_VISIBLE 1
+#else
+#define NO_DEP_HEADER_IS_VISIBLE 0
+#endif  // __has_include("pw_build/internal/test_header_without_dep.h")
 
-#[entry]
-fn entry() -> ! {
-    // populate the tokenized database
-    let mut buffer = [0u8; 1024];
-    let _ = tokenize_core_fmt_to_buffer!(&mut buffer, "App one tokenized string {}", 1 as i32);
-    loop {}
-}
-
-#[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
-    loop {}
-}
+static_assert(SANDBOX_ENABLED != NO_DEP_HEADER_IS_VISIBLE,
+              "With sandboxing enabled, the header without a dependency must "
+              "not be visible");

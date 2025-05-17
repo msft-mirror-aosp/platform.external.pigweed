@@ -166,6 +166,7 @@ cc_library(
 pw_cc_test(
     name = "linker_symbol_test",
     srcs = ["linker_symbol_test.cc"],
+    features = ["-ctad_warnings"],
     linkopts = [
         "-T$(execpath linker_symbol_test.ld)",
     ],
@@ -178,11 +179,33 @@ pw_cc_test(
     ],
 )
 
+cc_library(
+    name = "sandbox_test_visible_header",
+    hdrs = ["public/pw_build/internal/test_header_with_dep.h"],
+    strip_include_prefix = "public",
+)
+
+cc_library(
+    name = "sandbox_test_invisible_header",
+    hdrs = ["public/pw_build/internal/test_header_without_dep.h"],
+    strip_include_prefix = "public",
+)
+
+pw_cc_test(
+    name = "sandbox_test",
+    srcs = ["sandbox_test.cc"],
+    defines = ["SANDBOX_ENABLED=1"],
+    deps = [":sandbox_test_visible_header"],
+)
+
 pw_string_list_comparison_test(
     name = "simple_glob",
     actual = glob_dirs(
         ["test_data/**"],
-        exclude = ["test_data/pw_copy_and_patch_file/**"],
+        exclude = [
+            "test_data/pw_copy_and_patch_file/**",
+            "test_data/pw_rust_crates_extension/**",
+        ],
     ),
     expected = [
         "test_data",
@@ -316,6 +339,7 @@ filegroup(
 sphinx_docs_library(
     name = "docs",
     srcs = [
+        "CMakeLists.txt",
         "bazel.rst",
         "cmake.rst",
         "docs.rst",

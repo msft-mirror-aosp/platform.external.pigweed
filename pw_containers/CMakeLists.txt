@@ -73,18 +73,48 @@ pw_add_library(pw_containers._common INTERFACE
     public
 )
 
+pw_add_library(pw_containers._deque_common INTERFACE
+  HEADERS
+    public/pw_containers/internal/deque_iterator.h
+    public/pw_containers/internal/generic_deque.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_assert
+    pw_containers._common
+    pw_span
+)
+
+pw_add_library(pw_containers.dynamic_deque INTERFACE
+  HEADERS
+    public/pw_containers/dynamic_deque.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_containers._deque_common
+    pw_allocator.allocator
+    pw_numeric.saturating_arithmetic
+)
+
 pw_add_library(pw_containers.inline_deque INTERFACE
   HEADERS
     public/pw_containers/inline_deque.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
-    pw_assert.assert
-    pw_containers._common
+    pw_assert
+    pw_containers._deque_common
     pw_containers._raw_storage
-    pw_preprocessor
-    pw_span
     pw_toolchain.constexpr_tag
+)
+
+pw_add_library(pw_containers.dynamic_queue INTERFACE
+  HEADERS
+    public/pw_containers/dynamic_queue.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_containers.dynamic_queue
 )
 
 pw_add_library(pw_containers.inline_queue INTERFACE
@@ -311,12 +341,36 @@ pw_add_test(pw_containers.flat_map_test
     pw_polyfill
 )
 
+pw_add_test(pw_containers.dynamic_deque_test
+  SOURCES
+    dynamic_deque_test.cc
+  PRIVATE_DEPS
+    pw_allocator.null_allocator
+    pw_allocator.testing
+    pw_containers.algorithm
+    pw_containers.dynamic_deque
+    pw_containers._test_helpers
+    pw_polyfill
+)
+
 pw_add_test(pw_containers.inline_deque_test
   SOURCES
     inline_deque_test.cc
   PRIVATE_DEPS
     pw_compilation_testing._pigweed_only_negative_compilation
     pw_containers.inline_deque
+    pw_containers._test_helpers
+  GROUPS
+    modules
+    pw_containers
+)
+
+pw_add_test(pw_containers.dynamic_queue_test
+  SOURCES
+    dynamic_queue_test.cc
+  PRIVATE_DEPS
+    pw_allocator.testing
+    pw_containers.dynamic_queue
     pw_containers._test_helpers
   GROUPS
     modules
