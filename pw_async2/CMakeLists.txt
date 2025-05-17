@@ -50,7 +50,6 @@ pw_add_facade(pw_async2.dispatcher STATIC
     pw_async2.dispatcher_BACKEND
   HEADERS
     public/pw_async2/context.h
-    public/pw_async2/internal/token.h
     public/pw_async2/dispatcher.h
     public/pw_async2/dispatcher_base.h
     public/pw_async2/lock.h
@@ -60,7 +59,6 @@ pw_add_facade(pw_async2.dispatcher STATIC
     public
   PUBLIC_DEPS
     pw_assert.assert
-    pw_assert.check
     pw_async2.poll
     pw_chrono.system_clock
     pw_containers.intrusive_forward_list
@@ -72,6 +70,7 @@ pw_add_facade(pw_async2.dispatcher STATIC
     pw_tokenizer
     pw_toolchain.no_destructor
   PRIVATE_DEPS
+    pw_assert.check
     pw_async2.config
   SOURCES
     dispatcher_base.cc
@@ -126,6 +125,28 @@ pw_add_test(pw_async2.pendable_as_task_test
     pendable_as_task_test.cc
   PRIVATE_DEPS
     pw_async2.pendable_as_task
+)
+
+pw_add_library(pw_async2.waker_queue STATIC
+  HEADERS
+    public/pw_async2/waker_queue.h
+  PUBLIC_DEPS
+    pw_async2.dispatcher
+    pw_containers.inline_queue
+  PUBLIC_INCLUDES
+    public
+  SOURCES
+    waker_queue.cc
+  PRIVATE_DEPS
+    pw_log
+)
+
+pw_add_test(pw_async2.waker_queue_test
+  SOURCES
+    waker_queue_test.cc
+  PRIVATE_DEPS
+    pw_async2.pend_func_task
+    pw_async2.waker_queue
 )
 
 pw_add_library(pw_async2.allocate_task INTERFACE

@@ -15,6 +15,7 @@
 import * as child_process from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import { modify, applyEdits, FormattingOptions } from 'jsonc-parser';
 import { Logger } from '../loggingTypes';
 import {
   CompilationDatabase,
@@ -198,10 +199,8 @@ async function runCquery(
     spawnedProcess.on('exit', (code) => {
       if (code !== 0) {
         // Log error through TUI Manager's stderr handler before rejecting/resolving null
-        const message = `cquery failed with exit code ${code}`;
+        const message = `cquery failed with exit code ${code}. Attempting to use partial output...`;
         tuiManager?.addStderr(message);
-        resolve(null); // Resolve null as before, error is visible in TUI
-        return;
       }
       try {
         const parsedHeaders: CQueryItem[] = output
@@ -228,8 +227,7 @@ async function runCquery(
     });
   });
 
-  if (!headersArray) throw new Error('Running cquery failed.');
-  return headersArray;
+  return headersArray || [];
 }
 
 async function runAquery(
@@ -271,10 +269,8 @@ async function runAquery(
 
     spawnedProcess.on('exit', (code) => {
       if (code !== 0) {
-        const message = `aquery failed with exit code ${code}`;
+        const message = `aquery failed with exit code ${code}. Attempting to use partial output...`;
         tuiManager?.addStderr(message);
-        resolve(null);
-        return;
       }
       try {
         const aqueryJson: AQueryOutput = JSON.parse(output);
@@ -308,7 +304,8 @@ async function runAquery(
     });
   });
 
-  if (!outputJson) throw new Error('Running aquery failed.');
+  if (!outputJson)
+    throw new Error('Running aquery failed for target ' + bazelTarget + '.');
   return outputJson;
 }
 
@@ -566,6 +563,13 @@ export async function generateCompileCommands(
       cqueryJson,
       tuiManager,
     );
+
+  // Delete and recreate the compile_commands directory.
+  tuiManager?.updateStatus(`⏳ Cleaning output directory: ${cdbFileDir}`);
+  const fullCdbDirPath = path.join(cwd, cdbFileDir);
+  deleteFilesInSubDir(fullCdbDirPath, 'compile_commands.json');
+  fs.mkdirSync(fullCdbDirPath, { recursive: true });
+
   await compileCommandsPerPlatform.writeAll(cwd, cdbFileDir, cdbFilename);
 
   tuiManager?.addStdout(
@@ -712,7 +716,7 @@ export async function parseBazelBuildCommand(
   for (const part of potentialTargetsAndArgs) {
     // Basic target identification (starts with // or :)
     // More robust parsing might be needed for complex target patterns.
-    if (part.startsWith('//') || part.startsWith(':')) {
+    if (part.startsWith('//') || part.startsWith(':') || part.startsWith('@')) {
       targets.push(part);
     } else {
       // Anything else is considered a potential argument for canonicalization
@@ -816,6 +820,38 @@ export async function parseBazelBuildCommand(
   };
 }
 
+export function saveLastBazelCommandInUserSettings(
+  cwd: string,
+  bazelCmd: string,
+  tuiManager?: UIManager | LoggerUI,
+) {
+  try {
+    const settingsPath = path.join(cwd, '.vscode', 'settings.json');
+
+    if (fs.existsSync(settingsPath)) {
+      const originalContent = fs.readFileSync(settingsPath, 'utf-8');
+      const formattingOptions: FormattingOptions = {
+        keepLines: true,
+        insertSpaces: true,
+        tabSize: 2,
+        eol: '\n',
+      };
+      const jsonPath = ['pigweed.bazelCompileCommandsLastBuildCommand'];
+      const edits = modify(originalContent, jsonPath, bazelCmd, {
+        formattingOptions,
+      });
+      const updatedContent = applyEdits(originalContent, edits);
+      fs.writeFileSync(settingsPath, updatedContent, 'utf-8');
+      tuiManager?.addStdout('Saved last bazel command to user settings.json.');
+    }
+  } catch (e: any) {
+    tuiManager?.addStderr(
+      'Failed to save last bazel command to user settings.json: ' +
+        e.toString(),
+    );
+  }
+}
+
 async function runAsCli() {
   const tuiManager = new UIManager();
   const args = process.argv.slice(2);
@@ -846,19 +882,18 @@ async function runAsCli() {
 
   const cdbFileDir = parsedArgs['cdbFileDir'] || '.compile_commands';
 
-  // Delete and recreate the compile_commands directory.
-  tuiManager?.updateStatus(`⏳ Cleaning output directory: ${cdbFileDir}`);
-  const fullCdbDirPath = path.join(parsedArgs['cwd'], cdbFileDir);
-  deleteFilesInSubDir(fullCdbDirPath, 'compile_commands.json');
-  fs.mkdirSync(fullCdbDirPath, { recursive: true });
-
-  generateCompileCommandsWithStatus(
+  await generateCompileCommandsWithStatus(
     parsedArgs['bazelCmd'],
     parsedArgs['cwd'],
     cdbFileDir,
     parsedArgs['cdbFilename'] || 'compile_commands.json',
     targets,
     bazelArgs,
+    tuiManager,
+  );
+  saveLastBazelCommandInUserSettings(
+    parsedArgs['cwd'],
+    parsedArgs['target'],
     tuiManager,
   );
 }

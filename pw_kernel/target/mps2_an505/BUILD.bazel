@@ -1,0 +1,137 @@
+# Copyright 2025 The Pigweed Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under
+# the License.
+
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library")
+load("//pw_build:merge_flags.bzl", "flags_from_dict")
+load("//pw_build:pw_linker_script.bzl", "pw_linker_script")
+load("//pw_kernel:flags.bzl", "KERNEL_COMMON_FLAGS")
+load("//pw_kernel/tooling:system_image.bzl", "system_image")
+
+platform(
+    name = "mps2_an505",
+    constraint_values = [
+        "//pw_build/constraints/arm:cortex-m33",
+        "@platforms//cpu:armv8-m",
+        "@platforms//os:none",
+        "@rust_crates//:no_std",
+    ],
+    flags = flags_from_dict(
+        KERNEL_COMMON_FLAGS | {
+            "//pw_kernel/config:kernel_config": ":config",
+            "//pw_kernel/lib/unittest:unittest_runner": ":unittest_runner",
+            "//pw_kernel/subsys/console:console_backend": "//pw_kernel/subsys/console:console_backend_semihosting",
+            "//pw_kernel/target:linker_script": ":linker_script",
+        },
+    ),
+)
+
+system_image(
+    name = "kernel_only_demo",
+    kernel = ":target",
+    platform = ":mps2_an505",
+    tags = ["kernel"],
+)
+
+system_image(
+    name = "userspace_demo",
+    apps = [
+        "//pw_kernel/apps/one",
+        "//pw_kernel/apps/two",
+    ],
+    kernel = ":userspace_target",
+    platform = ":mps2_an505",
+    tags = ["kernel"],
+)
+
+SRCS = ["target.rs"]
+
+COMMON_DEPS = [
+    ":linker_script",
+    "//pw_kernel/kernel",
+    "//pw_kernel/subsys/console:console_backend_semihosting",
+    "//pw_kernel/target:target_common",
+    "@rust_crates//:cortex-m",
+    "@rust_crates//:cortex-m-rt",
+    "@rust_crates//:panic-halt",
+]
+
+rust_binary(
+    name = "target",
+    srcs = SRCS,
+    edition = "2021",
+    tags = ["kernel"],
+    target_compatible_with = [
+        "//pw_build/constraints/arm:cortex-m33",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pw_kernel/apps/kernel_only_demo:demo",
+    ] + COMMON_DEPS,
+)
+
+rust_binary(
+    name = "userspace_target",
+    srcs = [
+        "userspace_target.rs",
+    ],
+    edition = "2021",
+    tags = ["kernel"],
+    target_compatible_with = [
+        "//pw_build/constraints/arm:cortex-m33",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pw_kernel/apps/userspace_demo",
+    ] + COMMON_DEPS,
+)
+
+# When building as a unit test runner, this target will be depended upon by
+# other libraries (in other words, it won't be the root of the dependency
+# graph). Declaring this as a `rust_binary` would result in it being built, but
+# not linked against the other libraries in the build graph.
+rust_library(
+    name = "unittest_runner",
+    srcs = SRCS,
+    crate_features = ["test"],
+    crate_name = "unittest_runner",
+    edition = "2021",
+    tags = ["kernel"],
+    target_compatible_with = [
+        "//pw_build/constraints/arm:cortex-m33",
+    ],
+    deps = COMMON_DEPS + [
+        "@pigweed//pw_log/rust:pw_log",
+        "@rust_crates//:cortex-m-semihosting",
+    ],
+)
+
+rust_library(
+    name = "config",
+    srcs = ["config.rs"],
+    crate_name = "kernel_config",
+    target_compatible_with = [
+        "//pw_build/constraints/arm:cortex-m33",
+    ],
+    deps = [
+        "//pw_kernel/config:kernel_config_interface",
+    ],
+)
+
+pw_linker_script(
+    name = "linker_script",
+    linker_script = "system.ld",
+    target_compatible_with = [
+        "//pw_build/constraints/arm:cortex-m33",
+    ],
+)

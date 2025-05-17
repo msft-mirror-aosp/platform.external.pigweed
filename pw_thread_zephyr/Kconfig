@@ -31,6 +31,7 @@ config PIGWEED_THREAD_YIELD
 config PIGWEED_THREAD
     bool "Link and set pw_thread.thread and pw_thread.id backends"
     select PIGWEED_ASSERT
+    select PIGWEED_INTERRUPT_CONTEXT
     help
       See :ref:`module-pw_thread` for module details.
 
@@ -56,6 +57,13 @@ config PIGWEED_THREAD_NUM_PREEMPT_PRIORITIES
   int "Number of preemptible thread priorities"
   default NUM_PREEMPT_PRIORITIES
   range 0 NUM_PREEMPT_PRIORITIES
+
+config PIGWEED_THREAD_MAX_THREAD_NAME_LEN
+  int "The maximum length of a Pigweed thread's name"
+  default 15
+  help
+    This name allows modifying the storate size of Pigweed created Zephyr
+    thread names. Set to 0 if you don't plan on naming your threads.
 
 endif # PIGWEED_THREAD
 

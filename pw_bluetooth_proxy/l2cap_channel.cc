@@ -43,8 +43,8 @@ void L2capChannel::MoveFields(L2capChannel& other) {
   payload_from_host_fn_ = std::move(other.payload_from_host_fn_);
   rx_multibuf_allocator_ = other.rx_multibuf_allocator_;
   {
-    std::lock_guard lock(send_queue_mutex_);
-    std::lock_guard other_lock(other.send_queue_mutex_);
+    std::lock_guard lock(tx_mutex_);
+    std::lock_guard other_lock(other.tx_mutex_);
     payload_queue_ = std::move(other.payload_queue_);
     notify_on_dequeue_ = other.notify_on_dequeue_;
     l2cap_channel_manager_.DeregisterChannel(other);
@@ -134,43 +134,16 @@ void L2capChannel::InternalClose(L2capChannelEvent event) {
 void L2capChannel::Undefine() { state_ = State::kUndefined; }
 
 StatusWithMultiBuf L2capChannel::Write(pw::multibuf::MultiBuf&& payload) {
+  Status status = DoCheckWriteParameter(payload);
+  if (!status.ok()) {
+    return {status, std::move(payload)};
+  }
   StatusWithMultiBuf result = WriteLocked(std::move(payload));
   l2cap_channel_manager_.DrainChannelQueuesIfNewTx();
   return result;
 }
 
 StatusWithMultiBuf L2capChannel::WriteLocked(pw::multibuf::MultiBuf&& payload) {
-  if (UsesPayloadQueue()) {
-    return WriteToPayloadQueue(std::move(payload));
-  } else {
-    return WriteToPduQueue(std::move(payload));
-  }
-}
-
-Status L2capChannel::QueuePacket(H4PacketWithH4&& packet) {
-  PW_CHECK(!UsesPayloadQueue());
-
-  if (state() != State::kRunning) {
-    return Status::FailedPrecondition();
-  }
-
-  Status status;
-  {
-    std::lock_guard lock(send_queue_mutex_);
-    if (send_queue_.full()) {
-      status = Status::Unavailable();
-      notify_on_dequeue_ = true;
-    } else {
-      send_queue_.push(std::move(packet));
-      status = OkStatus();
-    }
-  }
-  l2cap_channel_manager_.ForceDrainChannelQueues();
-  return status;
-}
-
-StatusWithMultiBuf L2capChannel::WriteToPayloadQueue(
-    multibuf::MultiBuf&& payload) {
   if (!payload.IsContiguous()) {
     return {Status::InvalidArgument(), std::move(payload)};
   }
@@ -178,42 +151,8 @@ StatusWithMultiBuf L2capChannel::WriteToPayloadQueue(
   if (state() != State::kRunning) {
     return {Status::FailedPrecondition(), std::move(payload)};
   }
-
-  PW_CHECK(UsesPayloadQueue());
 
   return QueuePayload(std::move(payload));
-}
-
-// TODO: https://pwbug.dev/379337272 - Delete when all channels are
-// transitioned to using payload queues.
-StatusWithMultiBuf L2capChannel::WriteToPduQueue(multibuf::MultiBuf&& payload) {
-  if (!payload.IsContiguous()) {
-    return {Status::InvalidArgument(), std::move(payload)};
-  }
-
-  if (state() != State::kRunning) {
-    return {Status::FailedPrecondition(), std::move(payload)};
-  }
-
-  PW_CHECK(!UsesPayloadQueue());
-
-  std::optional<ByteSpan> span = payload.ContiguousSpan();
-  PW_CHECK(span.has_value());
-  Status status = Write(span_cast<const uint8_t>(*span));
-
-  if (!status.ok()) {
-    return {status, std::move(payload)};
-  }
-
-  return {OkStatus(), std::nullopt};
-}
-
-pw::Status L2capChannel::Write(
-    [[maybe_unused]] pw::span<const uint8_t> payload) {
-  PW_LOG_ERROR(
-      "btproxy: Write(span) called on class that only supports "
-      "Write(MultiBuf)");
-  return Status::Unimplemented();
 }
 
 Status L2capChannel::IsWriteAvailable() {
@@ -221,13 +160,9 @@ Status L2capChannel::IsWriteAvailable() {
     return Status::FailedPrecondition();
   }
 
-  std::lock_guard lock(send_queue_mutex_);
+  std::lock_guard lock(tx_mutex_);
 
-  // TODO: https://pwbug.dev/379337272 - Only check payload_queue_ once all
-  // channels have transitioned to payload_queue_.
-  const bool queue_full =
-      UsesPayloadQueue() ? payload_queue_.full() : send_queue_.full();
-  if (queue_full) {
+  if (payload_queue_.full()) {
     notify_on_dequeue_ = true;
     return Status::Unavailable();
   }
@@ -240,7 +175,7 @@ std::optional<H4PacketWithH4> L2capChannel::DequeuePacket() {
   std::optional<H4PacketWithH4> packet;
   bool should_notify = false;
   {
-    std::lock_guard lock(send_queue_mutex_);
+    std::lock_guard lock(tx_mutex_);
     packet = GenerateNextTxPacket();
     if (packet) {
       should_notify = notify_on_dequeue_;
@@ -256,13 +191,11 @@ std::optional<H4PacketWithH4> L2capChannel::DequeuePacket() {
 }
 
 StatusWithMultiBuf L2capChannel::QueuePayload(multibuf::MultiBuf&& buf) {
-  PW_CHECK(UsesPayloadQueue());
-
   PW_CHECK(state() == State::kRunning);
   PW_CHECK(buf.IsContiguous());
 
   {
-    std::lock_guard lock(send_queue_mutex_);
+    std::lock_guard lock(tx_mutex_);
     if (payload_queue_.full()) {
       notify_on_dequeue_ = true;
       return {Status::Unavailable(), std::move(buf)};
@@ -372,31 +305,9 @@ bool L2capChannel::AreValidParameters(uint16_t connection_handle,
   return true;
 }
 
-std::optional<H4PacketWithH4> L2capChannel::GenerateNextTxPacket() {
-  if (send_queue_.empty()) {
-    return std::nullopt;
-  }
-  H4PacketWithH4 packet = std::move(send_queue_.front());
-  send_queue_.pop();
-  return packet;
-}
-
 pw::Result<H4PacketWithH4> L2capChannel::PopulateTxL2capPacket(
     uint16_t data_length) {
   return PopulateL2capPacket(data_length);
-}
-
-pw::Result<H4PacketWithH4> L2capChannel::PopulateTxL2capPacketDuringWrite(
-    uint16_t data_length) {
-  pw::Result<H4PacketWithH4> packet_result = PopulateL2capPacket(data_length);
-  if (packet_result.status().IsUnavailable()) {
-    std::lock_guard lock(send_queue_mutex_);
-    // If there were no buffers, they are all in the queue currently. This can
-    // happen if queue size == buffer count. Mark that a writer is getting an
-    // Unavailable status, and should be notified when queue space opens up.
-    notify_on_dequeue_ = true;
-  }
-  return packet_result;
 }
 
 namespace {
@@ -471,14 +382,13 @@ void L2capChannel::ReportNewTxPacketsOrCredits() {
   l2cap_channel_manager_.ReportNewTxPacketsOrCredits();
 }
 
-void L2capChannel::DrainChannelQueuesIfNewTx()
-    PW_LOCKS_EXCLUDED(send_queue_mutex_) {
+void L2capChannel::DrainChannelQueuesIfNewTx() PW_LOCKS_EXCLUDED(tx_mutex_) {
   l2cap_channel_manager_.DrainChannelQueuesIfNewTx();
 }
 
 void L2capChannel::ClearQueue() {
-  std::lock_guard lock(send_queue_mutex_);
-  send_queue_.clear();
+  std::lock_guard lock(tx_mutex_);
+  payload_queue_.clear();
 }
 
 //-------

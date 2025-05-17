@@ -70,7 +70,8 @@ class L2capCoc : public L2capChannel {
   L2capCoc& operator=(L2capCoc&& other) = delete;
   ~L2capCoc() override;
 
-  StatusWithMultiBuf Write(pw::multibuf::MultiBuf&& payload) override;
+  /// Check if the passed Write parameter is acceptable.
+  Status DoCheckWriteParameter(pw::multibuf::MultiBuf& payload) override;
 
   /// Send an L2CAP_FLOW_CONTROL_CREDIT_IND signaling packet to dispense the
   /// remote peer additional L2CAP connection-oriented channel credits for this
@@ -128,11 +129,7 @@ class L2capCoc : public L2capChannel {
 
   std::optional<H4PacketWithH4> GenerateNextTxPacket()
       PW_LOCKS_EXCLUDED(tx_mutex_)
-          PW_EXCLUSIVE_LOCKS_REQUIRED(send_queue_mutex()) override;
-
-  // TODO: https://pwbug.dev/379337272 - Delete this once all channels have
-  // transitioned to payload_queue_.
-  bool UsesPayloadQueue() override { return true; }
+          PW_EXCLUSIVE_LOCKS_REQUIRED(l2cap_tx_mutex()) override;
 
   // Replenish some of the remote's credits.
   pw::Status ReplenishRxCredits(uint16_t additional_rx_credits)

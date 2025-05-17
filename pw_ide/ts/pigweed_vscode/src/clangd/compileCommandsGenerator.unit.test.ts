@@ -16,6 +16,7 @@ import * as assert from 'assert';
 
 import {
   applyVirtualIncludeFix,
+  generateCompileCommands,
   generateCompileCommandsFromAqueryCquery,
   inferPlatformOfAction,
   parseBazelBuildCommand,
@@ -25,6 +26,8 @@ import { CompileCommand } from './parser';
 import path from 'path';
 import { getReliableBazelExecutable } from '../bazel';
 import { workingDir } from '../settings/vscode';
+import { CDB_FILE_DIR, CDB_FILE_NAME } from './paths';
+import { MockLoggerUI } from './compileCommandsGeneratorUI';
 
 function fixPathSeparator(p: string) {
   return p.replace(/\//g, path.sep);
@@ -404,12 +407,47 @@ test('generateCompileCommandsFromAqueryCquery', async () => {
 
 test('parseBazelBuildCommand_singleTarget_noArgs', async () => {
   const bazel = getReliableBazelExecutable();
+  const mockLogger = new MockLoggerUI();
+  await generateCompileCommands(
+    bazel!,
+    workingDir.get(),
+    CDB_FILE_DIR,
+    CDB_FILE_NAME,
+    ['//pw_i2c_rp2040:pw_i2c_rp2040', '//pw_status'],
+    [],
+    mockLogger as any,
+  );
+  assert.equal(
+    mockLogger
+      .getStdout()
+      .indexOf('Finished generating compile_commands.json') > 0,
+    true,
+  );
+  assert.equal(
+    mockLogger.getStderr().indexOf('aquery failed with exit code') > 0,
+    true,
+  );
+});
+
+test('parseBazelBuildCommand_singleTarget_noArgs', async () => {
+  const bazel = getReliableBazelExecutable();
   const { targets, args } = await parseBazelBuildCommand(
     'build //pw_status/...',
     bazel!,
     workingDir.get(),
   );
   assert.deepEqual(targets, ['//pw_status/...']);
+  assert.deepEqual(args, []);
+});
+
+test.only('parseBazelBuildCommand_singleTargetWith@_noArgs', async () => {
+  const bazel = getReliableBazelExecutable();
+  const { targets, args } = await parseBazelBuildCommand(
+    'build @pigweed//pw_status/...',
+    bazel!,
+    workingDir.get(),
+  );
+  assert.deepEqual(targets, ['@pigweed//pw_status/...']);
   assert.deepEqual(args, []);
 });
 
