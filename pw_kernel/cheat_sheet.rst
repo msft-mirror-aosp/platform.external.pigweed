@@ -89,6 +89,7 @@ Run
 .. code-block:: shell
 
    bazelisk run --config k_qemu_virt_riscv32 //pw_kernel/target/qemu_virt_riscv32:kernel_only_demo
+   bazelisk run --config k_qemu_virt_riscv32 //pw_kernel/target/qemu_virt_riscv32:userspace_demo
 
 RP2350 Target Board
 ===================
@@ -99,6 +100,7 @@ Build
 .. code-block:: shell
 
    bazelisk build --config k_rp2350 //pw_kernel/target/pw_rp2350:kernel_only_demo
+   bazelisk build --config k_rp2350 //pw_kernel/target/pw_rp2350:userspace_demo
 
 Console
 ---
@@ -106,6 +108,7 @@ Console
 .. code-block:: shell
 
    bazelisk run --config k_rp2350 //pw_kernel/target/pw_rp2350:kernel_only_demo -- -d <SERIAL_DEVICE>
+   bazelisk run --config k_rp2350 //pw_kernel/target/pw_rp2350:userspace_demo -- -d <SERIAL_DEVICE>
 
 Running the console will trigger a build of the kernel if required.
 
@@ -115,6 +118,7 @@ Flash
 .. code-block:: shell
 
    probe-rs download --chip rp2350 bazel-bin/pw_kernel/target/pw_rp2350/kernel_only_demo && probe-rs reset
+   probe-rs download --chip rp2350 bazel-bin/pw_kernel/target/pw_rp2350/userspace_demo && probe-rs reset
 
 Note that any logging messages between boot and connecting a console to the device will be missed,
 so it's best to start the console in one terminal first, before flashing the device.  This will also
