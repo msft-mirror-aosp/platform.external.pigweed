@@ -15,6 +15,7 @@
 #![no_main]
 
 use console_backend as _;
+use kernel as _;
 
 use target_common::{declare_target, TargetInterface};
 
@@ -23,16 +24,16 @@ const STACK_SIZE_BYTES: usize = 2048;
 pub struct Target {}
 
 impl TargetInterface for Target {
-    const NAME: &'static str = "MPS2-AN505 Userspace Demo";
+    const NAME: &'static str = "QEMU-VIRT-RISCV Userspace Demo";
 
     fn main() -> ! {
         // TODO: davidroth - codegen process/thread creation
-        let start_fn_one = unsafe { core::mem::transmute::<usize, fn(usize)>(0x10600001_usize) };
+        let start_fn_one = unsafe { core::mem::transmute::<usize, fn(usize)>(0x80100000_usize) };
         let process_one = kernel::init_non_priv_process!("process one");
         let thread_one_main =
             kernel::init_non_priv_thread!("main one", process_one, start_fn_one, STACK_SIZE_BYTES);
 
-        let start_fn_two = unsafe { core::mem::transmute::<usize, fn(usize)>(0x10700001_usize) };
+        let start_fn_two = unsafe { core::mem::transmute::<usize, fn(usize)>(0x80200000_usize) };
         let process_two = kernel::init_non_priv_process!("process two");
         let thread_two_main =
             kernel::init_non_priv_thread!("main two", process_two, start_fn_two, STACK_SIZE_BYTES);
@@ -46,7 +47,7 @@ impl TargetInterface for Target {
 
 declare_target!(Target);
 
-#[cortex_m_rt::entry]
+#[riscv_rt::entry]
 fn main() -> ! {
     kernel::Kernel::main();
 }
