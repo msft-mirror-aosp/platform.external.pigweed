@@ -35,6 +35,7 @@ sphinx_docs_library(
     srcs = [
         "cheat_sheet.rst",
         "docs.rst",
+        "//pw_kernel/tooling/panic_detector:docs",
     ],
     prefix = "pw_kernel/",
     target_compatible_with = incompatible_with_mcu(),

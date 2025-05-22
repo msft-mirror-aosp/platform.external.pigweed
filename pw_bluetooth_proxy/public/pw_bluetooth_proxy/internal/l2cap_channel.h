@@ -16,6 +16,7 @@
 
 #include <cstdint>
 
+#include "pw_assert/assert.h"
 #include "pw_assert/check.h"
 #include "pw_bluetooth_proxy/direction.h"
 #include "pw_bluetooth_proxy/h4_packet.h"
@@ -53,14 +54,76 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
     kUndefined,
   };
 
+  // L2capChannels can be held by a Holder that the channel will provide tx
+  // packets to and accept rx packets and events from. This is typically a
+  // ChannelProxy or an object that manages ChannelProxies.
+  class Holder {
+   public:
+    explicit Holder(L2capChannel* underlying_channel) {
+      SetUnderlyingChannel(underlying_channel);
+    }
+    virtual ~Holder() = default;
+
+    Holder(const Holder& other) = delete;
+    Holder& operator=(const Holder& other) = delete;
+    Holder(Holder&& other) { MoveFields(other); }
+    Holder& operator=(Holder&& other) {
+      MoveFields(other);
+
+      return *this;
+    }
+
+   protected:
+    // Allow L2capChannel to access underlying channel and call
+    // HandleUnderlyingEvent without exposing it to clients in subclass
+    // ChannelProxy.
+    friend L2capChannel;
+
+    L2capChannel* GetUnderlyingChannel() { return underlying_channel_; }
+
+    // Handle the passed event from the underlying channel. Typically by sending
+    // onwards towards the client.
+    virtual void HandleUnderlyingChannelEvent(L2capChannelEvent event) = 0;
+
+    void SetUnderlyingChannel(L2capChannel* underlying_channel) {
+      underlying_channel_ = underlying_channel;
+      underlying_channel_->SetHolder(this);
+    }
+
+    // Verify current underlying channel matches `expected`.
+    void CheckUnderlyingChannel(L2capChannel* expected) {
+      PW_CHECK(underlying_channel_ == expected);
+    }
+
+   private:
+    void MoveFields(Holder& other) {
+      underlying_channel_ = other.underlying_channel_;
+      other.underlying_channel_ = nullptr;
+      if (underlying_channel_) {
+        underlying_channel_->SwitchHolder(&other, this);
+      }
+    }
+
+    // Underlying L2capChannel that this object is holding.
+    L2capChannel* underlying_channel_ = nullptr;
+  };
+
   L2capChannel(const L2capChannel& other) = delete;
   L2capChannel& operator=(const L2capChannel& other) = delete;
-  // Channels are moved to the client after construction.
   L2capChannel(L2capChannel&& other);
-  // Move assignment operator allows channels to be erased from pw::Vector.
   L2capChannel& operator=(L2capChannel&& other);
 
   virtual ~L2capChannel();
+
+  //-------------
+  //  Status (internal public)
+  //-------------
+
+  // Helper since these operations should typically be coupled.
+  void StopAndSendEvent(L2capChannelEvent event) {
+    Stop();
+    SendEvent(event);
+  }
 
   // Enter `State::kStopped`. This means
   //   - Queue is cleared so pending sends will not complete.
@@ -185,8 +248,7 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
       uint16_t local_cid,
       uint16_t remote_cid,
       OptionalPayloadReceiveCallback&& payload_from_controller_fn,
-      OptionalPayloadReceiveCallback&& payload_from_host_fn,
-      ChannelEventCallback&& event_fn);
+      OptionalPayloadReceiveCallback&& payload_from_host_fn);
 
   // Returns whether or not ACL connection handle & L2CAP channel identifiers
   // are valid parameters for a packet.
@@ -194,17 +256,35 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
                                                uint16_t local_cid,
                                                uint16_t remote_cid);
 
+  // Set the holder for this L2capChannel. Should not already be set.
+  // Should only be called L2capChannel::Holder.
+  void SetHolder(Holder* holder) {
+    PW_ASSERT(holder);
+    holder_ = holder;
+    // Verify holder has this as its underlying channel.
+    holder_->CheckUnderlyingChannel(this);
+  }
+
+  // Switch to indicated holder for this L2capChannel.
+  // Intended to only be be called by L2capChannel::Holder move functions.
+  void SwitchHolder(Holder* old_holder, Holder* new_holder) {
+    PW_ASSERT(holder_ == old_holder);
+    holder_ = new_holder;
+    holder_->CheckUnderlyingChannel(this);
+  }
+
+  // Verifies current holder matches `expected`.
+  void CheckHolder(Holder* expected) { PW_CHECK(holder_ == expected); }
+
   //-------------------
   //  Other (protected)
   //-------------------
 
   // Send `event` to client if an event callback was provided.
-  void SendEvent(L2capChannelEvent event);
-
-  // Helper since these operations should typically be coupled.
-  void StopAndSendEvent(L2capChannelEvent event) {
-    Stop();
-    SendEvent(event);
+  void SendEvent(L2capChannelEvent event) {
+    if (holder_) {
+      holder_->HandleUnderlyingChannelEvent(event);
+    }
   }
 
   // Called on channel closure, i.e. when the ACL connection or L2CAP connection
@@ -313,24 +393,6 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
   // Helper for move constructor and move assignment.
   void MoveFields(L2capChannel& other) PW_LOCKS_EXCLUDED(tx_mutex_);
 
-  L2capChannelManager& l2cap_channel_manager_;
-
-  State state_;
-
-  // ACL connection handle.
-  uint16_t connection_handle_;
-
-  AclTransportType transport_;
-
-  // L2CAP channel ID of local endpoint.
-  uint16_t local_cid_;
-
-  // L2CAP channel ID of remote endpoint.
-  uint16_t remote_cid_;
-
-  // Notify clients of asynchronous events encountered such as errors.
-  ChannelEventCallback event_fn_;
-
   // Reserve an L2CAP packet over ACL over H4 packet.
   pw::Result<H4PacketWithH4> PopulateL2capPacket(uint16_t data_length);
 
@@ -436,6 +498,31 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
   //--------------
   //  Data members
   //--------------
+
+  // Holder to pass on rx and events to (if present).
+  // Currently set explicitly by derived class during ctor/move since it's a
+  // pointer to that derived instance.
+  // TODO: https://pwbug.dev/388082771 - Update comment once we are composing
+  // L2capChannel rather than inheriting from it.
+  Holder* holder_ = nullptr;
+
+  L2capChannelManager& l2cap_channel_manager_;
+
+  State state_;
+
+  // ACL connection handle.
+  uint16_t connection_handle_;
+
+  AclTransportType transport_;
+
+  // L2CAP channel ID of local endpoint.
+  uint16_t local_cid_;
+
+  // L2CAP channel ID of remote endpoint.
+  uint16_t remote_cid_;
+
+  // Notify clients of asynchronous events encountered such as errors.
+  ChannelEventCallback event_fn_;
 
   // Optional client-provided multibuf allocator.
   multibuf::MultiBufAllocator* rx_multibuf_allocator_;

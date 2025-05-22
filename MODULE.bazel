@@ -49,7 +49,7 @@ bazel_dep(name = "rules_libusb", version = "0.1.0-rc1")
 bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "rules_nodejs", version = "6.3.0")
 bazel_dep(name = "rules_platform", version = "0.1.0")
-bazel_dep(name = "rules_probe_rs", version = "0.0.2")
+bazel_dep(name = "rules_probe_rs", version = "0.0.6")
 bazel_dep(name = "rules_python", version = "0.40.0")
 bazel_dep(name = "rules_rust", version = "0.59.2")
 bazel_dep(name = "rules_shell", version = "0.4.0")
@@ -150,11 +150,16 @@ cipd_client_repository(name = "cipd_client")
 
 cipd_repository = use_repo_rule("//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl", "cipd_repository")
 
+cipd_composite_repository = use_repo_rule("//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl", "cipd_composite_repository")
+
 # Fetch llvm toolchain.
-cipd_repository(
+cipd_composite_repository(
     name = "llvm_toolchain",
     build_file = "//pw_toolchain/build_external:llvm_clang.BUILD",
-    path = "fuchsia/third_party/clang/${os}-${arch}",
+    packages = [
+        "fuchsia/third_party/clang/${os}-${arch}",
+        "fuchsia/third_party/clang/target/riscv32-unknown-elf",
+    ],
     tag = "git_revision:03b0f55d9c6319a851a60bb084faca0e32a38f2b",
 )
 
@@ -259,23 +264,12 @@ use_repo(pw_rust_crates, "rust_crates")
 # Get probe-rs
 # ============
 
-# TODO: https://pwbug.dev/346388161 - Re enable use of rules_probe_rs once rp2350
-# support is upstreamed.
-#
-# probe_rs = use_extension("@rules_probe_rs//probe_rs:extensions.bzl", "probe_rs")
-# probe_rs.tools(
-#     name = "probe_rs",
-#     version = "0.24.0",
-# )
-# use_repo(probe_rs, "probe_rs")
-
-# Use pre-release prebuilts for RP2350 support.
-cipd_repository(
+probe_rs = use_extension("@rules_probe_rs//probe_rs:extensions.bzl", "probe_rs")
+probe_rs.tools(
     name = "probe_rs",
-    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
-    path = "pigweed/third_party/probe-rs/${os}-${arch}",
-    tag = "git_revision:37660106aba307cbab5cf6c2b0da57b72b6dc4e9",
+    version = "0.27.0",
 )
+use_repo(probe_rs, "probe_rs")
 
 # Configure Python toolchains and pip dependencies.
 # =================================================

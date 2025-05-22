@@ -51,7 +51,11 @@ adapter:
         command_channel:
             allowed_command_packets
             next_event_handler_id
-            next_transaction_id
+            transactions:
+                transaction_1:
+                    opcode
+                    complete_event_code
+                    state
         acl_data_channel:
             bredr:
                 num_sent_packets
@@ -223,7 +227,8 @@ adapter:
                 @time
 lease_provider:
     token
-    // Child node for each Lease, for example:
-    AclDataChannel:
+    leases:
+        // Child node for each Lease, for example:
+        AclDataChannel:
 name
 ```
