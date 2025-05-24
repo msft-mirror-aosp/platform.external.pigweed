@@ -80,6 +80,7 @@ pw_i2c
 pw_i2c_linux
 pw_i2c_mcuxpresso
 pw_i2c_rp2040
+pw_i2c_zephyr
 pw_ide
 pw_interrupt
 pw_interrupt_cortex_m
@@ -178,7 +179,6 @@ pw_transfer
 pw_uart
 pw_uart_mcuxpresso
 pw_unit_test
-pw_unit_test_zephyr
 pw_uuid
 pw_varint
 pw_watch

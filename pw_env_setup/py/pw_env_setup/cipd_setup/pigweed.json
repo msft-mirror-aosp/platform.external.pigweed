@@ -10,9 +10,21 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:487f8353f15456474437df32bb186187b0940b45"
+        "git_revision:0c25d1bbde6ef17e1e6d3938011f56a00c02e457"
       ],
       "version_file": ".versions/gn.cipd_version"
+    },
+    {
+      "path": "fuchsia/third_party/make/${platform}",
+      "platforms": [
+        "linux-amd64",
+        "linux-arm64",
+        "mac-amd64",
+        "mac-arm64"
+      ],
+      "tags": [
+        "version:4.3"
+      ]
     },
     {
       "path": "fuchsia/third_party/ninja/${platform}",
@@ -24,7 +36,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:06cc910564e84d5e768ab64a8c9897450589418c"
+        "git_revision:2229dc22fb2a64944d6079edb7e627ac7316158a"
       ]
     },
     {

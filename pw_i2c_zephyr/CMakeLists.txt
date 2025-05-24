@@ -12,19 +12,36 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@rules_rust//rust:defs.bzl", "rust_library")
+include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 
-package(default_visibility = ["//visibility:public"])
+if(NOT CONFIG_ZEPHYR_PIGWEED_MODULE)
+  return()
+endif()
 
-rust_library(
-    name = "userspace_demo",
-    srcs = ["main.rs"],
-    tags = ["kernel"],
-    deps = [
-        "//pw_kernel/config:kernel_config",
-        "//pw_kernel/kernel",
-        "//pw_kernel/lib/pw_assert",
-        "//pw_kernel/lib/time",
-        "//pw_log/rust:pw_log",
-    ],
+pw_add_library(pw_i2c_zephyr STATIC
+  HEADERS
+    public/pw_i2c_zephyr/initiator.h
+  PUBLIC_INCLUDES
+    public
+  SOURCES
+    initiator.cc
+  PUBLIC_DEPS
+    pw_i2c.initiator
+    pw_status
+    pw_sync.lock_annotations
+    pw_sync.mutex
+    zephyr_interface
+)
+
+pw_add_test(pw_i2c_zephyr.initiator_test
+  SOURCES
+    initiator_test.cc
+  PRIVATE_DEPS
+    pw_i2c_zephyr
+    pw_function
+    pw_unit_test
+    zephyr_interface
+  GROUPS
+    modules
+    pw_i2c_zephyr
 )

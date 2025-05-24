@@ -15,12 +15,14 @@
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library")
 load("//pw_build:merge_flags.bzl", "flags_from_dict")
 load("//pw_build:pw_linker_script.bzl", "pw_linker_script")
-load("//pw_kernel:flags.bzl", "KERNEL_COMMON_FLAGS")
+load("//pw_kernel:flags.bzl", "KERNEL_DEVICE_COMMON_FLAGS")
 load("//pw_kernel/tooling:system_image.bzl", "system_image")
+load("//pw_kernel/tooling/panic_detector:rust_binary_no_panics_test.bzl", "rust_binary_no_panics_test")
 
 platform(
     name = "qemu_virt_riscv32",
     constraint_values = [
+        ":target_qemu_virt_riscv32",
         "//pw_build/constraints/riscv/extensions:I",
         "//pw_build/constraints/riscv/extensions:M",
         "//pw_build/constraints/riscv/extensions:C",
@@ -29,7 +31,7 @@ platform(
         "@rust_crates//:no_std",
     ],
     flags = flags_from_dict(
-        KERNEL_COMMON_FLAGS | {
+        KERNEL_DEVICE_COMMON_FLAGS | {
             "//pw_kernel/config:kernel_config": ":config",
             "//pw_kernel/lib/unittest:unittest_runner": ":unittest_runner",
             "//pw_kernel/subsys/console:console_backend": ":console",
@@ -38,11 +40,40 @@ platform(
     ),
 )
 
+constraint_value(
+    name = "target_qemu_virt_riscv32",
+    constraint_setting = "//pw_kernel/target:target",
+    visibility = ["//visibility:public"],
+)
+
 system_image(
     name = "kernel_only_demo",
     kernel = ":target",
     platform = ":qemu_virt_riscv32",
     tags = ["kernel"],
+)
+
+rust_binary_no_panics_test(
+    name = "kernel_only_demo_no_panics_test",
+    binary = ":kernel_only_demo",
+    tags = ["manual"],
+)
+
+system_image(
+    name = "userspace_demo",
+    apps = [
+        "//pw_kernel/apps/one",
+        "//pw_kernel/apps/two",
+    ],
+    kernel = ":userspace_target",
+    platform = ":qemu_virt_riscv32",
+    tags = ["kernel"],
+)
+
+rust_binary_no_panics_test(
+    name = "userspace_demo_no_panics_test",
+    binary = ":userspace_demo",
+    tags = ["manual"],
 )
 
 SRCS = ["target.rs"]
@@ -67,6 +98,22 @@ rust_binary(
     ],
     deps = [
         "//pw_kernel/apps/kernel_only_demo:demo",
+    ] + COMMON_DEPS,
+)
+
+rust_binary(
+    name = "userspace_target",
+    srcs = [
+        "userspace_target.rs",
+    ],
+    edition = "2021",
+    tags = ["kernel"],
+    target_compatible_with = [
+        "@platforms//cpu:riscv32",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pw_log/rust:pw_log",
     ] + COMMON_DEPS,
 )
 

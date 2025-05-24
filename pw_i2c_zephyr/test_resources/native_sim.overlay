@@ -1,4 +1,4 @@
-// Copyright 2023 The Pigweed Authors
+// Copyright 2025 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -12,14 +12,18 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include <zephyr/kernel.h>
+/ {
+	i2c1: i2c@400 {
+		status = "okay";
+		compatible = "zephyr,i2c-emul-controller";
+		clock-frequency = <I2C_BITRATE_STANDARD>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#forward-cells = <1>;
+		reg = <0x400 4>;
+	};
+};
 
-#include "pw_unit_test/framework.h"
-#include "pw_unit_test/logging_event_handler.h"
-
-int main() {
-  testing::InitGoogleTest(nullptr, nullptr);
-  pw::unit_test::LoggingEventHandler handler;
-  pw::unit_test::RegisterEventHandler(&handler);
-  return RUN_ALL_TESTS();
-}
+&i2c0 {
+	forwards = <&i2c1 0x20>;
+};
