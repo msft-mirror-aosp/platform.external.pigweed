@@ -1,4 +1,4 @@
-# Copyright 2023 The Pigweed Authors
+# Copyright 2025 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -12,17 +12,20 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-common:
-  harness: gtest
-  timeout: 10
-  integration_platforms:
-    - native_posix
-tests:
-  pw.base64:
-    extra_configs:
-      - CONFIG_PIGWEED_BASE64=y
-    extra_args:
-      - TEST_LIB=pw_base64.base64_test
-  pw.digital_io:
-    extra_args:
-      - TEST_LIB=pw_digital_io_zephyr.digital_io_test
+name: pw_i2c_zephyr
+file-map:
+  test_resources/native_sim.conf: boards/native_sim.conf
+  test_resources/native_sim.overlay: boards/native_sim.overlay
+testcase:
+  common:
+    harness: gtest
+    timeout: 10
+    platform_allow:
+      - native_sim
+  tests:
+    pw_i2c.controller:
+      extra_configs:
+        - CONFIG_PIGWEED_CHRONO_SYSTEM_CLOCK=y
+        - CONFIG_PIGWEED_SYNC_MUTEX=y
+      extra_args:
+        - TEST_LIB=pw_i2c_zephyr.initiator_test

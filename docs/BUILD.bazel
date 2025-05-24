@@ -220,6 +220,7 @@ filegroup(
         "//pw_thread:doxygen",
         "//pw_tokenizer:doxygen",
         "//pw_toolchain:doxygen",
+        "//pw_trace_tokenized:doxygen",
         "//pw_transfer:doxygen",
         "//pw_uart:doxygen",
         "//pw_unit_test:doxygen",
@@ -309,6 +310,7 @@ filegroup(
     name = "_doxygen_html_1",
     srcs = [":doxygen_build"],
     output_group = "html",
+    tags = ["manual"],
     target_compatible_with = incompatible_with_mcu(),
 )
 
@@ -316,12 +318,14 @@ copy_directory(
     name = "_doxygen_html_2",
     src = ":_doxygen_html_1",
     out = "doxygen",
+    tags = ["manual"],
 )
 
 sphinx_docs_library(
     name = "doxygen_html",
     srcs = [":_doxygen_html_2"],
     prefix = "doxygen/",
+    tags = ["manual"],
     target_compatible_with = incompatible_with_mcu(),
 )
 
@@ -329,6 +333,7 @@ filegroup(
     name = "_doxygen_xml",
     srcs = [":doxygen_build"],
     output_group = "xml",
+    tags = ["manual"],
     target_compatible_with = incompatible_with_mcu(),
 )
 
@@ -336,6 +341,7 @@ sphinx_docs_library(
     name = "doxygen_xml",
     srcs = [":_doxygen_xml"],
     prefix = "_doxygen/",
+    tags = ["manual"],
     target_compatible_with = incompatible_with_mcu(),
 )
 
@@ -495,6 +501,7 @@ sphinx_docs(
         "//pw_i2c_linux:docs",
         "//pw_i2c_mcuxpresso:docs",
         "//pw_i2c_rp2040:docs",
+        "//pw_i2c_zephyr:docs",
         "//pw_ide:docs",
         "//pw_interrupt:docs",
         "//pw_interrupt_cortex_m:docs",
@@ -593,7 +600,6 @@ sphinx_docs(
         "//pw_uart:docs",
         "//pw_uart_mcuxpresso:docs",
         "//pw_unit_test:docs",
-        "//pw_unit_test_zephyr:docs",
         "//pw_uuid:docs",
         "//pw_varint:docs",
         "//pw_watch:docs",
