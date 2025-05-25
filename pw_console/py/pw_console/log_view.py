@@ -25,7 +25,7 @@ import operator
 from pathlib import Path
 import re
 from threading import Thread
-from typing import Callable, TYPE_CHECKING
+from typing import Callable, Iterable, TYPE_CHECKING
 
 from prompt_toolkit.data_structures import Point
 from prompt_toolkit.formatted_text import StyleAndTextTuples
@@ -42,6 +42,7 @@ from pw_console.log_screen import ScreenLine, LogScreen
 from pw_console.log_store import LogStore
 from pw_console.python_logging import log_record_to_json
 from pw_console.text_formatting import remove_formatting
+from pw_console.widgets.table import TableView
 
 if TYPE_CHECKING:
     from pw_console.console_app import ConsoleApp
@@ -71,14 +72,12 @@ class LogView:
     ):
         # Parent LogPane reference. Updated by calling `set_log_pane()`.
         self.log_pane = log_pane
-        self.log_store = (
-            log_store if log_store else LogStore(prefs=application.prefs)
-        )
-        self.log_store.set_prefs(application.prefs)
+        self.log_store = log_store if log_store else LogStore()
+        self.table: TableView = TableView(prefs=application.prefs)
         self.log_store.register_viewer(self)
 
-        self.marked_logs_start: int | None = None
-        self.marked_logs_end: int | None = None
+        self.marked_logs_start_line: int | None = None
+        self.marked_logs_end_line: int | None = None
 
         # Search variables
         self.search_text: str | None = None
@@ -447,8 +446,34 @@ class LogView:
     def _get_table_formatter(self) -> Callable | None:
         table_formatter = None
         if self.log_pane.table_view:
-            table_formatter = self.log_store.table.formatted_row
+            table_formatter = self.table.formatted_row
         return table_formatter
+
+    def get_visible_table_columns(self) -> Iterable[str]:
+        yield from self.table.all_column_names()
+
+    def is_table_column_hidden(self, name: str) -> bool:
+        return self.table.is_column_hidden(name)
+
+    def refresh_visible_table_columns(self) -> None:
+        """Trigger a redraw of the table header and log lines."""
+        self.table.update_column_widths(self.log_store.column_widths)
+        self.view_mode_changed()
+        # Trigger a main menu update to set log window menu titles.
+        self.log_pane.application.update_menu_items()
+        # Redraw the UI
+        self.log_pane.application.redraw_ui()
+
+    def set_table_column_hidden(self, name: str, hidden: bool) -> None:
+        """Hide or show a table column, then refresh the view."""
+        self.table.set_column_hidden(name, hidden)
+        self.refresh_visible_table_columns()
+
+    def toggle_table_column_truncation(self) -> None:
+        self.table.apply_max_column_width = (
+            not self.table.apply_max_column_width
+        )
+        self.refresh_visible_table_columns()
 
     def delete_filter(self, filter_text):
         if filter_text not in self.filters:
@@ -592,6 +617,7 @@ class LogView:
         or scroll.
         """
         latest_total = self.log_store.get_total_count()
+        self.table.update_column_widths(self.log_store.column_widths)
 
         if self.filtering_on:
             # Scan newly arived log lines
@@ -698,20 +724,25 @@ class LogView:
                 self.follow = True
 
     def visual_selected_log_count(self) -> int:
-        if self.marked_logs_start is None or self.marked_logs_end is None:
+        if (
+            self.marked_logs_start_line is None
+            or self.marked_logs_end_line is None
+        ):
             return 0
-        return (self.marked_logs_end - self.marked_logs_start) + 1
+        if self.marked_logs_end_line < self.marked_logs_start_line:
+            return (self.marked_logs_start_line - self.marked_logs_end_line) + 1
+        return (self.marked_logs_end_line - self.marked_logs_start_line) + 1
 
     def clear_visual_selection(self) -> None:
-        self.marked_logs_start = None
-        self.marked_logs_end = None
+        self.marked_logs_start_line = None
+        self.marked_logs_end_line = None
         self.visual_select_mode = False
         self._user_scroll_event = True
         self.log_pane.application.redraw_ui()
 
     def visual_select_all(self) -> None:
-        self.marked_logs_start = self._scrollback_start_index
-        self.marked_logs_end = self.get_total_count() - 1
+        self.marked_logs_start_line = self._scrollback_start_index
+        self.marked_logs_end_line = self.get_total_count() - 1
 
         self.visual_select_mode = True
         self._user_scroll_event = True
@@ -745,18 +776,18 @@ class LogView:
         self.follow = False
         # Get the ScreenLine for the cursor position
         screen_line = self.log_screen.line_buffer[mouse_position.y]
+        # If no logs exist at the mouse position, do nothing:
         if screen_line.log_index is None:
             return
 
-        if self.marked_logs_start is None:
-            self.marked_logs_start = screen_line.log_index
-        if self.marked_logs_end is None:
-            self.marked_logs_end = screen_line.log_index
-
-        if screen_line.log_index < self.marked_logs_start:
-            self.marked_logs_start = screen_line.log_index
-        elif screen_line.log_index > self.marked_logs_end:
-            self.marked_logs_end = screen_line.log_index
+        # Update the marked log line positions.
+        # If start line is not set, this is the first click
+        if self.marked_logs_start_line is None:
+            self.marked_logs_start_line = screen_line.log_index
+            self.marked_logs_end_line = screen_line.log_index
+        else:
+            # Start line is already set, this is a drag. Update the end line.
+            self.marked_logs_end_line = screen_line.log_index
 
         # Update cursor position
         self.log_screen.move_cursor_to_position(mouse_position.y)
@@ -812,7 +843,7 @@ class LogView:
 
     def render_table_header(self):
         """Get pre-formatted table header."""
-        return self.log_store.render_table_header()
+        return self.table.formatted_header()
 
     def get_web_socket_url(self):
         return f'http://127.0.0.1:3000/#ws={self.websocket_port}'
@@ -892,10 +923,25 @@ class LogView:
             screen_update_needed = True
 
         if screen_update_needed:
-            self._line_fragment_cache = self.log_screen.get_lines(
-                marked_logs_start=self.marked_logs_start,
-                marked_logs_end=self.marked_logs_end,
-            )
+            if (
+                self.marked_logs_start_line
+                and self.marked_logs_end_line
+                and self.marked_logs_end_line < self.marked_logs_start_line
+            ):
+                # Reverse the selection for screen highlighting.
+                self._line_fragment_cache = self.log_screen.get_lines(
+                    marked_logs_start_line=self.marked_logs_end_line,
+                    marked_logs_end_line=self.marked_logs_start_line,
+                    # marked_logs_start_column=self.marked_logs_end_column,
+                    # marked_logs_end_column=self.marked_logs_start_column,
+                )
+            else:
+                self._line_fragment_cache = self.log_screen.get_lines(
+                    marked_logs_start_line=self.marked_logs_start_line,
+                    marked_logs_end_line=self.marked_logs_end_line,
+                    # marked_logs_start_column=self.marked_logs_start_column,
+                    # marked_logs_end_column=self.marked_logs_end_column,
+                )
         return self._line_fragment_cache
 
     def _logs_to_text(
@@ -906,7 +952,7 @@ class LogView:
         """Convert all or selected log messages to plaintext."""
 
         def get_table_string(log: LogLine) -> str:
-            return remove_formatting(self.log_store.table.formatted_row(log))
+            return remove_formatting(self.table.formatted_row(log))
 
         formatter: Callable[[LogLine], str] = operator.attrgetter(
             'ansi_stripped_log'
@@ -921,16 +967,21 @@ class LogView:
         )
         if (
             selected_lines_only
-            and self.marked_logs_start is not None
-            and self.marked_logs_end is not None
+            and self.marked_logs_start_line is not None
+            and self.marked_logs_end_line is not None
         ):
-            log_index_range = range(
-                self.marked_logs_start, self.marked_logs_end + 1
-            )
+            if self.marked_logs_end_line < self.marked_logs_start_line:
+                log_index_range = range(
+                    self.marked_logs_end_line, self.marked_logs_start_line + 1
+                )
+            else:
+                log_index_range = range(
+                    self.marked_logs_start_line, self.marked_logs_end_line + 1
+                )
 
         text_output = ''
-        for i in log_index_range:
-            log_text = formatter(log_source[i])
+        for log_index in log_index_range:
+            log_text = formatter(log_source[log_index])
             text_output += log_text
             if not log_text.endswith('\n'):
                 text_output += '\n'
