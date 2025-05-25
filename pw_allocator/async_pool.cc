@@ -12,19 +12,24 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#![no_main]
+#include "pw_allocator/async_pool.h"
 
-use console_backend as _;
-use kernel as _;
+namespace pw::allocator {
 
-#[no_mangle]
-pub extern "C" fn main() -> core::ffi::c_int {
-    #[cfg(test)]
-    match unittest_core::run_bare_metal_tests() {
-        unittest_core::TestsResult::AllPassed => 0,
-        unittest_core::TestsResult::SomeFailed => 1,
-    }
+void* AsyncPool::DoAllocate() { return pool_.Allocate(); }
 
-    #[cfg(not(test))]
-    0
+void AsyncPool::DoDeallocate(void* ptr) {
+  pool_.Deallocate(ptr);
+  std::move(waker_).Wake();
 }
+
+async2::Poll<void*> AsyncPool::PendAllocate(async2::Context& context) {
+  void* ptr = pool_.Allocate();
+  if (ptr == nullptr) {
+    PW_ASYNC_STORE_WAKER(context, waker_, "waiting for pool memory");
+    return async2::Pending();
+  }
+  return async2::Ready(ptr);
+}
+
+}  // namespace pw::allocator

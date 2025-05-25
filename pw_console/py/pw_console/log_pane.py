@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import copy
 import functools
 import logging
 import re
@@ -79,6 +80,7 @@ from pw_console.widgets import (
 
 if TYPE_CHECKING:
     from pw_console.console_app import ConsoleApp
+    from pw_console.background_command_runner import BackgroundTask
 
 _LOG_OUTPUT_SCROLL_AMOUNT = 5
 _LOG = logging.getLogger(__package__)
@@ -465,16 +467,20 @@ class LogPaneWebsocketDialog(ConditionalContainer):
     def get_action_fragments(self):
         """Return FormattedText with the action buttons."""
         # Mouse handlers
-        focus = functools.partial(mouse_handlers.on_click, self.focus_self)
-        cancel = functools.partial(mouse_handlers.on_click, self.close_dialog)
-        copy = functools.partial(
+        focus_handler = functools.partial(
+            mouse_handlers.on_click, self.focus_self
+        )
+        cancel_handler = functools.partial(
+            mouse_handlers.on_click, self.close_dialog
+        )
+        copy_handler = functools.partial(
             mouse_handlers.on_click,
             self.copy_url_to_clipboard,
         )
 
         # Separator should have the focus mouse handler so clicking on any
         # whitespace focuses the input field.
-        separator_text = ('', '  ', focus)
+        separator_text = ('', '  ', focus_handler)
 
         # Default button style
         button_style = 'class:toolbar-button-inactive'
@@ -486,7 +492,7 @@ class LogPaneWebsocketDialog(ConditionalContainer):
             to_keybind_indicator(
                 key=None,
                 description='Stop',
-                mouse_handler=cancel,
+                mouse_handler=cancel_handler,
                 base_style=button_style,
             )
         )
@@ -496,13 +502,13 @@ class LogPaneWebsocketDialog(ConditionalContainer):
             to_keybind_indicator(
                 key=None,
                 description='Copy to Clipboard',
-                mouse_handler=copy,
+                mouse_handler=copy_handler,
                 base_style=button_style,
             )
         )
 
         # One space separator
-        fragments.append(('', ' ', focus))
+        fragments.append(('', ' ', focus_handler))
 
         return fragments
 
@@ -517,6 +523,7 @@ class LogPane(WindowPane):
         application: Any,
         pane_title: str = 'Logs',
         log_store: LogStore | None = None,
+        background_task: BackgroundTask | None = None,
     ):
         super().__init__(application, pane_title)
 
@@ -529,6 +536,8 @@ class LogPane(WindowPane):
         self.log_view: LogView = LogView(
             self, self.application, log_store=log_store
         )
+
+        self.background_task = background_task
 
         # Log pane size variables. These are updated just befor rendering the
         # pane by the LogLineHSplit class.
@@ -834,6 +843,21 @@ class LogPane(WindowPane):
                 ),
                 self.toggle_websocket_server,
             ),
+        ]
+
+        if self.application.prefs.column_width:
+            options += [
+                (
+                    '{check} Apply max column widths'.format(
+                        check=to_checkbox_text(
+                            self.log_view.table.apply_max_column_width, end=''
+                        )
+                    ),
+                    self.log_view.toggle_table_column_truncation,
+                ),
+            ]
+
+        options += [
             # Menu separator
             ('-', None),
             (
@@ -873,6 +897,42 @@ class LogPane(WindowPane):
             ),
         ]
 
+        # Table column visibility toggles
+        options += [
+            # Menu separator
+            ('-', None),
+        ]
+        for column_name in self.log_view.get_visible_table_columns():
+            if column_name == 'message':
+                continue
+
+            is_hidden = self.log_view.is_table_column_hidden(column_name)
+            checkbox = to_checkbox_text(not is_hidden, end='')
+            options.append(
+                (
+                    f'Log table show: {checkbox} {column_name}',
+                    functools.partial(
+                        self.log_view.set_table_column_hidden,
+                        column_name,
+                        not is_hidden,
+                    ),
+                )
+            )
+
+        if self.background_task:
+            options += [
+                # Menu separator
+                ('-', None),
+                (
+                    'Stop process',
+                    self.background_task.stop_process,
+                ),
+                (
+                    'Restart process',
+                    self.background_task.restart_process,
+                ),
+            ]
+
         return options
 
     def apply_filters_from_config(self, window_options) -> None:
@@ -905,6 +965,12 @@ class LogPane(WindowPane):
         new_pane.log_view.log_store = log_store
         # Register the duplicate pane as a viewer
         log_store.register_viewer(new_pane.log_view)
+
+        # Copy the current column visibility to the new pane.
+        new_pane.log_view.table.hidden_columns = copy.copy(
+            self.log_view.table.hidden_columns
+        )
+        new_pane.log_view.refresh_visible_table_columns()
 
         # Set any existing search state.
         new_pane.log_view.search_text = self.log_view.search_text
