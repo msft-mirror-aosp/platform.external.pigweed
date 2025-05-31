@@ -12,29 +12,13 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+[$default byte_order: "LittleEndian"]
+[(cpp) namespace: "pw::bluetooth::emboss::a2dp::vendor"]
+# Cf. A2DP Spec v1.4 Section 4.7 Vendor Codec  interoperability requirements
 
-package(default_visibility = ["//visibility:public"])
 
-rust_library(
-    name = "time",
-    srcs = [
-        "time.rs",
-    ],
-    tags = ["kernel"],
-    deps = [
-        "//pw_kernel/lib/pw_assert",
-    ],
-)
-
-rust_test(
-    name = "time_test",
-    srcs = ["tests/time_test.rs"],
-    tags = ["kernel"],
-    use_libtest_harness = False,
-    deps = [
-        ":time",
-        "//pw_kernel/lib/unittest",
-        "//pw_kernel/target:linker_script",
-    ],
-)
+struct CodecSpecificInformationElements(length: UInt:32):
+  -- Cf. A2DP Spec v1.4 Section 4.7.2
+  0     [+4]         UInt:32   vendor_id
+  $next [+2]         UInt:16   vendor_specific_codec_id
+  $next [+length-6]  UInt:8[]  vendor_specific_value
