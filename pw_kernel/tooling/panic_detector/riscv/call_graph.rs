@@ -19,17 +19,18 @@ use super::InstrA;
 use super::InstrType;
 use super::Reg;
 use anyhow::anyhow;
+use core::ops::Bound;
 use object::elf::STB_GLOBAL;
 use object::elf::STB_LOCAL;
 use object::elf::STB_WEAK;
 use object::elf::STT_FUNC;
 use object::read::elf::ElfFile32;
 use object::read::elf::Sym;
+use pw_cast::CastFrom as _;
 use std::collections::btree_map;
 use std::collections::hash_map;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::ops::Bound;
 use std::rc::Rc;
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Binding {
@@ -57,7 +58,7 @@ pub fn list_functions<'a>(
     let t = elf.elf_symbol_table();
     let mut result = vec![];
     for sym in t.symbols() {
-        let name = std::str::from_utf8(t.symbol_name(E, sym)?)?;
+        let name = core::str::from_utf8(t.symbol_name(E, sym)?)?;
         if sym.st_type() != STT_FUNC || name.is_empty() {
             continue;
         }
@@ -183,7 +184,9 @@ impl Function<'_> {
         self.body.addr
     }
     pub fn end_addr(&self) -> u32 {
-        self.body.addr.wrapping_add(self.body.data.len() as u32)
+        self.body
+            .addr
+            .wrapping_add(self.body.data.len().try_into().unwrap())
     }
 }
 pub struct Snippet<'a> {
@@ -327,7 +330,7 @@ impl InstrIterator<'_> {
         let Some(prev_instr_size) = self.instr_sizes.prev_instr_size(self.offset) else {
             println!(
                 "Can't find prev instr at addr {:x} offset={}",
-                self.offset + self.start_addr as usize,
+                self.offset + usize::cast_from(self.start_addr),
                 self.offset
             );
             return None;

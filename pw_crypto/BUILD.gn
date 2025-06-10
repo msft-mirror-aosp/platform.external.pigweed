@@ -43,6 +43,7 @@ pw_test_group("tests") {
     ":aes_test",
     ":sha256_test",
     ":sha256_mock_test",
+    ":ecdh_test",
     ":ecdsa_test",
   ]
 }
@@ -219,4 +220,45 @@ pw_test("aes_test") {
     "$dir_pw_containers:vector",
   ]
   sources = [ "aes_test.cc" ]
+}
+
+pw_facade("ecdh") {
+  backend = pw_crypto_ECDH_BACKEND
+  public_configs = [ ":default_config" ]
+  public = [ "public/pw_crypto/ecdh.h" ]
+  public_deps = [
+    "$dir_pw_bytes",
+    "$dir_pw_result",
+    "$dir_pw_status",
+  ]
+}
+
+pw_source_set("ecdh_boringssl") {
+  public_configs = [ ":boringssl_config" ]
+  sources = [ "ecdh_boringssl.cc" ]
+  public = [ "public_overrides/boringssl/pw_crypto/ecdh_backend.h" ]
+  deps = [ "$dir_pw_assert" ]
+  public_deps = [
+    ":ecdh.facade",
+    "$dir_pw_third_party/boringssl",
+  ]
+}
+
+pw_source_set("ecdh_mbedtls") {
+  public_configs = [ ":mbedtls_config" ]
+  sources = [ "ecdh_mbedtls.cc" ]
+  public = [ "public_overrides/mbedtls/pw_crypto/ecdh_backend.h" ]
+  deps = [ "$dir_pw_assert" ]
+  public_deps = [
+    ":ecdh.facade",
+    "$pw_external_mbedtls",
+  ]
+}
+
+# This test targets the specific backend pointed to by
+# pw_crypto_ECDH_BACKEND.
+pw_test("ecdh_test") {
+  enable_if = pw_crypto_ECDH_BACKEND != ""
+  deps = [ ":ecdh" ]
+  sources = [ "ecdh_test.cc" ]
 }

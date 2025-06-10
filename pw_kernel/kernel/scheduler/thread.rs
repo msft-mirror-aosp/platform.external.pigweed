@@ -17,8 +17,9 @@ use core::mem::MaybeUninit;
 
 use list::*;
 use pw_log::info;
+use pw_status::Result;
 
-use crate::arch::ThreadState;
+use crate::arch::{Arch, ArchInterface, ThreadState};
 
 use super::SCHEDULER_STATE;
 
@@ -60,6 +61,7 @@ pub struct Stack {
 
 #[allow(dead_code)]
 impl Stack {
+    #[must_use]
     pub const fn from_slice(slice: &[MaybeUninit<u8>]) -> Self {
         let start: *const MaybeUninit<u8> = slice.as_ptr();
         // Safety: offset based on known size of slice.
@@ -67,6 +69,7 @@ impl Stack {
         Self { start, end }
     }
 
+    #[must_use]
     const fn new() -> Self {
         Self {
             start: core::ptr::null(),
@@ -74,34 +77,47 @@ impl Stack {
         }
     }
 
+    #[must_use]
     pub fn start(&self) -> *const MaybeUninit<u8> {
         self.start
     }
+
+    #[must_use]
     pub fn end(&self) -> *const MaybeUninit<u8> {
         self.end
     }
 
-    pub fn initial_sp(&self, alignment: usize) -> *const MaybeUninit<u8> {
-        // Use a zero sized allocation to align the initial stack pointer.
-        Self::aligned_stack_allocation(self.end, 0, alignment)
+    /// # Safety
+    /// Caller must ensure exclusive mutable access to underlying data
+    #[must_use]
+    pub unsafe fn end_mut(&self) -> *mut MaybeUninit<u8> {
+        self.end as *mut MaybeUninit<u8>
     }
 
+    #[must_use]
     pub fn contains(&self, ptr: *const MaybeUninit<u8>) -> bool {
         ptr >= self.start && ptr < self.end
     }
 
-    pub fn aligned_stack_allocation(
-        sp: *const MaybeUninit<u8>,
-        size: usize,
+    #[must_use]
+    pub fn aligned_stack_allocation_mut<T: Sized>(
+        sp: *mut MaybeUninit<u8>,
         alignment: usize,
-    ) -> *const MaybeUninit<u8> {
-        let sp = sp.wrapping_byte_sub(size);
+    ) -> *mut T {
+        let sp = sp.wrapping_byte_sub(size_of::<T>());
         let offset = sp.align_offset(alignment);
         if offset > 0 {
-            sp.wrapping_byte_sub(alignment - offset)
+            sp.wrapping_byte_sub(alignment - offset).cast()
         } else {
-            sp
+            sp.cast()
         }
+    }
+
+    pub fn aligned_stack_allocation<T: Sized>(
+        sp: *mut MaybeUninit<u8>,
+        alignment: usize,
+    ) -> *const T {
+        Self::aligned_stack_allocation_mut::<*mut T>(sp, alignment).cast()
     }
 }
 
@@ -135,16 +151,23 @@ pub struct Process {
     // TODO - konkers: allow this to be tokenized.
     pub name: &'static str,
 
+    memory_config: <Arch as ArchInterface>::MemoryConfig,
+
     thread_list: UnsafeList<Thread, ProcessThreadListAdapter>,
 }
 list::define_adapter!(pub ProcessListAdapter => Process.link);
 
 impl Process {
     /// Creates a new, empty, unregistered process.
-    pub const fn new(name: &'static str) -> Self {
+    #[must_use]
+    pub const fn new(
+        name: &'static str,
+        memory_config: <Arch as ArchInterface>::MemoryConfig,
+    ) -> Self {
         Self {
             link: Link::new(),
             name,
+            memory_config,
             thread_list: UnsafeList::new(),
         }
     }
@@ -162,9 +185,17 @@ impl Process {
         }
     }
 
-    // A simple id for debugging purposes, currently the pointer to the thread structure itself
+    /// A simple ID for debugging purposes, currently the pointer to the thread
+    /// structure itself.
+    ///
+    /// # Safety
+    ///
+    /// The returned value should not be relied upon as being a valid pointer.
+    /// Even in the current implementation, `id` does not expose the pointer's
+    /// provenance.
+    #[must_use]
     pub fn id(&self) -> usize {
-        core::ptr::from_ref(self) as usize
+        core::ptr::from_ref(self).addr()
     }
 
     pub fn dump(&self) {
@@ -207,6 +238,7 @@ list::define_adapter!(pub ProcessThreadListAdapter => Thread.process_link);
 
 impl Thread {
     // Create an empty, uninitialzed thread
+    #[must_use]
     pub fn new(name: &'static str) -> Self {
         Thread {
             process_link: Link::new(),
@@ -240,16 +272,17 @@ impl Thread {
         arg: usize,
     ) -> &mut Thread {
         pw_assert::assert!(self.state == State::New);
+        let process = SCHEDULER_STATE.lock().kernel_process.get();
         let args = (entry_point as usize, arg);
         unsafe {
             (*self.arch_thread_state.get()).initialize_kernel_frame(
                 kernel_stack,
+                &raw const (*process).memory_config,
                 Self::trampoline,
                 args,
             );
         }
 
-        let process = SCHEDULER_STATE.lock().kernel_process.get();
         unsafe { self.initialize(process, kernel_stack) }
     }
 
@@ -261,27 +294,24 @@ impl Thread {
     pub unsafe fn initialize_non_priv_thread(
         &mut self,
         kernel_stack: Stack,
-        main_stack: Stack,
+        initial_sp: usize,
         process: *mut Process,
-        entry_point: fn(usize),
+        entry_point: usize,
         arg: usize,
-    ) -> &mut Thread {
+    ) -> Result<&mut Thread> {
         pw_assert::assert!(self.state == State::New);
 
-        let args = (entry_point as usize, arg);
         unsafe {
             (*self.arch_thread_state.get()).initialize_user_frame(
                 kernel_stack,
-                // Conservatively align stack to 16 bytes which is needed for
-                // the RISC-V calling convention.   Ideally this would be
-                // architecture dependant.  However, this value will eventually
+                &raw const (*process).memory_config,
                 // be passed in from user space.
-                main_stack.initial_sp(16) as *mut MaybeUninit<u8>,
-                Self::trampoline,
-                args,
-            );
+                initial_sp,
+                entry_point,
+                arg,
+            )?;
         }
-        unsafe { self.initialize(process, kernel_stack) }
+        unsafe { Ok(self.initialize(process, kernel_stack)) }
     }
 
     /// # Preconditions
@@ -324,12 +354,21 @@ impl Thread {
         );
     }
 
-    // A simple id for debugging purposes, currently the pointer to the thread structure itself
+    /// A simple ID for debugging purposes, currently the pointer to the thread
+    /// structure itself.
+    ///
+    /// # Safety
+    ///
+    /// The returned value should not be relied upon as being a valid pointer.
+    /// Even in the current implementation, `id` does not expose the pointer's
+    /// provenance.
+    #[must_use]
     pub fn id(&self) -> usize {
-        core::ptr::from_ref(self) as usize
+        core::ptr::from_ref(self).addr()
     }
 
-    // An id that can not be assigned to any thread in the system.
+    // An ID that can not be assigned to any thread in the system.
+    #[must_use]
     pub const fn null_id() -> usize {
         // `core::ptr::null::<Self>() as usize` can not be evaluated at const time
         // and a null pointer is defined to be at address 0 (see
