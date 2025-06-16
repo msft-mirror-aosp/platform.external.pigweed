@@ -213,34 +213,6 @@ def https_connect_with_proxy(target_url):
     return conn
 
 
-_SSL_ERROR = """
-
-Bootstrap: SSL error in Python when downloading CIPD client.
-If using system Python try
-
-    sudo pip install certifi
-
-And if on the system Python on a Mac try
-
-    /Applications/Python <version>/Install Certificates.command
-
-If using Homebrew Python try
-
-    brew install openssl
-    brew uninstall python
-    brew install python
-
-If those don't work, address all the potential issues shown
-by the following command.
-
-    brew doctor
-
-Otherwise, check that your machine's Python can use SSL,
-testing with the httplib module on Python 2 or http.client on
-Python 3.
-"""
-
-
 def client_bytes(rosetta=False):
     """Pull down the CIPD client and return it as a bytes object.
 
@@ -255,9 +227,18 @@ def client_bytes(rosetta=False):
     try:
         conn = https_connect_with_proxy(CIPD_HOST)
     except AttributeError:
-        print('=' * 70, file=sys.stderr)
-        print(_SSL_ERROR, file=sys.stderr)
-        print('=' * 70, file=sys.stderr)
+        print('=' * 70)
+        print(
+            '''
+It looks like this version of Python does not support SSL. This is common
+when using Homebrew. If using Homebrew please run the following commands.
+If not using Homebrew check how your version of Python was built.
+
+brew install openssl  # Probably already installed, but good to confirm.
+brew uninstall python && brew install python
+'''.strip()
+        )
+        print('=' * 70)
         raise
 
     full_platform = platform_arch_normalized(rosetta)
@@ -274,7 +255,33 @@ def client_bytes(rosetta=False):
             # sure we always read it.
             content = res.read()
         except ssl.SSLError:
-            print(_SSL_ERROR, file=sys.stderr)
+            print(
+                '\n'
+                'Bootstrap: SSL error in Python when downloading CIPD client.\n'
+                'If using system Python try\n'
+                '\n'
+                '    sudo pip install certifi\n'
+                '\n'
+                'And if on the system Python on a Mac try\n'
+                '\n'
+                '    /Applications/Python 3.6/Install Certificates.command\n'
+                '\n'
+                'If using Homebrew Python try\n'
+                '\n'
+                '    brew install openssl\n'
+                '    brew uninstall python\n'
+                '    brew install python\n'
+                '\n'
+                "If those don't work, address all the potential issues shown \n"
+                'by the following command.\n'
+                '\n'
+                '    brew doctor\n'
+                '\n'
+                "Otherwise, check that your machine's Python can use SSL, "
+                'testing with the httplib module on Python 2 or http.client on '
+                'Python 3.',
+                file=sys.stderr,
+            )
             raise
 
         # Found client bytes.
@@ -373,18 +380,6 @@ def init(
     try:
         selfupdate(client)
     except subprocess.CalledProcessError:
-        if platform_normalized() == 'mac':
-            print('rosetta', rosetta, file=sys.stderr)
-            print(
-                'w/ rosetta',
-                platform_arch_normalized(rosetta=True),
-                file=sys.stderr,
-            )
-            print(
-                'w/o rosetta',
-                platform_arch_normalized(rosetta=False),
-                file=sys.stderr,
-            )
         print(
             'CIPD selfupdate failed. Bootstrapping then retrying...',
             file=sys.stderr,

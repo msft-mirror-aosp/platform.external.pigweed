@@ -22,9 +22,9 @@
 namespace pw::thread::backend {
 
 // The native thread is a pointer to a thread's context.
-using NativeThread = pw::thread::backend::NativeContext*;
+using NativeThread = pw::thread::zephyr::Context*;
 
 // The native thread handle is the same as the NativeThread.
-using NativeThreadHandle = pw::thread::backend::NativeContext*;
+using NativeThreadHandle = pw::thread::zephyr::Context*;
 
 }  // namespace pw::thread::backend

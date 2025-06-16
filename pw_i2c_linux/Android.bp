@@ -18,6 +18,7 @@ package {
 
 cc_library_static {
     name: "pw_i2c_linux",
+    cpp_std: "c++20",
     vendor_available: true,
     defaults: [
         "pw_android_common_backends",
@@ -57,6 +58,7 @@ cc_library_static {
 
 cc_binary {
     name: "pw_i2c_linux_cli",
+    cpp_std: "c++20",
     vendor_available: true,
     defaults: [
         "pw_android_common_backends",

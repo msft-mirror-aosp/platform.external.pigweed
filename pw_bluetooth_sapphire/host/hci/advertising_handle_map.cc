@@ -19,31 +19,31 @@
 namespace bt::hci {
 
 std::optional<hci_spec::AdvertisingHandle> AdvertisingHandleMap::MapHandle(
-    const DeviceAddress& address) {
-  if (Size() == capacity_) {
+    const DeviceAddress& address, bool extended_pdu) {
+  auto handle = map_.get({address, extended_pdu});
+  if (handle) {
+    return handle;
+  }
+
+  if (Size() >= capacity_) {
     return std::nullopt;
   }
 
   auto next_handle = NextHandle();
   PW_CHECK(next_handle);
 
-  Value value;
-  value.address = address;
-  value.node = node_.CreateChild(node_.UniqueName("advertising_set_"));
-  value.node.RecordString("address", address.ToString());
-  value.node.RecordUint("handle", next_handle.value());
-
-  auto [_, success] = map_.try_emplace(next_handle.value(), std::move(value));
-  PW_CHECK(success);
+  map_.insert(next_handle.value(), {address, extended_pdu});
   return next_handle;
 }
+
 std::optional<DeviceAddress> AdvertisingHandleMap::GetAddress(
     hci_spec::AdvertisingHandle handle) const {
-  auto iter = map_.find(handle);
-  if (iter == map_.end()) {
-    return std::nullopt;
+  if (map_.contains(handle)) {
+    const auto& [address, extended] = map_.get(handle).value().get();
+    return address;
   }
-  return iter->second.address;
+
+  return std::nullopt;
 }
 
 std::optional<hci_spec::AdvertisingHandle>
@@ -63,14 +63,10 @@ std::optional<hci_spec::AdvertisingHandle> AdvertisingHandleMap::NextHandle() {
   hci_spec::AdvertisingHandle handle = last_handle_;
   do {
     handle = static_cast<uint8_t>(handle + 1) % capacity_;
-  } while (map_.count(handle) != 0);
+  } while (map_.contains(handle));
 
   last_handle_ = handle;
   return handle;
-}
-
-void AdvertisingHandleMap::AttachInspect(inspect::Node& parent) {
-  node_ = parent.CreateChild("advertising_handle_map");
 }
 
 }  // namespace bt::hci

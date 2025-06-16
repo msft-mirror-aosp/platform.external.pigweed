@@ -17,8 +17,7 @@
 #include <cstddef>
 
 #include "pw_allocator/allocator.h"
-#include "pw_allocator/internal/counter.h"
-#include "pw_allocator/testing.h"
+#include "pw_allocator/internal/managed_ptr_testing.h"
 #include "pw_unit_test/framework.h"
 
 namespace {
@@ -26,11 +25,7 @@ namespace {
 using pw::allocator::test::Counter;
 using pw::allocator::test::CounterSink;
 using pw::allocator::test::CounterWithBuffer;
-
-class UniquePtrTest : public pw::allocator::test::TestWithCounters {
- protected:
-  pw::allocator::test::AllocatorForTest<256> allocator_;
-};
+using UniquePtrTest = pw::allocator::test::ManagedPtrTest;
 
 TEST_F(UniquePtrTest, DefaultInitializationIsNullptr) {
   pw::UniquePtr<int> empty;
@@ -41,28 +36,6 @@ TEST_F(UniquePtrTest, OperatorEqNullptrOnEmptyUniquePtrSucceeds) {
   pw::UniquePtr<int> empty;
   EXPECT_TRUE(empty == nullptr);
   EXPECT_FALSE(empty != nullptr);
-}
-
-TEST_F(UniquePtrTest, AdoptValueViaConstructor) {
-  {
-    Counter* raw_ptr = allocator_.New<Counter>(5u);
-    pw::UniquePtr<Counter> ptr(raw_ptr, allocator_);
-    EXPECT_EQ(ptr->value(), 5u);
-    EXPECT_EQ(ptr.deallocator(), &allocator_);
-  }
-  EXPECT_EQ(Counter::TakeNumDtorCalls(), 1u);
-  EXPECT_EQ(allocator_.deallocate_size(), sizeof(Counter));
-}
-
-TEST_F(UniquePtrTest, AdoptUnboundedArrayViaConstructor) {
-  {
-    Counter* raw_ptr = allocator_.New<Counter[]>(5);
-    pw::UniquePtr<Counter[]> ptr(raw_ptr, 5, allocator_);
-    EXPECT_EQ(ptr.size(), 5u);
-    EXPECT_EQ(ptr.deallocator(), &allocator_);
-  }
-  EXPECT_EQ(Counter::TakeNumDtorCalls(), 5u);
-  EXPECT_EQ(allocator_.deallocate_size(), 5 * sizeof(Counter));
 }
 
 TEST_F(UniquePtrTest, OperatorEqNullptrAfterMakeUniqueFails) {
@@ -130,11 +103,11 @@ TEST_F(UniquePtrTest, MoveAssignsToExistingDeallocates) {
 TEST_F(UniquePtrTest, DestructorDestroysAndFrees) {
   auto ptr = allocator_.MakeUnique<Counter>();
   ASSERT_NE(ptr, nullptr);
-  EXPECT_EQ(Counter::TakeNumDtorCalls(), 0u);
+  EXPECT_EQ(Counter::GetNumDtorCalls(), 0u);
   EXPECT_EQ(allocator_.deallocate_size(), 0ul);
 
   ptr.Reset();  // Reset the UniquePtr, destroying its contents.
-  EXPECT_EQ(Counter::TakeNumDtorCalls(), 1u);
+  EXPECT_EQ(Counter::GetNumDtorCalls(), 1u);
   EXPECT_EQ(allocator_.deallocate_size(), sizeof(Counter));
 }
 
@@ -145,14 +118,14 @@ TEST_F(UniquePtrTest, ArrayElementsAreConstructed) {
   // Use the deprecated method...
   auto ptr1 = allocator_.MakeUniqueArray<Counter>(kArraySize);
   ASSERT_NE(ptr1, nullptr);
-  EXPECT_EQ(Counter::TakeNumCtorCalls(), kArraySize);
+  EXPECT_EQ(Counter::GetNumCtorCalls(), kArraySize);
   for (size_t i = 0; i < kArraySize; ++i) {
     EXPECT_EQ(ptr1[i].value(), i);
   }
 
   // ...and the supported method.
   auto ptr2 = allocator_.MakeUnique<Counter[]>(kArraySize);
-  EXPECT_EQ(Counter::TakeNumCtorCalls(), kArraySize);
+  EXPECT_EQ(Counter::GetNumCtorCalls(), kArraySize);
   ASSERT_NE(ptr2, nullptr);
   for (size_t i = 0; i < kArraySize; ++i) {
     EXPECT_EQ(ptr2[i].value(), i);
@@ -167,7 +140,7 @@ TEST_F(UniquePtrTest, ArrayElementsAreConstructedWithSpecifiedAlignment) {
   // Use the deprecated method...
   auto ptr1 = allocator_.MakeUniqueArray<Counter>(kArraySize, kArrayAlignment);
   ASSERT_NE(ptr1, nullptr);
-  EXPECT_EQ(Counter::TakeNumCtorCalls(), kArraySize);
+  EXPECT_EQ(Counter::GetNumCtorCalls(), kArraySize);
 
   auto addr1 = reinterpret_cast<uintptr_t>(ptr1.get());
   EXPECT_EQ(addr1 % kArrayAlignment, 0u);
@@ -175,7 +148,7 @@ TEST_F(UniquePtrTest, ArrayElementsAreConstructedWithSpecifiedAlignment) {
   // ...and the supported method.
   auto ptr2 = allocator_.MakeUnique<Counter[]>(kArraySize, kArrayAlignment);
   ASSERT_NE(ptr2, nullptr);
-  EXPECT_EQ(Counter::TakeNumCtorCalls(), kArraySize);
+  EXPECT_EQ(Counter::GetNumCtorCalls(), kArraySize);
 
   auto addr2 = reinterpret_cast<uintptr_t>(ptr2.get());
   EXPECT_EQ(addr2 % kArrayAlignment, 0u);
@@ -186,11 +159,11 @@ TEST_F(UniquePtrTest, DestructorDestroysAndFreesArray) {
 
   auto ptr = allocator_.MakeUnique<Counter[]>(kArraySize);
   ASSERT_NE(ptr, nullptr);
-  EXPECT_EQ(Counter::TakeNumDtorCalls(), 0u);
+  EXPECT_EQ(Counter::GetNumDtorCalls(), 0u);
   EXPECT_EQ(allocator_.deallocate_size(), 0ul);
 
   ptr.Reset();  // Reset the UniquePtr, destroying its contents.
-  EXPECT_EQ(Counter::TakeNumDtorCalls(), kArraySize);
+  EXPECT_EQ(Counter::GetNumDtorCalls(), kArraySize);
   EXPECT_EQ(allocator_.deallocate_size(), sizeof(Counter) * kArraySize);
 }
 
@@ -251,6 +224,26 @@ TEST_F(UniquePtrTest, CanSwapWhenBothAreEmpty) {
   ptr1.Swap(ptr2);
   EXPECT_EQ(ptr1, nullptr);
   EXPECT_EQ(ptr2, nullptr);
+}
+
+class UniquePtrTestAllocator
+    : public pw::allocator::test::AllocatorForTest<256> {
+ public:
+  template <typename T>
+  pw::UniquePtr<T[]> MakeBespokeArray(size_t size) {
+    return Deallocator::WrapUniqueArray<T>(New<T[]>(size), size);
+  }
+};
+
+TEST_F(UniquePtrTest, DeprecatedWrapUniqueArrayStillWorks) {
+  constexpr static size_t kArraySize = 5;
+  UniquePtrTestAllocator allocator;
+  {
+    auto ptr = allocator.MakeBespokeArray<Counter>(kArraySize);
+    ASSERT_NE(ptr, nullptr);
+    EXPECT_EQ(Counter::GetNumCtorCalls(), kArraySize);
+  }
+  EXPECT_EQ(Counter::GetNumDtorCalls(), kArraySize);
 }
 
 // Verify that the UniquePtr implementation is the size of 2 pointers for the

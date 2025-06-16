@@ -60,7 +60,6 @@ unsafe impl Send for Event {}
 
 impl Event {
     /// Constructs a new `Event` with the given configuration.
-    #[must_use]
     pub const fn new(config: EventConfig) -> Self {
         Self {
             config,

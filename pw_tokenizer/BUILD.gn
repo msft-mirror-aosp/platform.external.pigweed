@@ -318,7 +318,6 @@ pw_test("tokenize_test") {
   ]
   deps = [
     ":pw_tokenizer",
-    "$dir_pw_string:string",
     "$dir_pw_varint",
   ]
   negative_compilation_tests = true

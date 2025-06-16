@@ -12,52 +12,39 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_sync/internal/threaded_testing.h"
+#include <chrono>
+
 #include "pw_sync/thread_notification.h"
 #include "pw_unit_test/framework.h"
 
 namespace pw::sync {
 namespace {
 
-// Test fixture used to release the notification.
-class ThreadNotificationTest : public test::OptionallyThreadedTest {
- protected:
-  void ReleaseTwice(ThreadNotification& notification) {
-    notification_ = &notification;
-    RunOnce();
-  }
-
- private:
-  void DoStop() override {
-    // Multiple releases are the same as one.
-    notification_->release();
-    notification_->release();
-  }
-
-  ThreadNotification* notification_ = nullptr;
-};
-
-TEST_F(ThreadNotificationTest, EmptyInitialState) {
+TEST(ThreadNotification, EmptyInitialState) {
   ThreadNotification notification;
   EXPECT_FALSE(notification.try_acquire());
 }
 
-TEST_F(ThreadNotificationTest, Release) {
+// TODO: b/235284163 - Add real concurrency tests.
+
+TEST(ThreadNotification, Release) {
   ThreadNotification notification;
-  ReleaseTwice(notification);
+  notification.release();
+  notification.release();
   notification.acquire();
   // Ensure it fails when empty.
   EXPECT_FALSE(notification.try_acquire());
 }
 
 ThreadNotification empty_initial_notification;
-TEST_F(ThreadNotificationTest, EmptyInitialStateStatic) {
+TEST(ThreadNotification, EmptyInitialStateStatic) {
   EXPECT_FALSE(empty_initial_notification.try_acquire());
 }
 
 ThreadNotification raise_notification;
-TEST_F(ThreadNotificationTest, ReleaseStatic) {
-  ReleaseTwice(raise_notification);
+TEST(ThreadNotification, ReleaseStatic) {
+  raise_notification.release();
+  raise_notification.release();
   raise_notification.acquire();
   // Ensure it fails when empty.
   EXPECT_FALSE(raise_notification.try_acquire());

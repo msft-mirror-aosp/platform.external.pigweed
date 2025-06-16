@@ -14,9 +14,8 @@
 
 #include "pw_result/expected.h"
 
-#include "pw_status/try.h"
-#include "pw_string/string.h"
-#include "pw_string/string_builder.h"
+#include <string>
+
 #include "pw_unit_test/framework.h"
 
 namespace pw {
@@ -150,59 +149,39 @@ static_assert(
     !std::is_trivially_destructible<unexpected<NonTrivialDestructor>>::value);
 }  // namespace test_trivial_destructor
 
-using SmallString = pw::InlineString<2>;
-
-constexpr char kRecoverySentinel = 0x04;  // Arbitrary non-printable sentinel.
-
-SmallString Itoa(int x) {
-  SmallString result;
-  if ((StringBuilder(result) << x).status() != OkStatus()) {
-    ADD_FAILURE();
-  }
-  return result;
-}
-
-expected<int, std::string_view> FailableFunction1(bool fail, int num) {
+expected<int, const char*> FailableFunction1(bool fail, int num) {
   if (fail) {
     return unexpected("FailableFunction1");
   }
   return num;
 }
 
-expected<SmallString, std::string_view> FailableFunction2(bool fail, int num) {
+expected<std::string, const char*> FailableFunction2(bool fail, int num) {
   if (fail) {
     return unexpected("FailableFunction2");
   }
-
-  return Itoa(num);
+  return std::to_string(num);
 }
 
-expected<int, std::string_view> FailOnOdd(int x) {
+expected<int, const char*> FailOnOdd(int x) {
   if (x % 2) {
     return unexpected("odd");
   }
   return x;
 }
 
-expected<SmallString, std::string_view> ItoaFailOnNegative(int x) {
+expected<std::string, const char*> ItoaFailOnNegative(int x) {
   if (x < 0) {
     return unexpected("negative");
   }
-  return Itoa(x);
+  return std::to_string(x);
 }
 
-expected<char, std::string_view> GetSecondChar(std::string_view s) {
+expected<char, const char*> GetSecondChar(const std::string& s) {
   if (s.size() < 2) {
     return unexpected("string too small");
   }
   return s[1];
-}
-
-expected<char, std::string_view> RecoverStringTooSmall(std::string_view err) {
-  if (err == "string too small") {
-    return kRecoverySentinel;
-  }
-  return unexpected(err);
 }
 
 int Decrement(int x) { return x - 1; }
@@ -218,32 +197,32 @@ TEST(ExpectedTest, HoldIntValueSuccess) {
   EXPECT_EQ(x.value(), 10);
   EXPECT_EQ(*x, 10);
   EXPECT_EQ(x.value_or(33), 10);
-  EXPECT_EQ(x.error_or("no error"), "no error");
+  EXPECT_EQ(x.error_or("no error"), std::string("no error"));
 }
 
 TEST(ExpectedTest, HoldIntValueFail) {
   auto x = FailableFunction1(true, 10);
   ASSERT_FALSE(x.has_value());
-  EXPECT_EQ(x.error(), "FailableFunction1");
+  EXPECT_EQ(x.error(), std::string("FailableFunction1"));
   EXPECT_EQ(x.value_or(33), 33);
-  EXPECT_EQ(x.error_or("no error"), "FailableFunction1");
+  EXPECT_EQ(x.error_or("no error"), std::string("FailableFunction1"));
 }
 
 TEST(ExpectedTest, HoldStringValueSuccess) {
   auto x = FailableFunction2(false, 42);
   ASSERT_TRUE(x.has_value());
-  EXPECT_EQ(x.value(), "42");
-  EXPECT_EQ(*x, "42");
-  EXPECT_EQ(x.value_or("33"), "42");
-  EXPECT_EQ(x.error_or("no error"), "no error");
+  EXPECT_EQ(x.value(), std::string("42"));
+  EXPECT_EQ(*x, std::string("42"));
+  EXPECT_EQ(x.value_or("33"), std::string("42"));
+  EXPECT_EQ(x.error_or("no error"), std::string("no error"));
 }
 
 TEST(ExpectedTest, HoldStringValueFail) {
   auto x = FailableFunction2(true, 42);
   ASSERT_FALSE(x.has_value());
-  EXPECT_EQ(x.error(), "FailableFunction2");
-  EXPECT_EQ(x.value_or("33"), "33");
-  EXPECT_EQ(x.error_or("no error"), "FailableFunction2");
+  EXPECT_EQ(x.error(), std::string("FailableFunction2"));
+  EXPECT_EQ(x.value_or("33"), std::string("33"));
+  EXPECT_EQ(x.error_or("no error"), std::string("FailableFunction2"));
 }
 
 TEST(ExpectedTest, MonadicOperation) {
@@ -255,29 +234,17 @@ TEST(ExpectedTest, MonadicOperation) {
         .and_then(GetSecondChar);
   };
   EXPECT_EQ(f(26).value_or(0), '4');
-  EXPECT_EQ(f(26).error_or("no error"), "no error");
+  EXPECT_EQ(f(26).error_or(nullptr), nullptr);
   EXPECT_EQ(f(25).value_or(0), 0);
-  EXPECT_EQ(f(25).error_or("no error"), "odd");
+  EXPECT_EQ(f(25).error_or(nullptr), std::string("odd"));
   EXPECT_EQ(f(0).value_or(0), 0);
-  EXPECT_EQ(f(0).error_or("no error"), "negative");
+  EXPECT_EQ(f(0).error_or(nullptr), std::string("negative"));
   EXPECT_EQ(f(4).value_or(0), 0);
-  EXPECT_EQ(f(4).error_or("no error"), "string too small");
+  EXPECT_EQ(f(4).error_or(nullptr), std::string("string too small"));
   EXPECT_TRUE(Consume(f(26)).has_value());
-  EXPECT_EQ(Consume(f(25)).error_or("no error"), "odd");
-  EXPECT_EQ(Consume(f(0)).error_or("no error"), "negative");
-  EXPECT_EQ(Consume(f(4)).error_or("no error"), "string too small");
-
-  EXPECT_EQ(f(26).or_else(RecoverStringTooSmall).value_or(0), '4');
-  EXPECT_EQ(f(26).or_else(RecoverStringTooSmall).error_or("no error"),
-            "no error");
-  EXPECT_EQ(f(25).or_else(RecoverStringTooSmall).value_or(0), 0);
-  EXPECT_EQ(f(25).or_else(RecoverStringTooSmall).error_or("no error"), "odd");
-  EXPECT_EQ(f(0).or_else(RecoverStringTooSmall).value_or(0), 0);
-  EXPECT_EQ(f(0).or_else(RecoverStringTooSmall).error_or("no error"),
-            "negative");
-  EXPECT_EQ(f(4).or_else(RecoverStringTooSmall).value_or(0), kRecoverySentinel);
-  EXPECT_EQ(f(4).or_else(RecoverStringTooSmall).error_or("no error"),
-            "no error");
+  EXPECT_EQ(Consume(f(25)).error_or(nullptr), std::string("odd"));
+  EXPECT_EQ(Consume(f(0)).error_or(nullptr), std::string("negative"));
+  EXPECT_EQ(Consume(f(4)).error_or(nullptr), std::string("string too small"));
 }
 
 }  // namespace

@@ -90,14 +90,11 @@ class LowEnergyAdvertisingManager::ActiveAdvertisement final {
   const DeviceAddress& address() const { return address_; }
   AdvertisementId id() const { return id_; }
   bool extended_pdu() const { return extended_pdu_; }
-  void set_handle(hci_spec::AdvertisingHandle handle) { handle_ = handle; }
-  std::optional<hci_spec::AdvertisingHandle> handle() const { return handle_; }
 
  private:
   DeviceAddress address_;
   AdvertisementId id_;
   bool extended_pdu_;
-  std::optional<hci_spec::AdvertisingHandle> handle_;
 
   BT_DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(ActiveAdvertisement);
 };
@@ -115,9 +112,8 @@ LowEnergyAdvertisingManager::LowEnergyAdvertisingManager(
 LowEnergyAdvertisingManager::~LowEnergyAdvertisingManager() {
   // Turn off all the advertisements!
   for (const auto& ad : advertisements_) {
-    if (ad.second->handle().has_value()) {
-      advertiser_->StopAdvertising(ad.second->handle().value());
-    }
+    advertiser_->StopAdvertising(ad.second->address(),
+                                 ad.second->extended_pdu());
   }
 }
 
@@ -202,32 +198,29 @@ void LowEnergyAdvertisingManager::StartAdvertising(
             on_connect_cb(id, std::move(link));
           };
         }
-        auto status_cb_wrapper =
-            [self,
-             advertisement_ptr = std::move(ad_ptr),
-             result_cb = std::move(status_cb)](
-                hci::Result<hci_spec::AdvertisingHandle> status) mutable {
-              if (!self.is_alive()) {
-                return;
-              }
+        auto status_cb_wrapper = [self,
+                                  advertisement_ptr = std::move(ad_ptr),
+                                  result_cb = std::move(status_cb)](
+                                     hci::Result<> status) mutable {
+          if (!self.is_alive()) {
+            return;
+          }
 
-              if (status.is_error()) {
-                result_cb(AdvertisementInstance(), status.take_error());
-                return;
-              }
+          if (status.is_error()) {
+            result_cb(AdvertisementInstance(), status);
+            return;
+          }
 
-              advertisement_ptr->set_handle(status.value());
-              auto id = advertisement_ptr->id();
-              self->advertisements_.emplace(id, std::move(advertisement_ptr));
-              auto stop_advertising_cb = [self](AdvertisementId stop_id) {
-                if (self.is_alive()) {
-                  self->StopAdvertising(stop_id);
-                }
-              };
-              result_cb(
-                  AdvertisementInstance(id, std::move(stop_advertising_cb)),
-                  fit::ok());
-            };
+          auto id = advertisement_ptr->id();
+          self->advertisements_.emplace(id, std::move(advertisement_ptr));
+          auto stop_advertising_cb = [self](AdvertisementId stop_id) {
+            if (self.is_alive()) {
+              self->StopAdvertising(stop_id);
+            }
+          };
+          result_cb(AdvertisementInstance(id, std::move(stop_advertising_cb)),
+                    status);
+        };
 
         // Call StartAdvertising, with the callback
         self->advertiser_->StartAdvertising(result.value(),
@@ -246,9 +239,8 @@ bool LowEnergyAdvertisingManager::StopAdvertising(
     return false;
   }
 
-  if (it->second->handle().has_value()) {
-    advertiser_->StopAdvertising(it->second->handle().value());
-  }
+  advertiser_->StopAdvertising(it->second->address(),
+                               it->second->extended_pdu());
   advertisements_.erase(it);
   return true;
 }

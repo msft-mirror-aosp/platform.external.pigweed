@@ -14,7 +14,6 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
-import * as os from 'os';
 import { loadLegacySettings, loadLegacySettingsFile } from '../settings/legacy';
 import { settings, workingDir } from '../settings/vscode';
 import { globStream } from 'glob';
@@ -170,30 +169,21 @@ export async function processCompDbs() {
   };
 }
 
-const SHELL = os.userInfo().shell || '/bin/sh';
-const bazelInterceptorScriptTemplate = `#!${SHELL}
+const bazelInterceptorScriptTemplate = `#!/bin/sh
 set -uo pipefail
 
  if [[ $# -gt 0 && ( "$1" == "build" || "$1" == "run" || "$1" == "test" ) ]]; then
-  # Run the real Bazel command first
-  $BAZEL_REAL "$@"
-  BAZEL_EXIT_CODE=$? # Capture the exit code of the Bazel command
-  if [ $BAZEL_EXIT_CODE -eq 0 ]; then
-    echo "⏳ Generating compile commands..."
-    $BAZEL_REAL --quiet run \
-      --show_result=0 \
-      @pigweed//pw_ide/ts/pigweed_vscode:compile_commands_generator_binary -- \
-      --target "$*" --cwd "$(pwd)" --bazelCmd "$BAZEL_REAL"
-    if [ $? -ne 0 ]; then
-      echo "⚠️ Compile commands generation failed (exit code $?), continuing..."
-    fi
+  echo "⏳ Generating compile commands..."
+  $BAZEL_REAL run @pigweed//pw_ide/ts/pigweed_vscode:compile_commands_generator_binary -- --target "$*" --cwd "$(pwd)" --bazelCmd "$BAZEL_REAL"
+  if [ $? -ne 0 ]; then
+    echo "⚠️ Compile commands generation failed (exit code $?), continuing..."
   fi
+  $BAZEL_REAL "$@"
 else
   $BAZEL_REAL "$@"
-  BAZEL_EXIT_CODE=$?
 fi
 
-exit $BAZEL_EXIT_CODE
+exit 0
 `;
 export function getBazelInterceptorPath() {
   const workspaceFolders = vscode.workspace.workspaceFolders;

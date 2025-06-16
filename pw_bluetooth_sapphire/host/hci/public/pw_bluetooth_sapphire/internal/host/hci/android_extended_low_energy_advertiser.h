@@ -49,16 +49,16 @@ class AndroidExtendedLowEnergyAdvertiser final : public LowEnergyAdvertiser {
   // The number of advertising sets that can be supported is not fixed and the
   // Controller can change it at any time. This method may report an error if
   // the controller cannot currently support another advertising set.
-  void StartAdvertising(
-      const DeviceAddress& address,
-      const AdvertisingData& data,
-      const AdvertisingData& scan_rsp,
-      const AdvertisingOptions& options,
-      ConnectionCallback connect_callback,
-      ResultFunction<hci_spec::AdvertisingHandle> result_callback) override;
+  void StartAdvertising(const DeviceAddress& address,
+                        const AdvertisingData& data,
+                        const AdvertisingData& scan_rsp,
+                        const AdvertisingOptions& options,
+                        ConnectionCallback connect_callback,
+                        ResultFunction<> result_callback) override;
 
   void StopAdvertising() override;
-  void StopAdvertising(hci_spec::AdvertisingHandle handle) override;
+  void StopAdvertising(const DeviceAddress& address,
+                       bool extended_pdu) override;
 
   void OnIncomingConnection(
       hci_spec::ConnectionHandle handle,
@@ -76,8 +76,6 @@ class AndroidExtendedLowEnergyAdvertiser final : public LowEnergyAdvertiser {
     return advertising_handle_map_.LastUsedHandleForTesting();
   }
 
-  void AttachInspect(inspect::Node& parent) override;
-
  private:
   struct StagedConnectionParameters {
     pw::bluetooth::emboss::ConnectionRole role;
@@ -86,35 +84,39 @@ class AndroidExtendedLowEnergyAdvertiser final : public LowEnergyAdvertiser {
   };
 
   CommandPacket BuildEnablePacket(
-      hci_spec::AdvertisingHandle advertising_handle,
-      pw::bluetooth::emboss::GenericEnableParam enable) const override;
+      const DeviceAddress& address,
+      pw::bluetooth::emboss::GenericEnableParam enable,
+      bool extended_pdu) const override;
 
-  std::optional<SetAdvertisingParams> BuildSetAdvertisingParams(
+  std::optional<CommandPacket> BuildSetAdvertisingParams(
       const DeviceAddress& address,
       const AdvertisingEventProperties& properties,
       pw::bluetooth::emboss::LEOwnAddressType own_address_type,
-      const AdvertisingIntervalRange& interval) override;
+      const AdvertisingIntervalRange& interval,
+      bool extended_pdu) override;
 
   std::optional<CommandPacket> BuildSetAdvertisingRandomAddr(
-      hci_spec::AdvertisingHandle advertising_handle) const override;
+      const DeviceAddress& address, bool extended_pdu) const override;
 
   std::vector<CommandPacket> BuildSetAdvertisingData(
-      hci_spec::AdvertisingHandle advertising_handle,
+      const DeviceAddress& address,
       const AdvertisingData& data,
-      AdvFlags flags) const override;
+      AdvFlags flags,
+      bool extended_pdu) const override;
 
-  CommandPacket BuildUnsetAdvertisingData(
-      hci_spec::AdvertisingHandle advertising_handle) const override;
+  CommandPacket BuildUnsetAdvertisingData(const DeviceAddress& address,
+                                          bool extended_pdu) const override;
 
   std::vector<CommandPacket> BuildSetScanResponse(
-      hci_spec::AdvertisingHandle advertising_handle,
-      const AdvertisingData& data) const override;
+      const DeviceAddress& address,
+      const AdvertisingData& data,
+      bool extended_pdu) const override;
 
-  CommandPacket BuildUnsetScanResponse(
-      hci_spec::AdvertisingHandle advertising_handle) const override;
+  CommandPacket BuildUnsetScanResponse(const DeviceAddress& address,
+                                       bool extended_pdu) const override;
 
-  CommandPacket BuildRemoveAdvertisingSet(
-      hci_spec::AdvertisingHandle advertising_handle) const override;
+  CommandPacket BuildRemoveAdvertisingSet(const DeviceAddress& address,
+                                          bool extended_pdu) const override;
 
   void OnCurrentOperationComplete() override;
 
@@ -135,8 +137,6 @@ class AndroidExtendedLowEnergyAdvertiser final : public LowEnergyAdvertiser {
   // we stage these parameters.
   std::unordered_map<hci_spec::ConnectionHandle, StagedConnectionParameters>
       staged_connections_map_;
-
-  inspect::Node node_;
 
   BT_DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(AndroidExtendedLowEnergyAdvertiser);
 };

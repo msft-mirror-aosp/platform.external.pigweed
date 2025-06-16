@@ -12,12 +12,10 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_bluetooth_sapphire/internal/host/hci-spec/vendor_protocol.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/android_extended_low_energy_advertiser.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/extended_low_energy_advertiser.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/controller_test.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/fake_controller.h"
-#include "pw_bluetooth_sapphire/internal/host/testing/inspect_util.h"
 
 // Multiple advertising is supported by the Bluetooth 5.0+ Core Specification as
 // well as Android vendor extensions. This test file contains shared tests for
@@ -27,7 +25,6 @@ namespace bt::hci {
 namespace {
 
 using bt::testing::FakeController;
-using namespace inspect::testing;
 using TestingBase = bt::testing::FakeDispatcherControllerTest<FakeController>;
 using AdvertisingOptions = LowEnergyAdvertiser::AdvertisingOptions;
 using LEAdvertisingState = FakeController::LEAdvertisingState;
@@ -59,7 +56,6 @@ class LowEnergyMultipleAdvertisingTest : public TestingBase {
     this->test_device()->set_settings(settings);
 
     advertiser_ = std::unique_ptr<T>(CreateAdvertiserInternal());
-    advertiser_->AttachInspect(inspector_.GetRoot());
   }
 
   void TearDown() override {
@@ -85,15 +81,15 @@ class LowEnergyMultipleAdvertisingTest : public TestingBase {
 
   T* advertiser() const { return advertiser_.get(); }
 
-  ResultFunction<hci_spec::AdvertisingHandle> MakeExpectSuccessCallback() {
-    return [this](Result<hci_spec::AdvertisingHandle> status) {
+  ResultFunction<> MakeExpectSuccessCallback() {
+    return [this](Result<> status) {
       last_status_ = status;
       EXPECT_EQ(fit::ok(), status);
     };
   }
 
-  ResultFunction<hci_spec::AdvertisingHandle> MakeExpectErrorCallback() {
-    return [this](Result<hci_spec::AdvertisingHandle> status) {
+  ResultFunction<> MakeExpectErrorCallback() {
+    return [this](Result<> status) {
       last_status_ = status;
       EXPECT_EQ(fit::failed(), status);
     };
@@ -113,63 +109,7 @@ class LowEnergyMultipleAdvertisingTest : public TestingBase {
     return result;
   }
 
-  void SendMultipleAdvertisingPostConnectionEvents(
-      hci_spec::ConnectionHandle conn_handle,
-      hci_spec::AdvertisingHandle adv_handle) {
-    if (std::is_same_v<T, AndroidExtendedLowEnergyAdvertiser>) {
-      test_device()->SendAndroidLEMultipleAdvertisingStateChangeSubevent(
-          conn_handle, adv_handle);
-      return;
-    }
-
-    if (std::is_same_v<T, ExtendedLowEnergyAdvertiser>) {
-      test_device()->SendLEAdvertisingSetTerminatedEvent(conn_handle,
-                                                         adv_handle);
-      return;
-    }
-  }
-
-  void SimulateSetAdvertisingParametersFailure() {
-    test_device()->SetDefaultAndroidResponseStatus(
-        hci_spec::vendor::android::kLEMultiAdvt,
-        hci_spec::vendor::android::kLEMultiAdvtSetAdvtParamSubopcode,
-        pw::bluetooth::emboss::StatusCode::COMMAND_DISALLOWED);
-    test_device()->SetDefaultResponseStatus(
-        hci_spec::kLESetExtendedAdvertisingParameters,
-        pw::bluetooth::emboss::StatusCode::COMMAND_DISALLOWED);
-  }
-
-  void ClearSetAdvertisingParametersFailure() {
-    test_device()->ClearDefaultAndroidResponseStatus(
-        hci_spec::vendor::android::kLEMultiAdvt,
-        hci_spec::vendor::android::kLEMultiAdvtSetAdvtParamSubopcode);
-    test_device()->ClearDefaultResponseStatus(
-        hci_spec::kLESetExtendedAdvertisingParameters);
-  }
-
-  void SimulateEnableAdvertisingFailure() {
-    test_device()->SetDefaultAndroidResponseStatus(
-        hci_spec::vendor::android::kLEMultiAdvt,
-        hci_spec::vendor::android::kLEMultiAdvtEnableSubopcode,
-        pw::bluetooth::emboss::StatusCode::COMMAND_DISALLOWED);
-    test_device()->SetDefaultResponseStatus(
-        hci_spec::kLESetExtendedAdvertisingEnable,
-        pw::bluetooth::emboss::StatusCode::COMMAND_DISALLOWED);
-  }
-
-  void ClearEnableAdvertisingFailure() {
-    test_device()->ClearDefaultAndroidResponseStatus(
-        hci_spec::vendor::android::kLEMultiAdvt,
-        hci_spec::vendor::android::kLEMultiAdvtEnableSubopcode);
-    test_device()->ClearDefaultResponseStatus(
-        hci_spec::kLESetExtendedAdvertisingEnable);
-  }
-
-  std::optional<Result<hci_spec::AdvertisingHandle>> last_status() const {
-    return last_status_;
-  }
-
-  std::optional<Result<hci_spec::AdvertisingHandle>> TakeLastStatus() {
+  std::optional<Result<>> GetLastStatus() {
     if (!last_status_) {
       return std::nullopt;
     }
@@ -179,13 +119,10 @@ class LowEnergyMultipleAdvertisingTest : public TestingBase {
 
   uint8_t max_advertisements() const { return max_advertisements_; }
 
-  inspect::Inspector& inspector() { return inspector_; }
-
  private:
   std::unique_ptr<T> advertiser_;
-  std::optional<Result<hci_spec::AdvertisingHandle>> last_status_;
+  std::optional<Result<>> last_status_;
   uint8_t max_advertisements_ = hci_spec::kMaxAdvertisingHandle + 1;
-  inspect::Inspector inspector_;
 
   BT_DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(LowEnergyMultipleAdvertisingTest);
 };
@@ -217,7 +154,7 @@ TYPED_TEST(LowEnergyMultipleAdvertisingTest, AdvertisingHandlesExhausted) {
     this->RunUntilIdle();
   }
 
-  ASSERT_TRUE(this->TakeLastStatus());
+  ASSERT_TRUE(this->GetLastStatus());
   EXPECT_TRUE(this->advertiser()->IsAdvertising());
   EXPECT_EQ(this->advertiser()->MaxAdvertisements(),
             this->advertiser()->NumAdvertisements());
@@ -232,7 +169,7 @@ TYPED_TEST(LowEnergyMultipleAdvertisingTest, AdvertisingHandlesExhausted) {
       this->MakeExpectErrorCallback());
 
   this->RunUntilIdle();
-  ASSERT_TRUE(this->TakeLastStatus());
+  ASSERT_FALSE(this->GetLastStatus());
   EXPECT_TRUE(this->advertiser()->IsAdvertising());
   EXPECT_EQ(this->advertiser()->MaxAdvertisements(),
             this->advertiser()->NumAdvertisements());
@@ -284,8 +221,10 @@ TYPED_TEST(LowEnergyMultipleAdvertisingTest, SimultaneousAdvertisements) {
   // check everything is correct
   EXPECT_EQ(2u, this->advertiser()->NumAdvertisements());
   EXPECT_TRUE(this->advertiser()->IsAdvertising());
-  EXPECT_TRUE(this->advertiser()->IsAdvertising(handle_public_addr.value()));
-  EXPECT_TRUE(this->advertiser()->IsAdvertising(handle_random_addr.value()));
+  EXPECT_TRUE(this->advertiser()->IsAdvertising(kPublicAddress,
+                                                /*extended_pdu=*/false));
+  EXPECT_TRUE(this->advertiser()->IsAdvertising(kRandomAddress,
+                                                /*extended_pdu=*/false));
 
   const LEAdvertisingState& public_addr_state =
       this->test_device()->extended_advertising_state(
@@ -362,8 +301,10 @@ TYPED_TEST(LowEnergyMultipleAdvertisingTest, SimultaneousRandomAdvertisements) {
   // check everything is correct
   EXPECT_EQ(2u, this->advertiser()->NumAdvertisements());
   EXPECT_TRUE(this->advertiser()->IsAdvertising());
-  EXPECT_TRUE(this->advertiser()->IsAdvertising(handle1.value()));
-  EXPECT_TRUE(this->advertiser()->IsAdvertising(handle2.value()));
+  EXPECT_TRUE(this->advertiser()->IsAdvertising(kRandomAddress1,
+                                                /*extended_pdu=*/false));
+  EXPECT_TRUE(this->advertiser()->IsAdvertising(kRandomAddress2,
+                                                /*extended_pdu=*/false));
 
   const LEAdvertisingState& addr_state1 =
       this->test_device()->extended_advertising_state(handle1.value());
@@ -433,8 +374,10 @@ TYPED_TEST(LowEnergyMultipleAdvertisingTest,
   // check everything is correct
   EXPECT_EQ(2u, this->advertiser()->NumAdvertisements());
   EXPECT_TRUE(this->advertiser()->IsAdvertising());
-  EXPECT_TRUE(this->advertiser()->IsAdvertising(handle_public_addr.value()));
-  EXPECT_TRUE(this->advertiser()->IsAdvertising(handle_random_addr.value()));
+  EXPECT_TRUE(this->advertiser()->IsAdvertising(kPublicAddress,
+                                                /*extended_pdu=*/false));
+  EXPECT_TRUE(this->advertiser()->IsAdvertising(kRandomAddress,
+                                                /*extended_pdu=*/false));
 
   // Stop advertising
   this->advertiser()->StopAdvertising();
@@ -443,8 +386,10 @@ TYPED_TEST(LowEnergyMultipleAdvertisingTest,
   // Check that advertiser and controller both report not advertising
   EXPECT_EQ(0u, this->advertiser()->NumAdvertisements());
   EXPECT_FALSE(this->advertiser()->IsAdvertising());
-  EXPECT_FALSE(this->advertiser()->IsAdvertising(handle_public_addr.value()));
-  EXPECT_FALSE(this->advertiser()->IsAdvertising(handle_random_addr.value()));
+  EXPECT_FALSE(this->advertiser()->IsAdvertising(kPublicAddress,
+                                                 /*extended_pdu=*/false));
+  EXPECT_FALSE(this->advertiser()->IsAdvertising(kRandomAddress,
+                                                 /*extended_pdu=*/false));
 
   const LEAdvertisingState& public_addr_state =
       this->test_device()->extended_advertising_state(
@@ -500,9 +445,9 @@ TYPED_TEST(LowEnergyMultipleAdvertisingTest,
                                        /*connect_callback=*/nullptr,
                                        this->MakeExpectSuccessCallback());
   this->RunUntilIdle();
-  ASSERT_TRUE(this->last_status());
-  ASSERT_TRUE(this->last_status()->is_ok());
-  hci_spec::AdvertisingHandle handle_public_addr = this->last_status()->value();
+  std::optional<hci_spec::AdvertisingHandle> handle_public_addr =
+      this->advertiser()->LastUsedHandleForTesting();
+  ASSERT_TRUE(handle_public_addr);
 
   // start random address advertising
   constexpr AdvertisingIntervalRange random_interval(
@@ -520,33 +465,39 @@ TYPED_TEST(LowEnergyMultipleAdvertisingTest,
                                        /*connect_callback=*/nullptr,
                                        this->MakeExpectSuccessCallback());
   this->RunUntilIdle();
-  ASSERT_TRUE(this->last_status());
-  ASSERT_TRUE(this->last_status()->is_ok());
-  hci_spec::AdvertisingHandle handle_random_addr = this->last_status()->value();
+  std::optional<hci_spec::AdvertisingHandle> handle_random_addr =
+      this->advertiser()->LastUsedHandleForTesting();
+  ASSERT_TRUE(handle_random_addr);
 
   // check everything is correct
   EXPECT_TRUE(this->advertiser()->IsAdvertising());
   EXPECT_EQ(2u, this->advertiser()->NumAdvertisements());
-  EXPECT_TRUE(this->advertiser()->IsAdvertising(handle_public_addr));
-  EXPECT_TRUE(this->advertiser()->IsAdvertising(handle_random_addr));
+  EXPECT_TRUE(this->advertiser()->IsAdvertising(kPublicAddress,
+                                                /*extended_pdu=*/false));
+  EXPECT_TRUE(this->advertiser()->IsAdvertising(kRandomAddress,
+                                                /*extended_pdu=*/false));
 
   // Stop advertising the random address
-  this->advertiser()->StopAdvertising(handle_random_addr);
+  this->advertiser()->StopAdvertising(kRandomAddress, /*extended_pdu=*/false);
   this->RunUntilIdle();
 
   // Check that advertiser and controller both report the same advertising state
   EXPECT_TRUE(this->advertiser()->IsAdvertising());
   EXPECT_EQ(1u, this->advertiser()->NumAdvertisements());
-  EXPECT_TRUE(this->advertiser()->IsAdvertising(handle_public_addr));
-  EXPECT_FALSE(this->advertiser()->IsAdvertising(handle_random_addr));
+  EXPECT_TRUE(this->advertiser()->IsAdvertising(kPublicAddress,
+                                                /*extended_pdu=*/false));
+  EXPECT_FALSE(this->advertiser()->IsAdvertising(kRandomAddress,
+                                                 /*extended_pdu=*/false));
 
   constexpr uint8_t blank[hci_spec::kMaxLEAdvertisingDataLength] = {0};
 
   {
     const LEAdvertisingState& public_addr_state =
-        this->test_device()->extended_advertising_state(handle_public_addr);
+        this->test_device()->extended_advertising_state(
+            handle_public_addr.value());
     const LEAdvertisingState& random_addr_state =
-        this->test_device()->extended_advertising_state(handle_random_addr);
+        this->test_device()->extended_advertising_state(
+            handle_random_addr.value());
 
     EXPECT_TRUE(public_addr_state.enabled);
     EXPECT_NE(0,
@@ -574,21 +525,25 @@ TYPED_TEST(LowEnergyMultipleAdvertisingTest,
   }
 
   // stop advertising the public address
-  this->advertiser()->StopAdvertising(handle_public_addr);
+  this->advertiser()->StopAdvertising(kPublicAddress, /*extended_pdu=*/false);
   this->RunUntilIdle();
 
   {
     const LEAdvertisingState& public_addr_state =
-        this->test_device()->extended_advertising_state(handle_public_addr);
+        this->test_device()->extended_advertising_state(
+            handle_public_addr.value());
     const LEAdvertisingState& random_addr_state =
-        this->test_device()->extended_advertising_state(handle_random_addr);
+        this->test_device()->extended_advertising_state(
+            handle_random_addr.value());
 
     // Check that advertiser and controller both report the same advertising
     // state
     EXPECT_FALSE(this->advertiser()->IsAdvertising());
     EXPECT_EQ(0u, this->advertiser()->NumAdvertisements());
-    EXPECT_FALSE(this->advertiser()->IsAdvertising(handle_public_addr));
-    EXPECT_FALSE(this->advertiser()->IsAdvertising(handle_random_addr));
+    EXPECT_FALSE(this->advertiser()->IsAdvertising(kPublicAddress,
+                                                   /*extended_pdu=*/false));
+    EXPECT_FALSE(this->advertiser()->IsAdvertising(kRandomAddress,
+                                                   /*extended_pdu=*/false));
 
     EXPECT_FALSE(public_addr_state.enabled);
     EXPECT_EQ(0,
@@ -627,45 +582,37 @@ TYPED_TEST(LowEnergyMultipleAdvertisingTest, SuccessiveAdvertisingCalls) {
                              /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
 
-  std::optional<Result<hci_spec::AdvertisingHandle>> start_result_0;
-  this->advertiser()->StartAdvertising(
-      kPublicAddress,
-      ad,
-      scan_data,
-      options,
-      /*connect_callback=*/nullptr,
-      [&](Result<hci_spec::AdvertisingHandle> result) {
-        start_result_0 = result;
-      });
-  std::optional<Result<hci_spec::AdvertisingHandle>> start_result_1;
-  this->advertiser()->StartAdvertising(
-      kRandomAddress,
-      ad,
-      scan_data,
-      options,
-      /*connect_callback=*/nullptr,
-      [&](Result<hci_spec::AdvertisingHandle> result) {
-        start_result_1 = result;
-      });
+  this->advertiser()->StartAdvertising(kPublicAddress,
+                                       ad,
+                                       scan_data,
+                                       options,
+                                       /*connect_callback=*/nullptr,
+                                       this->MakeExpectSuccessCallback());
+  this->advertiser()->StartAdvertising(kRandomAddress,
+                                       ad,
+                                       scan_data,
+                                       options,
+                                       /*connect_callback=*/nullptr,
+                                       this->MakeExpectSuccessCallback());
 
   this->RunUntilIdle();
-  ASSERT_TRUE(start_result_0);
-  ASSERT_TRUE(start_result_0.value().is_ok());
-  ASSERT_TRUE(start_result_1);
-  ASSERT_TRUE(start_result_1.value().is_ok());
   EXPECT_TRUE(this->advertiser()->IsAdvertising());
   EXPECT_EQ(2u, this->advertiser()->NumAdvertisements());
-  EXPECT_TRUE(this->advertiser()->IsAdvertising(start_result_0->value()));
-  EXPECT_TRUE(this->advertiser()->IsAdvertising(start_result_1->value()));
+  EXPECT_TRUE(this->advertiser()->IsAdvertising(kPublicAddress,
+                                                /*extended_pdu=*/false));
+  EXPECT_TRUE(this->advertiser()->IsAdvertising(kRandomAddress,
+                                                /*extended_pdu=*/false));
 
-  this->advertiser()->StopAdvertising(start_result_0->value());
-  this->advertiser()->StopAdvertising(start_result_1->value());
+  this->advertiser()->StopAdvertising(kPublicAddress, /*extended_pdu=*/false);
+  this->advertiser()->StopAdvertising(kRandomAddress, /*extended_pdu=*/false);
 
   this->RunUntilIdle();
   EXPECT_FALSE(this->advertiser()->IsAdvertising());
   EXPECT_EQ(0u, this->advertiser()->NumAdvertisements());
-  EXPECT_FALSE(this->advertiser()->IsAdvertising(start_result_0->value()));
-  EXPECT_FALSE(this->advertiser()->IsAdvertising(start_result_1->value()));
+  EXPECT_FALSE(this->advertiser()->IsAdvertising(kPublicAddress,
+                                                 /*extended_pdu=*/false));
+  EXPECT_FALSE(this->advertiser()->IsAdvertising(kRandomAddress,
+                                                 /*extended_pdu=*/false));
 }
 
 TYPED_TEST(LowEnergyMultipleAdvertisingTest, InterleavedAdvertisingCalls) {
@@ -686,10 +633,7 @@ TYPED_TEST(LowEnergyMultipleAdvertisingTest, InterleavedAdvertisingCalls) {
                                        options,
                                        /*connect_callback=*/nullptr,
                                        this->MakeExpectSuccessCallback());
-  std::optional<hci_spec::AdvertisingHandle> handle_0 =
-      this->advertiser()->LastUsedHandleForTesting();
-  ASSERT_TRUE(handle_0);
-  this->advertiser()->StopAdvertising(handle_0.value());
+  this->advertiser()->StopAdvertising(kPublicAddress, /*extended_pdu=*/false);
   this->advertiser()->StartAdvertising(kPublicAddress,
                                        ad,
                                        scan_data,
@@ -698,13 +642,12 @@ TYPED_TEST(LowEnergyMultipleAdvertisingTest, InterleavedAdvertisingCalls) {
                                        this->MakeExpectSuccessCallback());
 
   this->RunUntilIdle();
-  std::optional<hci_spec::AdvertisingHandle> handle_1 =
-      this->advertiser()->LastUsedHandleForTesting();
-  ASSERT_TRUE(handle_1);
   EXPECT_TRUE(this->advertiser()->IsAdvertising());
   EXPECT_EQ(1u, this->advertiser()->NumAdvertisements());
-  EXPECT_FALSE(this->advertiser()->IsAdvertising(handle_0.value()));
-  EXPECT_TRUE(this->advertiser()->IsAdvertising(handle_1.value()));
+  EXPECT_TRUE(this->advertiser()->IsAdvertising(kPublicAddress,
+                                                /*extended_pdu=*/false));
+  EXPECT_FALSE(this->advertiser()->IsAdvertising(kRandomAddress,
+                                                 /*extended_pdu=*/false));
 }
 
 TYPED_TEST(LowEnergyMultipleAdvertisingTest, StopWhileStarting) {
@@ -722,13 +665,10 @@ TYPED_TEST(LowEnergyMultipleAdvertisingTest, StopWhileStarting) {
                                        options,
                                        /*connect_callback=*/nullptr,
                                        this->MakeExpectSuccessCallback());
-  std::optional<hci_spec::AdvertisingHandle> adv_handle =
-      this->advertiser()->LastUsedHandleForTesting();
-  ASSERT_TRUE(adv_handle);
-  this->advertiser()->StopAdvertising(adv_handle.value());
+  this->advertiser()->StopAdvertising(kPublicAddress, /*extended_pdu=*/false);
 
   this->RunUntilIdle();
-  EXPECT_TRUE(this->TakeLastStatus());
+  EXPECT_TRUE(this->GetLastStatus());
 
   std::optional<hci_spec::AdvertisingHandle> handle =
       this->advertiser()->LastUsedHandleForTesting();
@@ -736,214 +676,6 @@ TYPED_TEST(LowEnergyMultipleAdvertisingTest, StopWhileStarting) {
 
   EXPECT_FALSE(
       this->test_device()->extended_advertising_state(handle.value()).enabled);
-}
-
-TYPED_TEST(LowEnergyMultipleAdvertisingTest,
-           MultipleAdvertisementsWithSameAddressWithConnections) {
-  this->test_device()->set_num_supported_advertising_sets(2);
-
-  AdvertisingData ad = this->GetExampleData();
-  AdvertisingData scan_data = this->GetExampleData();
-
-  AdvertisingOptions options_0(kTestInterval,
-                               kDefaultNoAdvFlags,
-                               /*init_extended_pdu=*/false,
-                               /*init_anonymous=*/false,
-                               /*init_include_tx_power_level=*/false);
-  std::optional<Result<hci_spec::AdvertisingHandle>> result_0;
-  std::unique_ptr<LowEnergyConnection> link_0;
-  auto conn_cb_0 = [&link_0](auto cb_link) { link_0 = std::move(cb_link); };
-  this->advertiser()->StartAdvertising(
-      kPublicAddress,
-      ad,
-      scan_data,
-      options_0,
-      std::move(conn_cb_0),
-      [&](Result<hci_spec::AdvertisingHandle> result) { result_0 = result; });
-  this->RunUntilIdle();
-  ASSERT_TRUE(result_0);
-  ASSERT_TRUE(result_0->is_ok());
-  hci_spec::AdvertisingHandle handle_0 = result_0->value();
-
-  constexpr AdvertisingIntervalRange interval_1(
-      hci_spec::kLEAdvertisingIntervalMin + 1u,
-      hci_spec::kLEAdvertisingIntervalMax - 1u);
-  AdvertisingOptions options_1(interval_1,
-                               kDefaultNoAdvFlags,
-                               /*init_extended_pdu=*/false,
-                               /*init_anonymous=*/false,
-                               /*init_include_tx_power_level=*/false);
-  std::optional<Result<hci_spec::AdvertisingHandle>> result_1;
-  std::unique_ptr<LowEnergyConnection> link_1;
-  auto conn_cb_1 = [&link_1](auto cb_link) { link_1 = std::move(cb_link); };
-  this->advertiser()->StartAdvertising(
-      kPublicAddress,
-      ad,
-      scan_data,
-      options_1,
-      std::move(conn_cb_1),
-      [&](Result<hci_spec::AdvertisingHandle> result) { result_1 = result; });
-  this->RunUntilIdle();
-  ASSERT_TRUE(result_1);
-  ASSERT_TRUE(result_1->is_ok());
-  hci_spec::AdvertisingHandle handle_1 = result_1->value();
-
-  EXPECT_EQ(2u, this->advertiser()->NumAdvertisements());
-  EXPECT_TRUE(this->advertiser()->IsAdvertising());
-  EXPECT_TRUE(this->advertiser()->IsAdvertising(handle_0));
-  EXPECT_TRUE(this->advertiser()->IsAdvertising(handle_1));
-
-  const LEAdvertisingState& adv_state_0 =
-      this->test_device()->extended_advertising_state(handle_0);
-  EXPECT_TRUE(adv_state_0.enabled);
-  EXPECT_EQ(pw::bluetooth::emboss::LEOwnAddressType::PUBLIC,
-            adv_state_0.own_address_type);
-  EXPECT_EQ(hci_spec::kLEAdvertisingIntervalMin, adv_state_0.interval_min);
-  EXPECT_EQ(hci_spec::kLEAdvertisingIntervalMax, adv_state_0.interval_max);
-
-  const LEAdvertisingState& adv_state_1 =
-      this->test_device()->extended_advertising_state(handle_1);
-  EXPECT_TRUE(adv_state_1.enabled);
-  EXPECT_EQ(pw::bluetooth::emboss::LEOwnAddressType::PUBLIC,
-            adv_state_1.own_address_type);
-  EXPECT_EQ(hci_spec::kLEAdvertisingIntervalMin + 1u, adv_state_1.interval_min);
-  EXPECT_EQ(hci_spec::kLEAdvertisingIntervalMax - 1u, adv_state_1.interval_max);
-
-  const hci_spec::ConnectionHandle conn_handle_0 = 0x0001;
-  const hci_spec::ConnectionHandle conn_handle_1 = 0x0002;
-
-  this->advertiser()->OnIncomingConnection(
-      conn_handle_0,
-      pw::bluetooth::emboss::ConnectionRole::PERIPHERAL,
-      kPublicAddress,
-      hci_spec::LEConnectionParameters());
-  this->SendMultipleAdvertisingPostConnectionEvents(conn_handle_0, handle_0);
-  this->RunUntilIdle();
-  ASSERT_TRUE(link_0);
-  EXPECT_EQ(conn_handle_0, link_0->handle());
-  EXPECT_EQ(kPublicAddress, link_0->local_address());
-  EXPECT_FALSE(this->advertiser()->IsAdvertising(handle_0));
-  ASSERT_FALSE(link_1);
-  EXPECT_TRUE(this->advertiser()->IsAdvertising(handle_1));
-
-  this->advertiser()->OnIncomingConnection(
-      conn_handle_1,
-      pw::bluetooth::emboss::ConnectionRole::PERIPHERAL,
-      kPublicAddress,
-      hci_spec::LEConnectionParameters());
-  this->SendMultipleAdvertisingPostConnectionEvents(conn_handle_1, handle_1);
-  this->RunUntilIdle();
-  ASSERT_TRUE(link_1);
-  EXPECT_EQ(conn_handle_1, link_1->handle());
-  EXPECT_EQ(kPublicAddress, link_1->local_address());
-  EXPECT_FALSE(this->advertiser()->IsAdvertising(handle_1));
-}
-
-#ifndef NINSPECT
-TYPED_TEST(LowEnergyMultipleAdvertisingTest, Inspect) {
-  auto map_matcher =
-      AllOf(NodeMatches(AllOf(NameMatches("advertising_handle_map"))));
-
-  auto advertiser_matcher =
-      AllOf(NodeMatches(AllOf(NameMatches("low_energy_advertiser"))),
-            ChildrenMatch(ElementsAre(map_matcher)));
-
-  EXPECT_THAT(inspect::ReadFromVmo(this->inspector().DuplicateVmo()).value(),
-              ChildrenMatch(ElementsAre(advertiser_matcher)));
-}
-#endif  // NINSPECT
-
-TYPED_TEST(
-    LowEnergyMultipleAdvertisingTest,
-    StartAdvertisingFailureDoesNotLeakHandleOnSetAdvertisingParametersFailure) {
-  this->test_device()->set_num_supported_advertising_sets(
-      this->max_advertisements());
-
-  AdvertisingData ad = this->GetExampleData();
-  AdvertisingData scan_data = this->GetExampleData();
-  AdvertisingOptions options(kTestInterval,
-                             kDefaultNoAdvFlags,
-                             /*init_extended_pdu=*/false,
-                             /*init_anonymous=*/false,
-                             /*init_include_tx_power_level=*/true);
-
-  this->SimulateSetAdvertisingParametersFailure();
-  this->advertiser()->StartAdvertising(
-      DeviceAddress(DeviceAddress::Type::kLEPublic, {0xFF}),
-      ad,
-      scan_data,
-      options,
-      /*connect_callback=*/nullptr,
-      this->MakeExpectErrorCallback());
-
-  this->RunUntilIdle();
-  ASSERT_TRUE(this->TakeLastStatus());
-  EXPECT_FALSE(this->advertiser()->IsAdvertising());
-  this->ClearSetAdvertisingParametersFailure();
-
-  // Ensure the handle was not leaked by advertising the max number of
-  // advertisements.
-  for (uint8_t i = 0; i < this->advertiser()->MaxAdvertisements(); i++) {
-    this->advertiser()->StartAdvertising(
-        DeviceAddress(DeviceAddress::Type::kLEPublic, {i}),
-        ad,
-        scan_data,
-        options,
-        /*connect_callback=*/nullptr,
-        this->MakeExpectSuccessCallback());
-    this->RunUntilIdle();
-  }
-
-  ASSERT_TRUE(this->TakeLastStatus());
-  EXPECT_TRUE(this->advertiser()->IsAdvertising());
-  EXPECT_EQ(this->advertiser()->MaxAdvertisements(),
-            this->advertiser()->NumAdvertisements());
-}
-
-TYPED_TEST(LowEnergyMultipleAdvertisingTest,
-           StartAdvertisingFailureDoesNotLeakHandleOnEnableFailure) {
-  this->test_device()->set_num_supported_advertising_sets(
-      this->max_advertisements());
-
-  AdvertisingData ad = this->GetExampleData();
-  AdvertisingData scan_data = this->GetExampleData();
-  AdvertisingOptions options(kTestInterval,
-                             kDefaultNoAdvFlags,
-                             /*init_extended_pdu=*/false,
-                             /*init_anonymous=*/false,
-                             /*init_include_tx_power_level=*/true);
-
-  this->SimulateEnableAdvertisingFailure();
-  this->advertiser()->StartAdvertising(
-      DeviceAddress(DeviceAddress::Type::kLEPublic, {0xFF}),
-      ad,
-      scan_data,
-      options,
-      /*connect_callback=*/nullptr,
-      this->MakeExpectErrorCallback());
-
-  this->RunUntilIdle();
-  ASSERT_TRUE(this->TakeLastStatus());
-  EXPECT_FALSE(this->advertiser()->IsAdvertising());
-  this->ClearEnableAdvertisingFailure();
-
-  // Ensure the handle was not leaked by advertising the max number of
-  // advertisements.
-  for (uint8_t i = 0; i < this->advertiser()->MaxAdvertisements(); i++) {
-    this->advertiser()->StartAdvertising(
-        DeviceAddress(DeviceAddress::Type::kLEPublic, {i}),
-        ad,
-        scan_data,
-        options,
-        /*connect_callback=*/nullptr,
-        this->MakeExpectSuccessCallback());
-    this->RunUntilIdle();
-  }
-
-  ASSERT_TRUE(this->TakeLastStatus());
-  EXPECT_TRUE(this->advertiser()->IsAdvertising());
-  EXPECT_EQ(this->advertiser()->MaxAdvertisements(),
-            this->advertiser()->NumAdvertisements());
 }
 
 }  // namespace

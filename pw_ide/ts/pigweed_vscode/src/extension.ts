@@ -16,12 +16,11 @@ import * as vscode from 'vscode';
 import { ExtensionContext } from 'vscode';
 
 import {
+  configureBazelisk,
   configureBazelSettings,
   interactivelySetBazeliskPath,
   setBazelRecommendedSettings,
   shouldSupportBazel,
-  updateVendoredBazelisk,
-  updateVendoredBuildifier,
 } from './bazel';
 
 import {
@@ -67,10 +66,7 @@ import {
   launchTerminal,
   patchBazeliskIntoTerminalPath,
 } from './terminal';
-import {
-  WebviewProvider,
-  executeRefreshCompileCommandsManually,
-} from './webviewProvider';
+import { WebviewProvider } from './webviewProvider';
 
 import { commandRegisterer, VscCommandCallback } from './utils';
 import { shouldSupportGn } from './gn';
@@ -78,7 +74,6 @@ import { shouldSupportCmake } from './cmake';
 import { CompileCommandsWatcher } from './clangd/compileCommandsWatcher';
 import { existsSync, statSync } from 'node:fs';
 import { createBazelInterceptorFile } from './clangd/compileCommandsUtils';
-import { checkClangdVersion } from './clangd/extensionChecker';
 
 interface CommandEntry {
   name: string;
@@ -202,20 +197,6 @@ async function registerCommands(
       projectType: ['bootstrap'],
     },
     {
-      name: 'pigweed.refresh-compile-commands',
-      callback: async () => {
-        const lastBuildCmd = settings.bazelCompileCommandsManualBuildCommand();
-        if (lastBuildCmd) {
-          await executeRefreshCompileCommandsManually(lastBuildCmd);
-        } else {
-          vscode.window.showInformationMessage(
-            'No manual build command found. Please set and run once from the Pigweed sidebar.',
-          );
-        }
-      },
-      projectType: ['bazel', 'both'],
-    },
-    {
       name: 'pigweed.activate-bazelisk-in-terminal',
       callback: patchBazeliskIntoTerminalPath,
       projectType: ['bazel', 'both'],
@@ -241,10 +222,9 @@ async function registerCommands(
 
 async function initAsBazelProject(refreshManager: RefreshManager<any>) {
   // Do stuff that we want to do on load.
-  await updateVendoredBazelisk();
-  await updateVendoredBuildifier();
   await initBazelClangdPath();
   await configureBazelSettings();
+  await configureBazelisk();
   linkRefreshManagerToEvents(refreshManager);
 
   if (settings.activateBazeliskInNewTerminals()) {
@@ -406,15 +386,6 @@ function buildSystemStatusReason(
 }
 
 export async function activate(context: vscode.ExtensionContext) {
-  // Perform the Clangd version check when the extension activates
-  const clangdOK = await checkClangdVersion();
-
-  if (!clangdOK) {
-    logger.warn(
-      'Pigweed extension is unable to function fully due to Clangd version requirements.',
-    );
-    return;
-  }
   const provider = new WebviewProvider(context.extensionUri);
 
   context.subscriptions.push(
@@ -482,6 +453,9 @@ export async function activate(context: vscode.ExtensionContext) {
         biggestFileTarget,
         clangdActiveFilesCache.writeToSettings,
       );
+      // Due to an unknown clangd extension issue, the clangd refuses to work
+      // on first-ever run, restarting clangd does not work either.
+      await vscode.commands.executeCommand('workbench.action.reloadWindow');
     }
     return OK;
   }, 'didRefresh');

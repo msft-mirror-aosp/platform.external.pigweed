@@ -11,16 +11,13 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
-
 use core::arch::asm;
 use cortex_m::peripheral::*;
-use pw_cast::CastInto as _;
 use pw_log::info;
 
-use crate::arch::ArchInterface;
+use super::ArchInterface;
 
 mod exceptions;
-mod protection;
 mod regs;
 mod spinlock;
 mod syscall;
@@ -39,7 +36,6 @@ impl ArchInterface for Arch {
     type ThreadState = threads::ArchThreadState;
     type BareSpinLock = spinlock::BareSpinLock;
     type Clock = timer::Clock;
-    type MemoryConfig = protection::MemoryConfig;
 
     fn early_init() {
         info!("arch early init");
@@ -68,9 +64,7 @@ impl ArchInterface for Arch {
                 fn pw_boot_vector_table_addr();
             }
             let vector_table = pw_boot_vector_table_addr as *const ();
-            p.SCB
-                .vtor
-                .write(vector_table.expose_provenance().cast_into());
+            p.SCB.vtor.write(vector_table as u32);
 
             // Only the high two bits or the priority are guaranteed to be
             // implemented.  Values below are chosen accordingly.
@@ -91,13 +85,8 @@ impl ArchInterface for Arch {
 
             // TODO: set all of the NVIC external irqs to medium as well
 
-            scb.enable(scb::Exception::MemoryManagement);
             // TODO: configure BASEPRI, FAULTMASK
         } // unsafe
-
-        // Set up PMP attr registers so that all PMP configs can reference them.
-        #[cfg(feature = "user_space")]
-        protection::init();
 
         timer::systick_early_init();
 

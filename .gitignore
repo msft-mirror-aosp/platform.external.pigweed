@@ -107,6 +107,5 @@ yarn-error.log
 pw_console-logs.txt
 pw_console-device-logs.txt
 
-# AI files
+# aider.chat files
 .aider*
-.gemini

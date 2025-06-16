@@ -12,7 +12,6 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-use pw_cast::CastFrom as _;
 use regs::*;
 
 #[allow(unused_macros)]
@@ -27,7 +26,7 @@ macro_rules! ro_msr_reg {
                 unsafe {
                     core::arch::asm!(concat!("mrs {0}, ", stringify!($reg_name)), out(reg) val)
                 };
-                $val_type(u32::cast_from(val))
+                $val_type(val as u32)
             }
         }
     };

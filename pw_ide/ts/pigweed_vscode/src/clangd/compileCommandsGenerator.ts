@@ -564,26 +564,21 @@ export async function generateCompileCommands(
       tuiManager,
     );
 
-  // Only delete previous compile_commands if new one is not empty
-  if (compileCommandsPerPlatform.size > 0) {
-    // Delete and recreate the compile_commands directory.
-    tuiManager?.updateStatus(`⏳ Cleaning output directory: ${cdbFileDir}`);
-    const fullCdbDirPath = path.join(cwd, cdbFileDir);
-    deleteFilesInSubDir(fullCdbDirPath, 'compile_commands.json');
-    fs.mkdirSync(fullCdbDirPath, { recursive: true });
+  // Delete and recreate the compile_commands directory.
+  tuiManager?.updateStatus(`⏳ Cleaning output directory: ${cdbFileDir}`);
+  const fullCdbDirPath = path.join(cwd, cdbFileDir);
+  deleteFilesInSubDir(fullCdbDirPath, 'compile_commands.json');
+  fs.mkdirSync(fullCdbDirPath, { recursive: true });
 
-    await compileCommandsPerPlatform.writeAll(cwd, cdbFileDir, cdbFilename);
+  await compileCommandsPerPlatform.writeAll(cwd, cdbFileDir, cdbFilename);
 
-    tuiManager?.addStdout(
-      'Finished generating compile_commands.json for ' +
-        compileCommandsPerPlatform.size +
-        ' platforms in ' +
-        (Date.now() - startTime) +
-        'ms.',
-    );
-  } else {
-    tuiManager?.addStdout('No compile commands generated.');
-  }
+  tuiManager?.addStdout(
+    'Finished generating compile_commands.json for ' +
+      compileCommandsPerPlatform.size +
+      ' platforms in ' +
+      (Date.now() - startTime) +
+      'ms.',
+  );
 }
 
 export function deleteFilesInSubDir(
@@ -723,9 +718,6 @@ export async function parseBazelBuildCommand(
     // More robust parsing might be needed for complex target patterns.
     if (part.startsWith('//') || part.startsWith(':') || part.startsWith('@')) {
       targets.push(part);
-    } else if (part == '--') {
-      // Discard everything after the `--` separator.
-      break;
     } else {
       // Anything else is considered a potential argument for canonicalization
       potentialArgs.push(part);

@@ -182,7 +182,8 @@ def create_device_serial_or_socket_connection(
     # Append compiled log.proto library to avoid include errors when
     # manually provided, and shadowing errors due to ordering when the
     # default global search path is used.
-    compiled_protos.append(log_pb2)
+    if rpc_logging:
+        compiled_protos.append(log_pb2)
     compiled_protos.append(unit_test_pb2)
     protos.extend(compiled_protos)
     protos.append(metric_service_pb2)

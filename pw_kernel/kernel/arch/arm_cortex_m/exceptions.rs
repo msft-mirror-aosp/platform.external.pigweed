@@ -18,8 +18,6 @@ pub(crate) use arm_cortex_m_macro::kernel_only_exception as exception;
 #[cfg(feature = "user_space")]
 pub(crate) use arm_cortex_m_macro::user_space_exception as exception;
 
-use core::ptr::with_exposed_provenance;
-use pw_cast::{CastFrom as _, CastInto as _};
 use pw_log::info;
 use regs::*;
 
@@ -232,18 +230,14 @@ impl KernelExceptionFrame {
             self.psp as u32, self.control.0 as u32, self.return_address as u32,
         );
 
-        let user_frame = if self.return_address & u32::cast_from(ExcReturn::SP_SEL) == 0 {
+        let user_frame = if self.return_address & (ExcReturn::SP_SEL as u32) == 0 {
             // If we came from the Main stack, the user frame is directly above
             // the kernel frame on the stack.
-            unsafe {
-                (&raw const *self)
-                    .byte_add(size_of::<Self>())
-                    .cast::<ExceptionFrame>()
-            }
+            unsafe { (&raw const *self).byte_add(size_of::<Self>()) as *const ExceptionFrame }
         } else {
             // If we came from the Thread stack, the user frame is pointed to by
             // the psp field of the kernel frame.
-            with_exposed_provenance::<ExceptionFrame>(self.psp.cast_into())
+            self.psp as *const ExceptionFrame
         };
 
         unsafe { &*user_frame }.dump();
@@ -253,7 +247,7 @@ impl KernelExceptionFrame {
 #[exception(exception = "HardFault")]
 #[no_mangle]
 extern "C" fn pw_kernel_hard_fault(frame: *mut KernelExceptionFrame) -> *mut KernelExceptionFrame {
-    let hfsr = with_exposed_provenance::<u32>(0xE000ED2C);
+    let hfsr = 0xE000ED2C as *const u32;
     info!("HardFault (HFSR: {:08x})", unsafe { hfsr.read_volatile() }
         as u32);
 
@@ -287,7 +281,7 @@ extern "C" fn pw_kernel_non_maskable_int(
 extern "C" fn pw_kernel_memory_management(
     frame: *mut KernelExceptionFrame,
 ) -> *mut KernelExceptionFrame {
-    let mmfar = with_exposed_provenance::<u32>(0xE000ED34);
+    let mmfar = 0xE000ED34 as *const u32;
     info!(
         "MemoryManagement exception at {:08x}",
         unsafe { mmfar.read_volatile() } as u32
@@ -301,7 +295,7 @@ extern "C" fn pw_kernel_memory_management(
 #[exception(exception = "BusFault")]
 #[no_mangle]
 extern "C" fn pw_kernel_bus_fault(frame: *mut KernelExceptionFrame) -> *mut KernelExceptionFrame {
-    let bfar = with_exposed_provenance::<u32>(0xE000ED38);
+    let bfar = 0xE000ED38 as *const u32;
     info!(
         "BusFault exception at {:08x}",
         unsafe { bfar.read_volatile() } as u32

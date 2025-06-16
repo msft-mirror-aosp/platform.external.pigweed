@@ -17,14 +17,13 @@
 #include <optional>
 
 #include "pw_containers/intrusive_forward_list.h"
-#include "pw_multibuf/config.h"
-#include "pw_multibuf/multibuf_v1.h"
+#include "pw_multibuf/multibuf.h"
 #include "pw_result/result.h"
 #include "pw_sync/mutex.h"
 
 namespace pw::multibuf {
 
-enum class PW_MULTIBUF_DEPRECATED ContiguityRequirement {
+enum class ContiguityRequirement {
   kAllowDiscontiguous,
   kNeedsContiguous,
 };
@@ -52,7 +51,7 @@ inline constexpr ContiguityRequirement kNeedsContiguous =
 /// shared-memory regions.
 ///
 /// NOTE: ``MultiBufAllocator``s *must* outlive any futures created from them.
-class PW_MULTIBUF_DEPRECATED MultiBufAllocator {
+class MultiBufAllocator {
  public:
   MultiBufAllocator() = default;
 

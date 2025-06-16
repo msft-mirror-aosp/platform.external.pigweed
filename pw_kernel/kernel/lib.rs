@@ -28,7 +28,7 @@ mod syscall;
 mod target;
 mod timer;
 
-pub use arch::{Arch, ArchInterface, MemoryRegion, MemoryRegionType};
+use arch::{Arch, ArchInterface};
 use kernel_config::{KernelConfig, KernelConfigInterface};
 use scheduler::SCHEDULER_STATE;
 pub use scheduler::{
@@ -56,7 +56,6 @@ pub struct ThreadBuffer {
 }
 
 impl ThreadBuffer {
-    #[must_use]
     pub const fn new() -> Self {
         ThreadBuffer {
             buffer: [0; size_of::<Thread>()],
@@ -70,9 +69,9 @@ impl ThreadBuffer {
     pub fn alloc_thread(&mut self, name: &'static str) -> ForeignBox<Thread> {
         pw_assert::eq!(
             self.buffer.as_ptr().align_offset(align_of::<Thread>()) as usize,
-            0 as usize,
+            0 as usize
         );
-        let thread_ptr = self.buffer.as_mut_ptr().cast::<Thread>();
+        let thread_ptr = self.buffer.as_mut_ptr() as *mut Thread;
         unsafe {
             thread_ptr.write(Thread::new(name));
             ForeignBox::new_from_ptr(&mut *thread_ptr)
@@ -94,17 +93,12 @@ pub struct StaticProcess {
 
 #[allow(dead_code)]
 impl StaticProcess {
-    #[must_use]
-    pub const fn new(
-        name: &'static str,
-        memory_config: <Arch as ArchInterface>::MemoryConfig,
-    ) -> Self {
+    pub const fn new(name: &'static str) -> Self {
         Self {
-            process_cell: UnsafeCell::new(Process::new(name, memory_config)),
+            process_cell: UnsafeCell::new(Process::new(name)),
         }
     }
 
-    #[must_use]
     pub fn get(&self) -> *mut Process {
         self.process_cell.get()
     }
@@ -113,17 +107,10 @@ impl StaticProcess {
 unsafe impl Sync for StaticProcess {}
 unsafe impl Send for StaticProcess {}
 
-// Module re-exporting modules into a scope that can be referenced by macros
-// in this crate.
-#[doc(hidden)]
-pub mod macro_exports {
-    pub use pw_assert;
-}
-
 #[cfg(feature = "user_space")]
 #[macro_export]
 macro_rules! init_non_priv_process {
-    ($name:literal, $memory_config:expr) => {{
+    ($name:literal) => {{
         use kernel::StaticProcess;
         use pw_log::info;
         info!(
@@ -131,9 +118,9 @@ macro_rules! init_non_priv_process {
             $name as &'static str
         );
 
-        static PROCESS: StaticProcess = StaticProcess::new($name, $memory_config);
-        unsafe { (*PROCESS.get()).register() };
-        &PROCESS
+        static process: StaticProcess = StaticProcess::new($name);
+        unsafe { (*process.get()).register() };
+        &process
     }};
 }
 
@@ -172,7 +159,7 @@ macro_rules! init_thread {
 #[cfg(feature = "user_space")]
 #[macro_export]
 macro_rules! init_non_priv_thread {
-    ($name:literal, $process:expr, $entry:expr, $initial_sp:expr, $kernel_stack_size:expr) => {{
+    ($name:literal, $process:expr, $entry:expr, $stack_size:expr) => {{
         use pw_log::info;
         info!(
             "allocating non-privileged thread: {}, entry {:#x}",
@@ -193,26 +180,27 @@ macro_rules! init_non_priv_thread {
             $name as &'static str
         );
         unsafe {
-            if let Err(e) = thread.initialize_non_priv_thread(
+            thread.initialize_non_priv_thread(
                 {
-                    static mut STACK_STORAGE: $crate::StackStorage<{ $kernel_stack_size }> =
+                    static mut STACK_STORAGE: $crate::StackStorage<{ $stack_size }> =
                         $crate::StackStorageExt::ZEROED;
                     #[allow(static_mut_refs)]
                     unsafe {
                         Stack::from_slice(&STACK_STORAGE)
                     }
                 },
-                $initial_sp,
+                {
+                    static mut STACK_STORAGE: $crate::StackStorage<{ $stack_size }> =
+                        $crate::StackStorageExt::ZEROED;
+                    #[allow(static_mut_refs)]
+                    unsafe {
+                        Stack::from_slice(&STACK_STORAGE)
+                    }
+                },
                 $process.get(),
                 $entry,
                 0,
-            ) {
-                $crate::macro_exports::pw_assert::panic!(
-                    "Error initializing thread: {}: {}",
-                    $name as &'static str,
-                    e as u32
-                );
-            }
+            );
         }
 
         thread

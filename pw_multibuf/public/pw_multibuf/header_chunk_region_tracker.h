@@ -20,7 +20,6 @@
 #include "pw_allocator/allocator.h"
 #include "pw_bytes/span.h"
 #include "pw_multibuf/chunk.h"
-#include "pw_multibuf/config.h"
 
 namespace pw::multibuf {
 
@@ -29,8 +28,7 @@ namespace pw::multibuf {
 ///
 /// This is useful when testing and when there is no need for asynchronous
 /// allocation.
-class PW_MULTIBUF_DEPRECATED HeaderChunkRegionTracker final
-    : public ChunkRegionTracker {
+class HeaderChunkRegionTracker final : public ChunkRegionTracker {
  public:
   /// Allocates a new ``Chunk`` region of ``size`` bytes  in ``alloc``.
   ///

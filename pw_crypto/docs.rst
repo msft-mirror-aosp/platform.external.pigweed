@@ -123,53 +123,6 @@ AES
        // Handle errors.
    }
 
-----
-ECDH
-----
-1. Generating a keypair and computing a shared symmetric key.
-
-.. warning::
-   Ensure that the backend is initialized and configured correctly with a
-   cryptographically secure pseudo-random number generator (CSPRNG). The details
-   for doing this are specific to each backend.
-
-.. code-block:: cpp
-
-   #include "pw_crypto/ecdh.h"
-
-   // Import the public key from the other party.
-   PW_TRY_ASSIGN(
-      auto public_key,
-      pw::crypto::ecdh::P256PublicKey::Import(other_x, other_y, endian));
-   PW_TRY_ASSIGN(auto keypair,
-                 pw::crypto::ecdh::P256Keypair::Generate());
-
-   std::byte shared_key[32];
-   if (!keypair.ComputeDiffieHellman(public_key, shared_key)) {
-      // handle errors.
-   }
-
-
-2. Import a pre-existing keypair (for testing purposes) and computing a
-   shared symmetric key.
-
-.. code-block:: cpp
-
-   #include "pw_crypto/ecdh.h"
-
-   // Import the public key from the other party.
-   PW_TRY_ASSIGN(
-      auto public_key,
-      pw::crypto::ecdh::P256PublicKey::Import(other_x, other_y, endian));
-   PW_TRY_ASSIGN(auto keypair,
-      pw::crypto::ecdh::P256Keypair::ImportForTesting(
-         private_key, x, y, endian));
-
-   std::byte shared_key[32];
-   if (!keypair.ComputeDiffieHellman(public_key, shared_key)) {
-      // handle errors.
-   }
-
 -------------
 Configuration
 -------------
@@ -199,7 +152,6 @@ configured. If using GN, do,
        pw_crypto_SHA256_BACKEND="//pw_crypto:sha256_mbedtls_v3"
        pw_crypto_ECDSA_BACKEND="//pw_crypto:ecdsa_mbedtls_v3"
        pw_crypto_AES_BACKEND="//pw_crypto:aes_mbedtls_v3"
-       pw_crypto_ECDH_BACKEND="//pw_crypto:ecdh_mbedtls_v3"
    '
 
    ninja -C out
@@ -216,7 +168,6 @@ and select appropriate backends by adding them to your project's `platform
         "@pigweed//pw_crypto:sha256_backend=@pigweed//pw_crypto:sha256_mbedtls_backend",
         "@pigweed//pw_crypto:ecdsa_backend=@pigweed//pw_crypto:ecdsa_mbedtls_backend",
         "@pigweed//pw_crypto:aes_backend=@pigweed//pw_crypto:aes_mbedtls_backend",
-        "@pigweed//pw_crypto:ecdh_backend=@pigweed//pw_crypto:ecdh_mbedtls_backend",
         # ... other flags
       ],
    )
@@ -249,51 +200,6 @@ a code size of ~12KiB.
    #define MBEDTLS_ECP_NO_INTERNAL_RNG
    #define MBEDTLS_ECP_DP_SECP256R1_ENABLED
 
-If using ``pw::crypto::ecdh``, a CSPRNG must be set to provide
-cryptographically-secure randomness when generating keypairs. To do this,
-provide an instance of ``pw::crypto::ecdh::backend::Csprng`` to
-``pw::crypto::ecdh::backend::SetCsprng()``. Mbed-TLS MUST have been configured
-with an entropy pool that has collected sufficient (>128 bits estimated) entropy
-with one or more calls to
-
-.. code-block:: cpp
-
-   mbed_entropy_add_source(&entropy, ...)
-
-Then the following implementation can be used to provide a CTR DRBG as the
-CSPRNG for ECDH:
-
-.. code-block:: cpp
-
-   using MbedtlsCtrDrbg =
-      ::pw::crypto::ecdh::backend::Wrapper<mbedtls_ctr_drbg_context,
-                                           mbedtls_ctr_drbg_init,
-                                           mbedtls_ctr_drbg_free>;
-   class MbedtlsCsprng final : public ::pw::crypto::ecdh::backend::Csprng {
-    public:
-      MbedtlsCsprng(mbedtls_entropy_context* entropy,
-                    std::string_view personalization_string) {
-         PW_CHECK_INT_EQ(0,
-                         mbedtls_ctr_drbg_seed(ctr_drbg_.Get(),
-                                               mbedtls_entropy_func,
-                                               &entropy,
-                                               personalization_string.data(),
-                                               personalization_string.size()));
-      }
-
-      GenerateResult Generate(ByteSpan out) override {
-         if (mbedtls_ctr_drbg_random(ctr_drbg_.Get(),
-                                     reinterpret_cast<unsigned char*>(out.data()),
-                                    out.size()) != 0) {
-            return GenerateResult::kFailure;
-         }
-         return GenerateResult::kSuccess;
-      }
-
-    private:
-      MbedtlsCtrDrbg ctr_drbg_;
-   };
-
 .. _module-pw_crypto-boringssl:
 
 BoringSSL
@@ -316,7 +222,6 @@ configured. To do that:
    gn gen out --args='
        dir_pw_third_party_boringssl=getenv("PW_PACKAGE_ROOT")+"/boringssl"
        pw_crypto_AES_BACKEND="//pw_crypto:aes_boringssl"
-       pw_crypto_ECDH_BACKEND="//pw_crypto:ecdh_boringssl"
    '
 
    ninja -C out

@@ -16,8 +16,6 @@ use core::arch::asm;
 use core::mem::{self, MaybeUninit};
 
 use cortex_m::peripheral::SCB;
-use pw_cast::CastInto as _;
-use pw_status::{Error, Result};
 
 // use pw_log::info;
 
@@ -25,10 +23,9 @@ use crate::arch::arm_cortex_m::exceptions::{
     exception, ExcReturn, ExcReturnFrameType, ExcReturnMode, ExcReturnRegisterStacking,
     ExcReturnStack, ExceptionFrame, KernelExceptionFrame, RetPsrVal,
 };
-use crate::arch::arm_cortex_m::protection::MemoryConfig;
 use crate::arch::arm_cortex_m::regs::msr::{ControlVal, Spsel};
 use crate::arch::arm_cortex_m::{in_interrupt_handler, Arch};
-use crate::arch::{ArchInterface, MemoryConfig as _, MemoryRegionType};
+use crate::arch::ArchInterface;
 use crate::scheduler::{self, thread::Stack, SchedulerState, SCHEDULER_STATE};
 use crate::sync::spinlock::SpinLockGuard;
 
@@ -49,7 +46,6 @@ unsafe fn set_active_thread(t: *mut ArchThreadState) {
 
 pub struct ArchThreadState {
     frame: *mut KernelExceptionFrame,
-    memory_config: *const MemoryConfig,
 }
 
 impl ArchThreadState {
@@ -69,15 +65,15 @@ impl ArchThreadState {
         // first two argument slots.
         unsafe {
             (*user_frame) = mem::zeroed();
-            (*user_frame).r0 = r0.cast_into();
-            (*user_frame).r1 = r1.cast_into();
-            (*user_frame).r2 = r2.cast_into();
-            (*user_frame).pc = initial_pc.cast_into();
+            (*user_frame).r0 = r0 as u32;
+            (*user_frame).r1 = r1 as u32;
+            (*user_frame).r2 = r2 as u32;
+            (*user_frame).pc = initial_pc as u32;
             (*user_frame).psr = RetPsrVal(0).with_t(true);
             (*kernel_frame) = mem::zeroed();
             (*kernel_frame).psp = psp;
             (*kernel_frame).control = control;
-            (*kernel_frame).return_address = return_address.bits().cast_into();
+            (*kernel_frame).return_address = return_address.bits() as u32;
         }
         self.frame = kernel_frame;
     }
@@ -87,7 +83,6 @@ impl super::super::ThreadState for ArchThreadState {
     fn new() -> Self {
         Self {
             frame: core::ptr::null_mut(),
-            memory_config: core::ptr::null(),
         }
     }
 
@@ -144,28 +139,27 @@ impl super::super::ThreadState for ArchThreadState {
     fn initialize_kernel_frame(
         &mut self,
         kernel_stack: Stack,
-        memory_config: *const MemoryConfig,
         initial_function: extern "C" fn(usize, usize),
         args: (usize, usize),
     ) {
-        self.memory_config = memory_config;
-        let user_frame: *mut ExceptionFrame =
-            Stack::aligned_stack_allocation_mut(unsafe { kernel_stack.end_mut() }, STACK_ALIGNMENT);
+        let user_frame = Stack::aligned_stack_allocation(
+            kernel_stack.end(),
+            size_of::<ExceptionFrame>(),
+            STACK_ALIGNMENT,
+        );
 
-        let kernel_frame: *mut KernelExceptionFrame = Stack::aligned_stack_allocation_mut(
-            user_frame.cast(),
+        let kernel_frame = Stack::aligned_stack_allocation(
+            user_frame,
+            size_of::<KernelExceptionFrame>(),
             // For kernel threads, kernel_frame needs to come immediately after
             // the user stack regardless of alignment because that is what the
             // exception wrapper assembly expects.
             size_of::<usize>(),
         );
 
-        // TODO: This is unsound: `user_frame` and `kernel_frame` need to be
-        // `*mut` to preserve the ability to mutate their referents in the Rust
-        // memory model.
         self.initialize_frame(
-            user_frame,
-            kernel_frame.cast::<KernelExceptionFrame>(),
+            user_frame as *mut ExceptionFrame,
+            kernel_frame as *mut KernelExceptionFrame,
             ControlVal::default()
                 .with_npriv(false)
                 .with_spsel(Spsel::Main),
@@ -185,47 +179,38 @@ impl super::super::ThreadState for ArchThreadState {
     fn initialize_user_frame(
         &mut self,
         kernel_stack: Stack,
-        memory_config: *const MemoryConfig,
-        initial_sp: usize,
-        entry_point: usize,
-        arg: usize,
-    ) -> Result<()> {
-        self.memory_config = memory_config;
-
-        // In order to use an exception return to switch to user space, an
-        // exception stack frame needs to be written to the user stack.  This
-        // is first aligned then checked to make sure the process, through the
-        // associated `MemoryConfig`, has access to the underlying memory.
-        let user_frame: *mut ExceptionFrame = Stack::aligned_stack_allocation_mut(
-            core::ptr::with_exposed_provenance_mut::<MaybeUninit<u8>>(initial_sp),
+        initial_sp: *mut MaybeUninit<u8>,
+        initial_function: extern "C" fn(usize, usize),
+        args: (usize, usize),
+    ) {
+        let user_frame = Stack::aligned_stack_allocation(
+            initial_sp,
+            size_of::<ExceptionFrame>(),
             STACK_ALIGNMENT,
         );
 
-        if !unsafe { &*memory_config }.has_access(MemoryRegionType::ReadWriteData, user_frame) {
-            return Err(Error::PermissionDenied);
-        }
-
-        let kernel_frame: *mut KernelExceptionFrame =
-            Stack::aligned_stack_allocation_mut(unsafe { kernel_stack.end_mut() }, STACK_ALIGNMENT);
+        let kernel_frame = Stack::aligned_stack_allocation(
+            kernel_stack.end(),
+            size_of::<KernelExceptionFrame>(),
+            STACK_ALIGNMENT,
+        );
 
         self.initialize_frame(
-            user_frame,
-            kernel_frame,
+            user_frame as *mut ExceptionFrame,
+            kernel_frame as *mut KernelExceptionFrame,
             ControlVal::default()
                 .with_npriv(true)
                 .with_spsel(Spsel::Process),
-            user_frame.expose_provenance().cast_into(),
+            user_frame as u32,
             ExcReturn::new(
                 ExcReturnStack::ThreadSecure,
                 ExcReturnRegisterStacking::Default,
                 ExcReturnFrameType::Standard,
                 ExcReturnMode::ThreadSecure,
             ),
-            entry_point,
-            (arg, 0x0, 0x0),
+            initial_function as usize,
+            (args.0, args.1, 0x0),
         );
-
-        Ok(())
     }
 }
 
@@ -273,6 +258,7 @@ extern "C" fn pendsv_swap_sp(frame: *mut KernelExceptionFrame) -> *mut KernelExc
     //     "inside pendsv: currently active thread {:08x}",
     //     active_thread as usize
     // );
+    // info!("old frame {:08x}: pc {:08x}", frame as usize, (*frame).pc);
 
     pw_assert::assert!(active_thread != core::ptr::null_mut());
 
@@ -284,22 +270,12 @@ extern "C" fn pendsv_swap_sp(frame: *mut KernelExceptionFrame) -> *mut KernelExc
 
     // Return the arch frame for the current thread
     let mut sched_state = SCHEDULER_STATE.lock();
-    let new_thread = unsafe { sched_state.get_current_arch_thread_state() };
+    let newframe = unsafe { (*sched_state.get_current_arch_thread_state()).frame };
     // info!(
     //     "new frame {:08x}: pc {:08x}",
     //     newframe as usize,
     //     (*newframe).pc
     // );
-    //   pw_log::info!("context switch {:08x}", new_thread as usize);
 
-    // Memory context switch overhead is avoided for threads in the same
-    // memory config space.
-    #[cfg(feature = "user_space")]
-    unsafe {
-        if (*new_thread).memory_config != (*active_thread).memory_config {
-            (*(*new_thread).memory_config).write();
-        }
-    }
-
-    unsafe { (*new_thread).frame }
+    newframe
 }

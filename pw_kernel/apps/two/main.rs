@@ -19,17 +19,8 @@ use userspace::entry;
 
 #[entry]
 fn entry() -> ! {
-    for i in 0..4 {
-        let _ = SysCall::debug_putc(u32::from('B') + i);
-    }
-
     loop {
-        // Access memory out side of our address space to demonstrate that
-        // memory protection is functional.
-        unsafe {
-            let bad = core::ptr::with_exposed_provenance::<usize>(0x80100000_usize);
-            let _ = bad.read_volatile();
-        }
+        let _ = SysCall::debug_putc('b' as u32);
     }
 }
 

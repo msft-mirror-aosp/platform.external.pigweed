@@ -15,7 +15,6 @@
 
 #include <array>
 #include <cstddef>
-#include <limits>
 #include <new>
 #include <type_traits>
 
@@ -28,28 +27,14 @@ template <typename T>
 using EnableIfIterable =
     std::enable_if_t<true, decltype(T().begin(), T().end())>;
 
-template <typename Base,
-          typename ValueType,
-          size_t kCapacity,
-          bool kIsTriviallyDestructible>
-class RawStorageImpl;
-
-/// Storage for a queue's data and that ensures entries are `clear`'d before
-/// the storage is removed.
-template <typename Base, typename ValueType, size_t kCapacity>
-using RawStorage = RawStorageImpl<Base,
-                                  ValueType,
-                                  kCapacity,
-                                  std::is_trivially_destructible_v<ValueType>>;
-
 // Container similar to std::array that provides an array of Elements which are
 // stored as uninitialized memory blocks aligned correctly for the type.
 //
 // The caller is responsible for constructing, accessing, and destructing
 // elements. In addition, the caller is responsible for element access and all
 // associated bounds checking.
-template <typename Base, typename ValueType, size_t kCapacity>
-class BasicRawStorage : public Base {
+template <typename ValueType, size_t kCapacity>
+class RawStorage {
  public:
   using value_type = ValueType;
   using size_type = size_t;
@@ -59,16 +44,14 @@ class BasicRawStorage : public Base {
   using pointer = value_type*;
   using const_pointer = const value_type*;
 
-  static_assert(kCapacity <= std::numeric_limits<size_type>::max());
-
   // Construct
-  constexpr BasicRawStorage() noexcept : Base(kCapacity), null_bits_() {}
+  constexpr RawStorage() noexcept : null_bits_() {}
 
   // Do not permit copying and move for now.
-  BasicRawStorage(const BasicRawStorage&) = delete;
-  BasicRawStorage& operator=(const BasicRawStorage&) = delete;
-  BasicRawStorage(BasicRawStorage&&) = delete;
-  BasicRawStorage&& operator=(BasicRawStorage&&) = delete;
+  RawStorage(const RawStorage&) = delete;
+  RawStorage& operator=(const RawStorage&) = delete;
+  RawStorage(RawStorage&&) = delete;
+  RawStorage&& operator=(RawStorage&&) = delete;
 
   pointer data() noexcept {
     return std::launder(reinterpret_cast<pointer>(&bytes_));
@@ -77,6 +60,7 @@ class BasicRawStorage : public Base {
     return std::launder(reinterpret_cast<const_pointer>(&bytes_));
   }
 
+  constexpr size_type size() const noexcept { return max_size(); }
   constexpr size_type max_size() const noexcept { return kCapacity; }
 
  private:
@@ -99,24 +83,6 @@ class BasicRawStorage : public Base {
     // constructor.
     Empty null_bits_;
   };
-};
-
-/// Specialization of `BasicRawStorage` for trivially-destructible `ValueType`.
-///
-/// This specialization ensures that no destructor is generated.
-template <typename Base, typename ValueType, size_t kCapacity>
-class RawStorageImpl<Base, ValueType, kCapacity, true>
-    : public BasicRawStorage<Base, ValueType, kCapacity> {};
-
-/// Specialization of `BasicRawStorage` for non-trivially-destructible
-/// `ValueType`.
-///
-/// This specialization ensures that the queue is cleared during destruction.
-template <typename Base, typename ValueType, size_t kCapacity>
-class RawStorageImpl<Base, ValueType, kCapacity, false>
-    : public BasicRawStorage<Base, ValueType, kCapacity> {
- public:
-  ~RawStorageImpl() { Base::clear(); }
 };
 
 }  // namespace pw::containers::internal

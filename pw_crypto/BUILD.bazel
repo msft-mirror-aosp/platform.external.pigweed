@@ -220,67 +220,6 @@ pw_cc_test(
     ],
 )
 
-pw_facade(
-    name = "ecdh",
-    hdrs = ["public/pw_crypto/ecdh.h"],
-    backend = ":ecdh_backend",
-    features = ["-conversion_warnings"],
-    strip_include_prefix = "public",
-    deps = [
-        "//pw_bytes",
-        "//pw_result",
-        "//pw_status",
-    ],
-)
-
-label_flag(
-    name = "ecdh_backend",
-    build_setting_default = ":unspecified_ecdh_backend",
-)
-
-host_backend_alias(
-    name = "unspecified_ecdh_backend",
-    backend = ":ecdh_mbedtls",
-)
-
-pw_cc_test(
-    name = "ecdh_test",
-    srcs = ["ecdh_test.cc"],
-    deps = [":ecdh"],
-)
-
-cc_library(
-    name = "ecdh_boringssl",
-    srcs = ["ecdh_boringssl.cc"],
-    hdrs = [
-        "public_overrides/boringssl/pw_crypto/ecdh_backend.h",
-    ],
-    implementation_deps = ["//pw_assert:check"],
-    strip_include_prefix = "public_overrides/boringssl",
-    target_compatible_with = incompatible_with_mcu() + select({
-        "@platforms//os:windows": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":ecdh.facade",
-        "@boringssl//:crypto",
-    ],
-)
-
-cc_library(
-    name = "ecdh_mbedtls",
-    srcs = ["ecdh_mbedtls.cc"],
-    hdrs = [
-        "public_overrides/mbedtls/pw_crypto/ecdh_backend.h",
-    ],
-    implementation_deps = ["//pw_assert:check"],
-    strip_include_prefix = "public_overrides/mbedtls",
-    deps = [
-        ":ecdh.facade",
-        "@mbedtls",
-    ],
-)
-
 filegroup(
     name = "doxygen",
     srcs = [

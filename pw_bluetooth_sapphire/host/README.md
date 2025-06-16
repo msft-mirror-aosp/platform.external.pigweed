@@ -225,11 +225,6 @@ adapter:
                 peer_id
                 duration_s
                 @time
-    low_energy_advertiser:
-        advertising_handle_map:
-            advertising_set_0x0:
-                handle
-                address
 lease_provider:
     token
     leases:

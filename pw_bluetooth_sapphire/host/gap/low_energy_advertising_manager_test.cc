@@ -49,7 +49,6 @@ const DeviceAddress kRandomAddress(DeviceAddress::Type::kLERandom,
 void NopConnectCallback(AdvertisementId, std::unique_ptr<hci::Connection>) {}
 
 struct AdvertisementStatus {
-  DeviceAddress address;
   AdvertisingData data;
   AdvertisingData scan_rsp;
   bool anonymous;
@@ -64,9 +63,9 @@ struct AdvertisementStatus {
 //  - Actually just accepts all ads and stores them in ad_store
 class FakeLowEnergyAdvertiser final : public hci::LowEnergyAdvertiser {
  public:
-  FakeLowEnergyAdvertiser(const hci::Transport::WeakPtr& hci,
-                          std::unordered_map<hci_spec::AdvertisingHandle,
-                                             AdvertisementStatus>* ad_store)
+  FakeLowEnergyAdvertiser(
+      const hci::Transport::WeakPtr& hci,
+      std::unordered_map<DeviceAddress, AdvertisementStatus>* ad_store)
       : hci::LowEnergyAdvertiser(hci, kDefaultMaxAdSize),
         ads_(ad_store),
         hci_(hci) {
@@ -84,10 +83,9 @@ class FakeLowEnergyAdvertiser final : public hci::LowEnergyAdvertiser {
                         const AdvertisingData& scan_rsp,
                         const AdvertisingOptions& options,
                         ConnectionCallback connect_callback,
-                        hci::ResultFunction<hci_spec::AdvertisingHandle>
-                            result_callback) override {
+                        hci::ResultFunction<> result_callback) override {
     if (pending_error_.is_error()) {
-      result_callback(fit::error(pending_error_.error_value()));
+      result_callback(pending_error_);
       pending_error_ = fit::ok();
       return;
     }
@@ -95,26 +93,24 @@ class FakeLowEnergyAdvertiser final : public hci::LowEnergyAdvertiser {
     fit::result<HostError> result =
         CanStartAdvertising(address, data, scan_rsp, options, connect_callback);
     if (result.is_error()) {
-      result_callback(fit::error(result.error_value()));
+      result_callback(ToResult(result.error_value()));
       return;
     }
 
     AdvertisementStatus new_status;
     data.Copy(&new_status.data);
     scan_rsp.Copy(&new_status.scan_rsp);
-    new_status.address = address;
     new_status.connect_cb = std::move(connect_callback);
     new_status.interval_min = options.interval.min();
     new_status.interval_max = options.interval.max();
     new_status.anonymous = options.anonymous;
     new_status.extended_pdu = options.extended_pdu;
-    hci_spec::AdvertisingHandle handle = next_handle_++;
-    ads_->emplace(handle, std::move(new_status));
-    result_callback(fit::ok(handle));
+    ads_->emplace(address, std::move(new_status));
+    result_callback(fit::ok());
   }
 
-  void StopAdvertising(hci_spec::AdvertisingHandle handle) override {
-    ads_->erase(handle);
+  void StopAdvertising(const DeviceAddress& address, bool) override {
+    ads_->erase(address);
   }
 
   void OnIncomingConnection(hci_spec::ConnectionHandle handle,
@@ -128,7 +124,7 @@ class FakeLowEnergyAdvertiser final : public hci::LowEnergyAdvertiser {
     const auto& cb = ads_->begin()->second.connect_cb;
     if (cb) {
       cb(std::make_unique<hci::testing::FakeLowEnergyConnection>(
-          handle, ads_->begin()->second.address, peer_address, role, hci_));
+          handle, ads_->begin()->first, peer_address, role, hci_));
     }
   }
 
@@ -140,30 +136,33 @@ class FakeLowEnergyAdvertiser final : public hci::LowEnergyAdvertiser {
 
  private:
   hci::CommandPacket BuildEnablePacket(
-      hci_spec::AdvertisingHandle,
-      pw::bluetooth::emboss::GenericEnableParam) const override {
+      const DeviceAddress&,
+      pw::bluetooth::emboss::GenericEnableParam,
+      bool) const override {
     return hci::CommandPacket::New<
         pwemb::LESetExtendedAdvertisingEnableDataWriter>(
         hci_spec::kLESetExtendedAdvertisingEnable);
   }
 
-  std::optional<hci::LowEnergyAdvertiser::SetAdvertisingParams>
-  BuildSetAdvertisingParams(const DeviceAddress&,
-                            const AdvertisingEventProperties&,
-                            pwemb::LEOwnAddressType,
-                            const hci::AdvertisingIntervalRange&) override {
+  std::optional<hci::CommandPacket> BuildSetAdvertisingParams(
+      const DeviceAddress&,
+      const AdvertisingEventProperties&,
+      pwemb::LEOwnAddressType,
+      const hci::AdvertisingIntervalRange&,
+      bool) override {
     return std::nullopt;
   }
 
   std::optional<hci::CommandPacket> BuildSetAdvertisingRandomAddr(
-      hci_spec::AdvertisingHandle) const override {
+      const DeviceAddress& /*address*/, bool /*extended_pdu*/) const override {
     return std::nullopt;
   }
 
   std::vector<hci::CommandPacket> BuildSetAdvertisingData(
-      hci_spec::AdvertisingHandle,
+      const DeviceAddress&,
       const AdvertisingData&,
-      AdvFlags) const override {
+      AdvFlags,
+      bool) const override {
     hci::CommandPacket packet =
         hci::CommandPacket::New<pwemb::LESetAdvertisingDataCommandWriter>(
             hci_spec::kLESetAdvertisingData);
@@ -173,14 +172,15 @@ class FakeLowEnergyAdvertiser final : public hci::LowEnergyAdvertiser {
     return packets;
   }
 
-  hci::CommandPacket BuildUnsetAdvertisingData(
-      hci_spec::AdvertisingHandle) const override {
+  hci::CommandPacket BuildUnsetAdvertisingData(const DeviceAddress&,
+                                               bool) const override {
     return hci::CommandPacket::New<pwemb::LESetAdvertisingDataCommandWriter>(
         hci_spec::kLESetAdvertisingData);
   }
 
-  std::vector<hci::CommandPacket> BuildSetScanResponse(
-      hci_spec::AdvertisingHandle, const AdvertisingData&) const override {
+  std::vector<hci::CommandPacket> BuildSetScanResponse(const DeviceAddress&,
+                                                       const AdvertisingData&,
+                                                       bool) const override {
     hci::CommandPacket packet =
         hci::CommandPacket::New<pwemb::LESetScanResponseDataCommandWriter>(
             hci_spec::kLESetScanResponseData);
@@ -190,22 +190,21 @@ class FakeLowEnergyAdvertiser final : public hci::LowEnergyAdvertiser {
     return packets;
   }
 
-  hci::CommandPacket BuildUnsetScanResponse(
-      hci_spec::AdvertisingHandle) const override {
+  hci::CommandPacket BuildUnsetScanResponse(const DeviceAddress&,
+                                            bool) const override {
     return hci::CommandPacket::New<pwemb::LESetScanResponseDataCommandWriter>(
         hci_spec::kLESetScanResponseData);
   }
 
-  hci::CommandPacket BuildRemoveAdvertisingSet(
-      hci_spec::AdvertisingHandle) const override {
+  hci::CommandPacket BuildRemoveAdvertisingSet(const DeviceAddress&,
+                                               bool) const override {
     return hci::CommandPacket::New<pwemb::LERemoveAdvertisingSetCommandWriter>(
         hci_spec::kLERemoveAdvertisingSet);
   }
 
-  std::unordered_map<hci_spec::AdvertisingHandle, AdvertisementStatus>* ads_;
+  std::unordered_map<DeviceAddress, AdvertisementStatus>* ads_;
   hci::Result<> pending_error_ = fit::ok();
   hci::Transport::WeakPtr hci_;
-  hci_spec::AdvertisingHandle next_handle_ = 0;
 
   BT_DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(FakeLowEnergyAdvertiser);
 };
@@ -279,8 +278,7 @@ class LowEnergyAdvertisingManagerTest : public TestingBase {
   }
 
   LowEnergyAdvertisingManager* adv_mgr() const { return adv_mgr_.get(); }
-  const std::unordered_map<hci_spec::AdvertisingHandle, AdvertisementStatus>&
-  ad_store() {
+  const std::unordered_map<DeviceAddress, AdvertisementStatus>& ad_store() {
     return ad_store_;
   }
   AdvertisementId last_ad_id() const { return last_instance_.id(); }
@@ -309,8 +307,7 @@ class LowEnergyAdvertisingManagerTest : public TestingBase {
   // gap::LEAM always assigns the controller random address. Make this track
   // each instance by instance ID instead once the layering issues have been
   // fixed.
-  std::unordered_map<hci_spec::AdvertisingHandle, AdvertisementStatus>
-      ad_store_;
+  std::unordered_map<DeviceAddress, AdvertisementStatus> ad_store_;
   AdvertisementInstance last_instance_;
   std::optional<hci::Result<>> last_status_;
   std::unique_ptr<FakeLowEnergyAdvertiser> advertiser_;
@@ -340,7 +337,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, Success) {
   EXPECT_TRUE(adv_mgr()->advertising());
 
   // Verify that the advertiser uses the requested local address.
-  EXPECT_EQ(kRandomAddress, ad_store().begin()->second.address);
+  EXPECT_EQ(kRandomAddress, ad_store().begin()->first);
 }
 
 TEST_F(LowEnergyAdvertisingManagerTest, DataSize) {
@@ -640,7 +637,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, AdvertisePublicAddress) {
   EXPECT_TRUE(adv_mgr()->advertising());
 
   // Verify that the advertiser uses the requested local address.
-  EXPECT_EQ(kPublicAddress, ad_store().begin()->second.address);
+  EXPECT_EQ(kPublicAddress, ad_store().begin()->first);
 }
 
 TEST_F(LowEnergyAdvertisingManagerTest, AdvertiseRandomAddress) {
@@ -659,7 +656,7 @@ TEST_F(LowEnergyAdvertisingManagerTest, AdvertiseRandomAddress) {
   EXPECT_TRUE(adv_mgr()->advertising());
 
   // Verify that the advertiser uses the requested local address.
-  EXPECT_EQ(kRandomAddress, ad_store().begin()->second.address);
+  EXPECT_EQ(kRandomAddress, ad_store().begin()->first);
 }
 
 TEST_F(LowEnergyAdvertisingManagerTest, DestroyingInstanceStopsAdvertisement) {

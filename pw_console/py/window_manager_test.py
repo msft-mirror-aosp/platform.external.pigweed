@@ -130,8 +130,7 @@ def target_window_pane(console_app, window_manager, pane_index: int):
 
 
 def target_list_and_pane(window_manager, list_index, pane_index):
-    window_list = window_manager.window_lists[list_index]
-    pane = window_list.active_panes[pane_index]
+    pane = window_manager.window_lists[list_index].active_panes[pane_index]
     # If the pane is in focus it will be visible.
     pane.show_pane = True
     # Bypass prompt_toolkit has_focus()
@@ -160,23 +159,23 @@ class TestWindowManager(unittest.TestCase):
 
             # Move 2 windows to the right into their own splits
             target_list_and_pane(window_manager, 0, 0)
-            window_manager.move_pane_to_next_group()
+            window_manager.move_pane_right()
             target_list_and_pane(window_manager, 0, 0)
-            window_manager.move_pane_to_next_group()
+            window_manager.move_pane_right()
             target_list_and_pane(window_manager, 1, 0)
-            window_manager.move_pane_to_next_group()
+            window_manager.move_pane_right()
             # 3 splits, first split has 2 windows
             self.assertEqual([2, 1, 1], _window_pane_counts(window_manager))
 
             # Move the first window in the first split left
             target_list_and_pane(window_manager, 0, 0)
-            window_manager.move_pane_to_prev_group()
+            window_manager.move_pane_left()
             # 4 splits, each with their own window
             self.assertEqual([1, 1, 1, 1], _window_pane_counts(window_manager))
 
             # Move the first window to the right
             target_list_and_pane(window_manager, 0, 0)
-            window_manager.move_pane_to_next_group()
+            window_manager.move_pane_right()
             # 3 splits, first split has 2 windows
             self.assertEqual([2, 1, 1], _window_pane_counts(window_manager))
 
@@ -208,7 +207,7 @@ class TestWindowManager(unittest.TestCase):
             )
 
             # Move one pane to the right, creating a new window_list split.
-            window_manager.move_pane_to_next_group()
+            window_manager.move_pane_right()
 
             self.assertEqual(
                 _window_list_widths(window_manager),
@@ -221,11 +220,11 @@ class TestWindowManager(unittest.TestCase):
             # Move another pane to the right twice, creating a third
             # window_list split.
             target_list_and_pane(window_manager, 0, 0)
-            window_manager.move_pane_to_next_group()
+            window_manager.move_pane_right()
 
             # Above window pane is at a new location
             target_list_and_pane(window_manager, 1, 0)
-            window_manager.move_pane_to_next_group()
+            window_manager.move_pane_right()
 
             # Should have 3 splits now
             self.assertEqual(
@@ -299,7 +298,7 @@ class TestWindowManager(unittest.TestCase):
             # Target the middle split
             target_list_and_pane(window_manager, 1, 0)
             # Move the middle window pane left
-            window_manager.move_pane_to_prev_group()
+            window_manager.move_pane_left()
             # This is called on the next render pass
             window_manager.rebalance_window_list_sizes()
             # Middle split should be removed
@@ -521,162 +520,6 @@ class TestWindowManager(unittest.TestCase):
                 ],
             )
 
-    def test_window_pane_movement_with_tabs(self) -> None:
-        """Test window resizing."""
-        with create_app_session(output=FakeOutput()):
-            console_app = _create_console_app(logger_count=4)
-
-            window_manager = console_app.window_manager
-
-            # 5 panes, 4 for the loggers and 1 for the repl.
-            self.assertEqual(
-                len(window_manager.first_window_list().active_panes), 5
-            )
-
-            def wm_state() -> list[str]:
-                return repr(window_manager).split('\n')
-
-            # pylint: disable=line-too-long
-            self.assertEqual(
-                wm_state(),
-                [
-                    'WindowList 0: mode:DisplayMode.STACK focused_pane_index:None)',
-                    '  LogPane(pane_title="Log3", pane_subtitle="test_log3", visible=True)',
-                    '  LogPane(pane_title="Log2", pane_subtitle="test_log2", visible=True)',
-                    '  LogPane(pane_title="Log1", pane_subtitle="test_log1", visible=True)',
-                    '  LogPane(pane_title="Log0", pane_subtitle="test_log0", visible=True)',
-                    '  ReplPane(pane_title="Python Repl", visible=True)',
-                ],
-            )
-
-            # Switch to tabbed mode.
-            window_manager.window_lists[0].set_display_mode(DisplayMode.TABBED)
-            # WindowList 0 is now tabbed, focus_pane_index is 0, and only Log3
-            # should be visible.
-            self.assertEqual(
-                wm_state(),
-                [
-                    'WindowList 0: mode:DisplayMode.TABBED focused_pane_index:0)',
-                    '  LogPane(pane_title="Log3", pane_subtitle="test_log3", visible=True)',
-                    '  LogPane(pane_title="Log2", pane_subtitle="test_log2", visible=False)',
-                    '  LogPane(pane_title="Log1", pane_subtitle="test_log1", visible=False)',
-                    '  LogPane(pane_title="Log0", pane_subtitle="test_log0", visible=False)',
-                    '  ReplPane(pane_title="Python Repl", visible=False)',
-                ],
-            )
-
-            # Focus Log3
-            target_list_and_pane(window_manager, 0, 0)
-            window_manager.move_pane_to_prev_group()
-
-            # WindowList 0 should now be just Log3, rest of the windows in WindowList 1
-            self.assertEqual(
-                wm_state(),
-                [
-                    'WindowList 0: mode:DisplayMode.STACK focused_pane_index:None)',
-                    '  LogPane(pane_title="Log3", pane_subtitle="test_log3", visible=True)',
-                    'WindowList 1: mode:DisplayMode.TABBED focused_pane_index:0)',
-                    '  LogPane(pane_title="Log2", pane_subtitle="test_log2", visible=True)',
-                    '  LogPane(pane_title="Log1", pane_subtitle="test_log1", visible=False)',
-                    '  LogPane(pane_title="Log0", pane_subtitle="test_log0", visible=False)',
-                    '  ReplPane(pane_title="Python Repl", visible=False)',
-                ],
-            )
-            # Focus Log3 since moving it would now put that in focus
-            target_list_and_pane(window_manager, 0, 0)
-
-            # Switch list 0 to tabbed mode.
-            window_manager.window_lists[0].set_display_mode(DisplayMode.TABBED)
-
-            # WindowList 0 should now be TABBED with focus on 0
-            self.assertEqual(
-                wm_state(),
-                [
-                    'WindowList 0: mode:DisplayMode.TABBED focused_pane_index:0)',
-                    '  LogPane(pane_title="Log3", pane_subtitle="test_log3", visible=True)',
-                    'WindowList 1: mode:DisplayMode.TABBED focused_pane_index:0)',
-                    '  LogPane(pane_title="Log2", pane_subtitle="test_log2", visible=True)',
-                    '  LogPane(pane_title="Log1", pane_subtitle="test_log1", visible=False)',
-                    '  LogPane(pane_title="Log0", pane_subtitle="test_log0", visible=False)',
-                    '  ReplPane(pane_title="Python Repl", visible=False)',
-                ],
-            )
-
-            # Switch to Log1
-            window_manager.window_lists[1].switch_to_tab(1)
-
-            # WindowList 1 focused_pane_index should be 1 and only Log1 visible
-            self.assertEqual(
-                wm_state(),
-                [
-                    'WindowList 0: mode:DisplayMode.TABBED focused_pane_index:0)',
-                    '  LogPane(pane_title="Log3", pane_subtitle="test_log3", visible=True)',
-                    'WindowList 1: mode:DisplayMode.TABBED focused_pane_index:1)',
-                    '  LogPane(pane_title="Log2", pane_subtitle="test_log2", visible=False)',
-                    '  LogPane(pane_title="Log1", pane_subtitle="test_log1", visible=True)',
-                    '  LogPane(pane_title="Log0", pane_subtitle="test_log0", visible=False)',
-                    '  ReplPane(pane_title="Python Repl", visible=False)',
-                ],
-            )
-            # Focus Log1 since switch_to_tab would put that in focus.
-            target_list_and_pane(window_manager, 1, 1)
-
-            window_manager.move_pane_to_next_group()
-
-            # WindowList 2 should contain Log1, WindowList 1 should be focused on index 1.
-            self.assertEqual(
-                wm_state(),
-                [
-                    'WindowList 0: mode:DisplayMode.TABBED focused_pane_index:0)',
-                    '  LogPane(pane_title="Log3", pane_subtitle="test_log3", visible=True)',
-                    'WindowList 1: mode:DisplayMode.TABBED focused_pane_index:1)',
-                    '  LogPane(pane_title="Log2", pane_subtitle="test_log2", visible=False)',
-                    '  LogPane(pane_title="Log0", pane_subtitle="test_log0", visible=True)',
-                    '  ReplPane(pane_title="Python Repl", visible=False)',
-                    'WindowList 2: mode:DisplayMode.STACK focused_pane_index:None)',
-                    '  LogPane(pane_title="Log1", pane_subtitle="test_log1", visible=True)',
-                ],
-            )
-            # Focus Log1 since move_pane_to_next_group would put that in focus.
-            target_list_and_pane(window_manager, 2, 0)
-
-            # Switch to python repl tab.
-            window_manager.window_lists[1].switch_to_tab(2)
-            self.assertEqual(
-                wm_state(),
-                [
-                    'WindowList 0: mode:DisplayMode.TABBED focused_pane_index:0)',
-                    '  LogPane(pane_title="Log3", pane_subtitle="test_log3", visible=True)',
-                    'WindowList 1: mode:DisplayMode.TABBED focused_pane_index:2)',
-                    '  LogPane(pane_title="Log2", pane_subtitle="test_log2", visible=False)',
-                    '  LogPane(pane_title="Log0", pane_subtitle="test_log0", visible=False)',
-                    '  ReplPane(pane_title="Python Repl", visible=True)',
-                    'WindowList 2: mode:DisplayMode.STACK focused_pane_index:None)',
-                    '  LogPane(pane_title="Log1", pane_subtitle="test_log1", visible=True)',
-                ],
-            )
-            # Focus Python Repl since switch_to_tab would put that in focus.
-            target_list_and_pane(window_manager, 1, 2)
-
-            window_manager.move_pane_to_next_group()
-
-            # WindowList 1 now only has 2 tabs with #0 in focus, Python Repl is
-            # in WindowList 2
-            self.assertEqual(
-                wm_state(),
-                [
-                    'WindowList 0: mode:DisplayMode.TABBED focused_pane_index:0)',
-                    '  LogPane(pane_title="Log3", pane_subtitle="test_log3", visible=True)',
-                    'WindowList 1: mode:DisplayMode.TABBED focused_pane_index:0)',
-                    '  LogPane(pane_title="Log2", pane_subtitle="test_log2", visible=True)',
-                    '  LogPane(pane_title="Log0", pane_subtitle="test_log0", visible=False)',
-                    'WindowList 2: mode:DisplayMode.STACK focused_pane_index:None)',
-                    '  ReplPane(pane_title="Python Repl", visible=True)',
-                    '  LogPane(pane_title="Log1", pane_subtitle="test_log1", visible=True)',
-                ],
-            )
-            # pylint: enable=line-too-long
-
     def test_focus_next_and_previous_pane(self) -> None:
         """Test switching focus to next and previous window panes."""
         with create_app_session(output=FakeOutput()):
@@ -794,9 +637,9 @@ class TestWindowManager(unittest.TestCase):
             # Setup: Move two panes to the right into their own stacked
             # window_list.
             target_list_and_pane(window_manager, 0, 4)
-            window_manager.move_pane_to_next_group()
+            window_manager.move_pane_right()
             target_list_and_pane(window_manager, 0, 3)
-            window_manager.move_pane_to_next_group()
+            window_manager.move_pane_right()
             self.assertEqual(
                 window_pane_titles(window_manager),
                 [
@@ -819,20 +662,15 @@ class TestWindowManager(unittest.TestCase):
 
             # Set Log1 in focus
             target_list_and_pane(window_manager, 0, 2)
-            console_app.focus_on_container.reset_mock()
-
             window_manager.focus_next_pane()
             # Log0 should now have focus
             console_app.focus_on_container.assert_called_once_with(
                 window_manager.window_lists[1].active_panes[0]
             )
+            console_app.focus_on_container.reset_mock()
 
             # Set Log0 in focus
             target_list_and_pane(window_manager, 1, 0)
-            # Reset mock
-            console_app.focus_on_container.reset_mock()
-            window_manager.window_lists[0].switch_to_tab.reset_mock()
-
             window_manager.focus_previous_pane()
             # Log1 should now have focus
             console_app.focus_on_container.assert_called_once_with(
@@ -844,8 +682,8 @@ class TestWindowManager(unittest.TestCase):
                 0
             ].switch_to_tab.assert_called_once_with(2)
             # Reset
-            console_app.focus_on_container.reset_mock()
             window_manager.window_lists[0].switch_to_tab.reset_mock()
+            console_app.focus_on_container.reset_mock()
 
             # Set Python Repl in focus
             target_list_and_pane(window_manager, 1, 1)
@@ -902,15 +740,15 @@ class TestWindowManager(unittest.TestCase):
             window_manager.create_root_container()
 
             # Vertical split by default
-            self.assertTrue(window_manager.vertical_window_list_splitting())
+            self.assertTrue(window_manager.vertical_window_list_spliting())
 
             # Move windows to create 3 splits
             target_list_and_pane(window_manager, 0, 0)
-            window_manager.move_pane_to_next_group()
+            window_manager.move_pane_right()
             target_list_and_pane(window_manager, 0, 0)
-            window_manager.move_pane_to_next_group()
+            window_manager.move_pane_right()
             target_list_and_pane(window_manager, 1, 1)
-            window_manager.move_pane_to_next_group()
+            window_manager.move_pane_right()
 
             # Check windows are where expected
             self.assertEqual(
@@ -972,10 +810,10 @@ class TestWindowManager(unittest.TestCase):
             window_manager = console_app.window_manager
 
             # We want horizontal window splits
-            window_manager.vertical_window_list_splitting = MagicMock(
+            window_manager.vertical_window_list_spliting = MagicMock(
                 return_value=False
             )
-            self.assertFalse(window_manager.vertical_window_list_splitting())
+            self.assertFalse(window_manager.vertical_window_list_spliting())
 
             # Required before moving windows
             window_manager.update_window_manager_size(
@@ -985,11 +823,11 @@ class TestWindowManager(unittest.TestCase):
 
             # Move windows to create 3 splits
             target_list_and_pane(window_manager, 0, 0)
-            window_manager.move_pane_to_next_group()
+            window_manager.move_pane_right()
             target_list_and_pane(window_manager, 0, 0)
-            window_manager.move_pane_to_next_group()
+            window_manager.move_pane_right()
             target_list_and_pane(window_manager, 1, 1)
-            window_manager.move_pane_to_next_group()
+            window_manager.move_pane_right()
 
             # Check windows are where expected
             self.assertEqual(

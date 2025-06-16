@@ -165,11 +165,6 @@ class TestLogFilter(unittest.TestCase):
                         '3 Some exception',
                         dict(extra_metadata_fields={'planet': 'Earth'}),
                     ),
-                    (
-                        '3 A line with earth in the message',
-                        # Set planet to None, this log should not match.
-                        dict(extra_metadata_fields={'planet': None}),
-                    ),
                 ],
                 [  # expected_matched_lines
                     '3 Log another item',
@@ -198,60 +193,6 @@ class TestLogFilter(unittest.TestCase):
                 ],
                 [  # expected_matched_lines
                     '4 Log some item',
-                ],
-                'planet',  # field
-                True,  # invert
-            ),
-            (
-                'regex with field and no matches',
-                SearchMatcher.REGEX,
-                'mars',  # input_text
-                [  # input_lines
-                    (
-                        '5 Log another item',
-                        dict(extra_metadata_fields={'planet': 'Earth'}),
-                    ),
-                    (
-                        '5 Some exception',
-                        dict(extra_metadata_fields={'planet': 'Earth'}),
-                    ),
-                    (
-                        '5 Yet another exception for mars',
-                        dict(extra_metadata_fields={'planet': None}),
-                    ),
-                ],
-                # expected_matched_lines
-                [],
-                'planet',  # field
-                False,  # invert
-            ),
-            (
-                'inverted regex with field with Nones',
-                SearchMatcher.REGEX,
-                'earth',  # input_text
-                [  # input_lines
-                    (
-                        '6 log1 mercury',
-                        dict(extra_metadata_fields={'planet': 'mercury'}),
-                    ),
-                    (
-                        '6 log2 earth',
-                        dict(extra_metadata_fields={'planet': 'earth'}),
-                    ),
-                    (
-                        '6 log3 mars',
-                        dict(extra_metadata_fields={'planet': 'mars'}),
-                    ),
-                    (
-                        '6 log4 None',
-                        dict(extra_metadata_fields={'planet': None}),
-                    ),
-                ],
-                # expected_matched_lines
-                [
-                    '6 log1 mercury',
-                    '6 log3 mars',
-                    '6 log4 None',
                 ],
                 'planet',  # field
                 True,  # invert

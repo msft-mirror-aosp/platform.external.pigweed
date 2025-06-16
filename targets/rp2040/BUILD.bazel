@@ -234,6 +234,7 @@ pw_cc_binary(
         "//pw_multibuf:testing",
         "//pw_system:async",
         "//third_party/freertos:support",
+        "@freertos",
         "@pico-sdk//src/rp2_common/pico_stdlib",
     ],
 )

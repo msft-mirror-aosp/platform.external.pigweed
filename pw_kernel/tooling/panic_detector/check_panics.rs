@@ -24,10 +24,10 @@ use crate::riscv::InstrA;
 use crate::riscv::Reg;
 use anyhow::anyhow;
 use anyhow::Context;
-use core::fmt::Debug;
 use object::elf;
 use object::read::elf::{ElfFile32, FileHeader};
 use std::collections::HashSet;
+use std::fmt::Debug;
 use std::path::Path;
 /// Check to see if the elf-file at `elf_path` contains any calls to the
 /// `panic_is_possible`` symbol, and if so, try to find the line numbers where
@@ -96,7 +96,7 @@ fn solve_riscv(elf_mem: &ElfMem, func_repo: &FuncRepo, panic_func: &Function) {
             );
             continue;
         };
-        let Ok(filename) = core::str::from_utf8(filename) else {
+        let Ok(filename) = std::str::from_utf8(filename) else {
             continue;
         };
         println!();
@@ -257,12 +257,11 @@ enum Expr {
     PtrDeref(Box<Expr>),
 }
 impl Debug for Expr {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Const(val) => {
-                let val = (*val).cast_signed();
-                if (-1024..1024).contains(&val) {
-                    write!(f, "Const({})", val)
+                if (*val as i32) < 1024 && (*val as i32) >= -1024 {
+                    write!(f, "Const({})", *val as i32)
                 } else {
                     write!(f, "Const({val:08x})")
                 }
@@ -301,7 +300,7 @@ impl Expr {
                 }
                 if let Expr::Const(_) = &**a {
                     // Always put the constant last.
-                    core::mem::swap(a, b);
+                    std::mem::swap(a, b);
                 }
                 if let Expr::Const(b) = &**b {
                     if *b == 0 {
@@ -351,14 +350,13 @@ impl Expr {
                         // as the source register; optimize() will collapse it
                         // to a constant expression)
                         DecodedInstr::Addi(i) => {
-                            *self =
-                                Expr::add(Expr::reg(i.rs1()), Expr::Const(i.imm().cast_unsigned()))
+                            *self = Expr::add(Expr::reg(i.rs1()), Expr::Const(i.imm() as u32))
                         }
                         // Load from memory into this register.
                         DecodedInstr::Lw(i) => {
                             *self = Expr::ptr_deref(Expr::add(
                                 Expr::reg(i.rs1()),
-                                Expr::Const(i.imm().cast_unsigned()),
+                                Expr::Const(i.imm() as u32),
                             ))
                         }
                         _ => return Err(ExprErr::RegCloberred(instr)),
@@ -381,8 +379,7 @@ impl Expr {
                 // sure we're still a PtrDeref to make the borrow checker happy.
                 if let Self::PtrDeref(ptr) = self {
                     if let DecodedInstr::Sw(i) = instr_d {
-                        let store_expr =
-                            Expr::add(Expr::reg(i.rs1()), Expr::Const(i.imm().cast_unsigned()));
+                        let store_expr = Expr::add(Expr::reg(i.rs1()), Expr::Const(i.imm() as u32));
                         if store_expr == **ptr {
                             // This instruction modifies the memory address we dereferenced.
                             // Update the expression tree.

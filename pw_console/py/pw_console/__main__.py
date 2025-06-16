@@ -180,7 +180,7 @@ def main(args: argparse.Namespace | None = None) -> int:
             )
 
             overridden_window_config = {
-                "Group 1 stacked": {
+                "Split 1 stacked": {
                     "Fake Device": None,
                     "Fake Keys": {
                         "duplicate_of": "Fake Device",
@@ -195,7 +195,7 @@ def main(args: argparse.Namespace | None = None) -> int:
                         },
                     },
                 },
-                "Group 2 tabbed": {
+                "Split 2 tabbed": {
                     "Python Repl": None,
                     "All Logs": None,
                     "PwConsole Debug": None,

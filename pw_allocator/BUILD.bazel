@@ -526,10 +526,10 @@ cc_library(
 )
 
 cc_library(
-    name = "counter",
+    name = "managed_ptr_testing",
     testonly = True,
-    srcs = ["counter.cc"],
-    hdrs = ["public/pw_allocator/internal/counter.h"],
+    srcs = ["managed_ptr_testing.cc"],
+    hdrs = ["public/pw_allocator/internal/managed_ptr_testing.h"],
     strip_include_prefix = "public",
     deps = [
         ":pw_allocator",
@@ -780,9 +780,8 @@ pw_cc_test(
     name = "shared_ptr_test",
     srcs = ["shared_ptr_test.cc"],
     deps = [
-        ":counter",
+        ":managed_ptr_testing",
         ":pw_allocator",
-        ":testing",
     ],
 )
 
@@ -851,9 +850,8 @@ pw_cc_test(
     name = "unique_ptr_test",
     srcs = ["unique_ptr_test.cc"],
     deps = [
-        ":counter",
+        ":managed_ptr_testing",
         ":pw_allocator",
-        ":testing",
     ],
 )
 
@@ -861,9 +859,8 @@ pw_cc_test(
     name = "weak_ptr_test",
     srcs = ["weak_ptr_test.cc"],
     deps = [
-        ":counter",
+        ":managed_ptr_testing",
         ":pw_allocator",
-        ":testing",
     ],
 )
 

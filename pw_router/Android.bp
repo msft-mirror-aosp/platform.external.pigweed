@@ -18,6 +18,7 @@ package {
 
 cc_library_static {
     name: "pw_router_static_router",
+    cpp_std: "c++20",
     defaults: [
         "pw_android_common_backends",
         "pw_android_common_target_support",
@@ -51,6 +52,7 @@ cc_library_static {
 
 cc_library_static {
     name: "pw_router.egress",
+    cpp_std: "c++20",
     defaults: [
         "pw_android_common_target_support",
     ],
@@ -65,6 +67,7 @@ cc_library_static {
 
 cc_library_static {
     name: "pw_router.packet_parser",
+    cpp_std: "c++20",
     defaults: [
         "pw_android_common_target_support",
     ],

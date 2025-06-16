@@ -13,13 +13,17 @@
 # the License.
 """Functions to create checkboxes for menus and toolbars."""
 
+import sys
 from typing import Callable, Iterable, NamedTuple
 
 from prompt_toolkit.formatted_text.base import OneStyleAndTextTuple
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 
 _KEY_SEPARATOR = ' '
-_CHECKED_BOX = '[x]'
+_CHECKED_BOX = '[✓]'
+
+if sys.platform in ['win32']:
+    _CHECKED_BOX = '[x]'
 
 
 class ToolbarButton(NamedTuple):

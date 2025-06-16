@@ -16,7 +16,7 @@
 
 #include <mutex>
 
-#include "pw_multibuf/multibuf_v1.h"
+#include "pw_multibuf/multibuf.h"
 
 namespace pw::multibuf {
 

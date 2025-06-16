@@ -47,14 +47,10 @@ ExtendedLowEnergyAdvertiser::~ExtendedLowEnergyAdvertiser() {
   StopAdvertising();
 }
 
-void ExtendedLowEnergyAdvertiser::AttachInspect(inspect::Node& node) {
-  node_ = node.CreateChild("low_energy_advertiser");
-  advertising_handle_map_.AttachInspect(node_);
-}
-
 CommandPacket ExtendedLowEnergyAdvertiser::BuildEnablePacket(
-    hci_spec::AdvertisingHandle advertising_handle,
-    pwemb::GenericEnableParam enable) const {
+    const DeviceAddress& address,
+    pwemb::GenericEnableParam enable,
+    bool extended_pdu) const {
   // We only enable or disable a single address at a time. The multiply by 1 is
   // set explicitly to show that data[] within
   // LESetExtendedAdvertisingEnableData is of size 1.
@@ -68,7 +64,11 @@ CommandPacket ExtendedLowEnergyAdvertiser::BuildEnablePacket(
   view.enable().Write(enable);
   view.num_sets().Write(1);
 
-  view.data()[0].advertising_handle().Write(advertising_handle);
+  std::optional<hci_spec::AdvertisingHandle> handle =
+      advertising_handle_map_.GetHandle(address, extended_pdu);
+  PW_CHECK(handle);
+
+  view.data()[0].advertising_handle().Write(handle.value());
   view.data()[0].duration().Write(hci_spec::kNoAdvertisingDuration);
   view.data()[0].max_extended_advertising_events().Write(
       hci_spec::kNoMaxExtendedAdvertisingEvents);
@@ -94,12 +94,13 @@ static void WriteAdvertisingEventProperties(
       properties.include_tx_power);
 }
 
-std::optional<LowEnergyAdvertiser::SetAdvertisingParams>
+std::optional<CommandPacket>
 ExtendedLowEnergyAdvertiser::BuildSetAdvertisingParams(
     const DeviceAddress& address,
     const AdvertisingEventProperties& properties,
     pwemb::LEOwnAddressType own_address_type,
-    const AdvertisingIntervalRange& interval) {
+    const AdvertisingIntervalRange& interval,
+    bool extended_pdu) {
   auto packet = hci::CommandPacket::New<
       pwemb::LESetExtendedAdvertisingParametersV1CommandWriter>(
       hci_spec::kLESetExtendedAdvertisingParameters);
@@ -107,7 +108,7 @@ ExtendedLowEnergyAdvertiser::BuildSetAdvertisingParams(
 
   // advertising handle
   std::optional<hci_spec::AdvertisingHandle> handle =
-      advertising_handle_map_.MapHandle(address);
+      advertising_handle_map_.MapHandle(address, extended_pdu);
   if (!handle) {
     bt_log(WARN,
            "hci-le",
@@ -156,23 +157,23 @@ ExtendedLowEnergyAdvertiser::BuildSetAdvertisingParams(
   // secondary_adv_max_skip: We use only legacy PDUs, the controller ignores
   // this field in that case
 
-  return SetAdvertisingParams{std::move(packet), *handle};
+  return packet;
 }
 
 std::optional<CommandPacket>
 ExtendedLowEnergyAdvertiser::BuildSetAdvertisingRandomAddr(
-    hci_spec::AdvertisingHandle advertising_handle) const {
+    const DeviceAddress& address, bool extended_pdu) const {
   auto packet = hci::CommandPacket::New<
       pwemb::LESetAdvertisingSetRandomAddressCommandWriter>(
       hci_spec::kLESetAdvertisingSetRandomAddress);
   auto view = packet.view_t();
 
-  std::optional<DeviceAddress> address =
-      advertising_handle_map_.GetAddress(advertising_handle);
-  PW_CHECK(address);
+  std::optional<hci_spec::AdvertisingHandle> handle =
+      advertising_handle_map_.GetHandle(address, extended_pdu);
+  PW_CHECK(handle);
 
-  view.advertising_handle().Write(advertising_handle);
-  view.random_address().CopyFrom(address->value().view());
+  view.advertising_handle().Write(*handle);
+  view.random_address().CopyFrom(address.value().view());
 
   return packet;
 }
@@ -238,9 +239,10 @@ CommandPacket ExtendedLowEnergyAdvertiser::BuildScanResponseDataFragmentPacket(
 }
 
 std::vector<CommandPacket> ExtendedLowEnergyAdvertiser::BuildSetAdvertisingData(
-    hci_spec::AdvertisingHandle advertising_handle,
+    const DeviceAddress& address,
     const AdvertisingData& data,
-    AdvFlags flags) const {
+    AdvFlags flags,
+    bool extended_pdu) const {
   if (data.CalculateBlockSize() == 0) {
     std::vector<CommandPacket> packets;
     return packets;
@@ -251,6 +253,10 @@ std::vector<CommandPacket> ExtendedLowEnergyAdvertiser::BuildSetAdvertisingData(
   if (staged_advertising_parameters_.include_tx_power_level) {
     adv_data.SetTxPower(staged_advertising_parameters_.selected_tx_power_level);
   }
+
+  std::optional<hci_spec::AdvertisingHandle> handle =
+      advertising_handle_map_.GetHandle(address, extended_pdu);
+  PW_CHECK(handle);
 
   size_t block_size = adv_data.CalculateBlockSize(/*include_flags=*/true);
   DynamicByteBuffer buffer(block_size);
@@ -264,7 +270,7 @@ std::vector<CommandPacket> ExtendedLowEnergyAdvertiser::BuildSetAdvertisingData(
   // over the air but we don't have to when sending the data to the Controller.
   if (block_size <= max_length) {
     CommandPacket packet = BuildAdvertisingDataFragmentPacket(
-        advertising_handle,
+        handle.value(),
         buffer.view(),
         pwemb::LESetExtendedAdvDataOp::COMPLETE,
         pwemb::LEExtendedAdvFragmentPreference::SHOULD_NOT_FRAGMENT);
@@ -305,7 +311,7 @@ std::vector<CommandPacket> ExtendedLowEnergyAdvertiser::BuildSetAdvertisingData(
     BufferView buffer_view(buffer.data() + offset, packet_size);
 
     CommandPacket packet = BuildAdvertisingDataFragmentPacket(
-        advertising_handle,
+        handle.value(),
         buffer_view,
         operation,
         pwemb::LEExtendedAdvFragmentPreference::SHOULD_NOT_FRAGMENT);
@@ -316,7 +322,7 @@ std::vector<CommandPacket> ExtendedLowEnergyAdvertiser::BuildSetAdvertisingData(
 }
 
 CommandPacket ExtendedLowEnergyAdvertiser::BuildUnsetAdvertisingData(
-    hci_spec::AdvertisingHandle advertising_handle) const {
+    const DeviceAddress& address, bool extended_pdu) const {
   constexpr size_t kPacketSize =
       pwemb::LESetExtendedAdvertisingDataCommandView::MinSizeInBytes().Read();
   auto packet =
@@ -324,7 +330,12 @@ CommandPacket ExtendedLowEnergyAdvertiser::BuildUnsetAdvertisingData(
           hci_spec::kLESetExtendedAdvertisingData, kPacketSize);
   auto payload = packet.view_t();
 
-  payload.advertising_handle().Write(advertising_handle);
+  // advertising handle
+  std::optional<hci_spec::AdvertisingHandle> handle =
+      advertising_handle_map_.GetHandle(address, extended_pdu);
+  PW_CHECK(handle);
+  payload.advertising_handle().Write(handle.value());
+
   payload.operation().Write(pwemb::LESetExtendedAdvDataOp::COMPLETE);
   payload.fragment_preference().Write(
       pwemb::LEExtendedAdvFragmentPreference::SHOULD_NOT_FRAGMENT);
@@ -334,8 +345,9 @@ CommandPacket ExtendedLowEnergyAdvertiser::BuildUnsetAdvertisingData(
 }
 
 std::vector<CommandPacket> ExtendedLowEnergyAdvertiser::BuildSetScanResponse(
-    hci_spec::AdvertisingHandle advertising_handle,
-    const AdvertisingData& data) const {
+    const DeviceAddress& address,
+    const AdvertisingData& data,
+    bool extended_pdu) const {
   if (data.CalculateBlockSize() == 0) {
     std::vector<CommandPacket> packets;
     return packets;
@@ -346,6 +358,10 @@ std::vector<CommandPacket> ExtendedLowEnergyAdvertiser::BuildSetScanResponse(
   if (staged_advertising_parameters_.include_tx_power_level) {
     scan_rsp.SetTxPower(staged_advertising_parameters_.selected_tx_power_level);
   }
+
+  std::optional<hci_spec::AdvertisingHandle> handle =
+      advertising_handle_map_.GetHandle(address, extended_pdu);
+  PW_CHECK(handle);
 
   size_t block_size = scan_rsp.CalculateBlockSize(/*include_flags=*/false);
   DynamicByteBuffer buffer(block_size);
@@ -359,7 +375,7 @@ std::vector<CommandPacket> ExtendedLowEnergyAdvertiser::BuildSetScanResponse(
   // over the air but we don't have to when sending the data to the Controller.
   if (block_size <= max_length) {
     CommandPacket packet = BuildScanResponseDataFragmentPacket(
-        advertising_handle,
+        handle.value(),
         buffer.view(),
         pwemb::LESetExtendedAdvDataOp::COMPLETE,
         pwemb::LEExtendedAdvFragmentPreference::SHOULD_NOT_FRAGMENT);
@@ -400,7 +416,7 @@ std::vector<CommandPacket> ExtendedLowEnergyAdvertiser::BuildSetScanResponse(
     BufferView buffer_view(buffer.data() + offset, packet_size);
 
     CommandPacket packet = BuildScanResponseDataFragmentPacket(
-        advertising_handle,
+        handle.value(),
         buffer_view,
         operation,
         pwemb::LEExtendedAdvFragmentPreference::SHOULD_NOT_FRAGMENT);
@@ -411,7 +427,7 @@ std::vector<CommandPacket> ExtendedLowEnergyAdvertiser::BuildSetScanResponse(
 }
 
 CommandPacket ExtendedLowEnergyAdvertiser::BuildUnsetScanResponse(
-    hci_spec::AdvertisingHandle advertising_handle) const {
+    const DeviceAddress& address, bool extended_pdu) const {
   constexpr size_t kPacketSize =
       pwemb::LESetExtendedScanResponseDataCommandView::MinSizeInBytes().Read();
   auto packet =
@@ -419,7 +435,12 @@ CommandPacket ExtendedLowEnergyAdvertiser::BuildUnsetScanResponse(
           hci_spec::kLESetExtendedScanResponseData, kPacketSize);
   auto payload = packet.view_t();
 
-  payload.advertising_handle().Write(advertising_handle);
+  // advertising handle
+  std::optional<hci_spec::AdvertisingHandle> handle =
+      advertising_handle_map_.GetHandle(address, extended_pdu);
+  PW_CHECK(handle);
+  payload.advertising_handle().Write(handle.value());
+
   payload.operation().Write(pwemb::LESetExtendedAdvDataOp::COMPLETE);
   payload.fragment_preference().Write(
       pwemb::LEExtendedAdvFragmentPreference::SHOULD_NOT_FRAGMENT);
@@ -429,12 +450,15 @@ CommandPacket ExtendedLowEnergyAdvertiser::BuildUnsetScanResponse(
 }
 
 CommandPacket ExtendedLowEnergyAdvertiser::BuildRemoveAdvertisingSet(
-    hci_spec::AdvertisingHandle advertising_handle) const {
+    const DeviceAddress& address, bool extended_pdu) const {
+  std::optional<hci_spec::AdvertisingHandle> handle =
+      advertising_handle_map_.GetHandle(address, extended_pdu);
+  PW_CHECK(handle);
   auto packet =
       hci::CommandPacket::New<pwemb::LERemoveAdvertisingSetCommandWriter>(
           hci_spec::kLERemoveAdvertisingSet);
   auto view = packet.view_t();
-  view.advertising_handle().Write(advertising_handle);
+  view.advertising_handle().Write(handle.value());
 
   return packet;
 }
@@ -475,7 +499,7 @@ void ExtendedLowEnergyAdvertiser::StartAdvertising(
     const AdvertisingData& scan_rsp,
     const AdvertisingOptions& options,
     ConnectionCallback connect_callback,
-    ResultFunction<hci_spec::AdvertisingHandle> result_callback) {
+    ResultFunction<> result_callback) {
   // if there is an operation currently in progress, enqueue this operation and
   // we will get to it the next time we have a chance
   if (!hci_cmd_runner().IsReady()) {
@@ -507,30 +531,24 @@ void ExtendedLowEnergyAdvertiser::StartAdvertising(
     return;
   }
 
-  fit::result<HostError> can_start_result =
+  fit::result<HostError> result =
       CanStartAdvertising(address, data, scan_rsp, options, connect_callback);
-  if (can_start_result.is_error()) {
-    result_callback(ToResult(can_start_result.error_value()).take_error());
+  if (result.is_error()) {
+    result_callback(ToResult(result.error_value()));
     return;
+  }
+
+  if (IsAdvertising(address, options.extended_pdu)) {
+    bt_log(DEBUG,
+           "hci-le",
+           "updating existing advertisement for %s",
+           bt_str(address));
   }
 
   staged_advertising_parameters_.clear();
   staged_advertising_parameters_.include_tx_power_level =
       options.include_tx_power_level;
   staged_advertising_parameters_.extended_pdu = options.extended_pdu;
-
-  auto result_cb_wrapper = [this, cb = std::move(result_callback)](
-                               StartAdvertisingInternalResult result) {
-    if (result.is_error()) {
-      auto [error, handle] = result.error_value();
-      if (handle) {
-        advertising_handle_map_.RemoveHandle(handle.value());
-      }
-      cb(fit::error(error));
-      return;
-    }
-    cb(result.take_value());
-  };
 
   // Core Spec, Volume 4, Part E, Section 7.8.58: "the number of advertising
   // sets that can be supported is not fixed and the Controller can change it at
@@ -550,7 +568,7 @@ void ExtendedLowEnergyAdvertiser::StartAdvertising(
                            scan_rsp,
                            options,
                            std::move(connect_callback),
-                           std::move(result_cb_wrapper));
+                           std::move(result_callback));
 }
 
 void ExtendedLowEnergyAdvertiser::StopAdvertising() {
@@ -563,8 +581,8 @@ void ExtendedLowEnergyAdvertiser::StopAdvertising() {
   std::swap(op_queue_, empty);
 }
 
-void ExtendedLowEnergyAdvertiser::StopAdvertising(
-    hci_spec::AdvertisingHandle handle) {
+void ExtendedLowEnergyAdvertiser::StopAdvertising(const DeviceAddress& address,
+                                                  bool extended_pdu) {
   // if there is an operation currently in progress, enqueue this operation and
   // we will get to it the next time we have a chance
   if (!hci_cmd_runner().IsReady()) {
@@ -572,12 +590,14 @@ void ExtendedLowEnergyAdvertiser::StopAdvertising(
         INFO,
         "hci-le",
         "hci cmd runner not ready, queueing stop advertising command for now");
-    op_queue_.push([this, handle]() { StopAdvertising(handle); });
+    op_queue_.push([this, address, extended_pdu]() {
+      StopAdvertising(address, extended_pdu);
+    });
     return;
   }
 
-  LowEnergyAdvertiser::StopAdvertisingInternal(handle);
-  advertising_handle_map_.RemoveHandle(handle);
+  LowEnergyAdvertiser::StopAdvertisingInternal(address, extended_pdu);
+  advertising_handle_map_.RemoveAddress(address, extended_pdu);
 }
 
 void ExtendedLowEnergyAdvertiser::OnIncomingConnection(
@@ -647,7 +667,7 @@ void ExtendedLowEnergyAdvertiser::OnAdvertisingSetTerminatedEvent(
                              local_address,
                              staged.peer_address,
                              staged.conn_params,
-                             adv_handle);
+                             staged_advertising_parameters_.extended_pdu);
 
   staged_advertising_parameters_.clear();
 }

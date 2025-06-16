@@ -1,5 +1,4 @@
 :tocdepth: 2
-:nosearch:
 
 .. _docs-changelog:
 

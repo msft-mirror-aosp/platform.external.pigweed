@@ -42,7 +42,6 @@ impl<T: ?Sized> ForeignBox<T> {
     /// # Safety
     /// The caller guarantees that `ptr` remains valid throughout the lifetime
     /// of the `ForeignBox` object.
-    #[must_use]
     pub unsafe fn new(ptr: NonNull<T>) -> Self {
         Self {
             inner: ptr,
@@ -58,7 +57,6 @@ impl<T: ?Sized> ForeignBox<T> {
     /// # Safety
     /// The caller guarantees that `ptr` remains valid throughout the lifetime
     /// of the `ForeignBox` object.
-    #[must_use]
     pub unsafe fn new_from_ptr(ptr: *mut T) -> Self {
         let Some(ptr) = NonNull::new(ptr) else {
             if cfg!(feature = "core_panic") {
@@ -70,7 +68,6 @@ impl<T: ?Sized> ForeignBox<T> {
         Self::new(ptr)
     }
 
-    #[allow(clippy::must_use_candidate)]
     pub fn consume(mut self) -> NonNull<T> {
         self.consumed = true;
         self.inner
@@ -80,7 +77,6 @@ impl<T: ?Sized> ForeignBox<T> {
     ///
     /// # Safety
     /// Creates an "unenforceable borrow" of the contained data.
-    #[must_use]
     pub unsafe fn as_ptr(&self) -> *const T {
         self.inner.as_ptr()
     }
@@ -89,7 +85,6 @@ impl<T: ?Sized> ForeignBox<T> {
     ///
     ///  # Safety
     /// Creates an "mutable unenforceable borrow" of the contained data.
-    #[must_use]
     pub unsafe fn as_mut_ptr(&mut self) -> *mut T {
         self.inner.as_mut()
     }
@@ -101,12 +96,12 @@ impl<T: ?Sized> Drop for ForeignBox<T> {
             if cfg!(feature = "core_panic") {
                 panic!(
                     "ForeignBox@{:08x} dropped before being consumed!",
-                    self.inner.as_ptr().cast::<()>().expose_provenance()
+                    self.inner.as_ptr() as *const () as usize
                 );
             } else {
                 pw_assert::panic!(
                     "ForeignBox@{:08x} dropped before being consumed!",
-                    self.inner.as_ptr().cast::<()>() as usize
+                    self.inner.as_ptr() as *const () as usize
                 );
             }
         }

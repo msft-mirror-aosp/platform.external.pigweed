@@ -19,27 +19,20 @@
 #include <cstdint>
 #include <cstring>
 
-#include "pw_assert/check.h"
 #include "pw_function/function.h"
 #include "pw_span/span.h"
 #include "pw_string/util.h"
-#include "pw_thread_zephyr/stack.h"
+#include "pw_thread_zephyr/config.h"
 
 namespace pw::thread {
 
-// Forward declare Thread which depends on Context.
-class Thread;
+class Thread;  // Forward declare Thread which depends on Context.
 
-namespace backend {
+}  // namespace pw::thread
 
-// The maximum length of a thread's name, not including null termination. This
-// results in an array of characters which is this length + 1 bytes in every
-// pw::Thread's context.
-inline constexpr size_t kMaximumNameLength =
-    CONFIG_PIGWEED_THREAD_MAX_THREAD_NAME_LEN;
+namespace pw::thread::zephyr {
 
-// Forward declare NativeOptions since we'll need a reference to them.
-class NativeOptions;
+class Options;
 
 // At the moment, Zephyr RTOS doesn't support dynamic thread stack allocation
 // (due to various alignment and size requirements on different architectures).
@@ -51,50 +44,47 @@ class NativeOptions;
 //   2) StaticContextWithStack which contains the stack.
 //
 // Only StaticContextWithStack can be instantiated directly.
-class NativeContext {
+class Context {
  public:
-  /// Create a default native context
-  ///
-  /// This context will have no name or stack associated with it.
-  constexpr NativeContext() = default;
-  NativeContext(const NativeContext&) = delete;
-  NativeContext& operator=(const NativeContext&) = delete;
-
-  ~NativeContext() = default;
-
-  /// Get the stack associated with the context.
-  ///
-  /// @return span for the stack that was allocated with this context
-  span<z_thread_stack_element> stack() { return stack_; }
-
-  /// Create a thread
-  ///
-  /// Can be called only once!
-  ///
-  /// @arg thread_fn The entry point of the thread
-  /// @arg options The options to configure the thread
-  void CreateThread(Function<void()>&& thread_fn, const NativeOptions& options);
+  Context(const Context&) = delete;
+  Context& operator=(const Context&) = delete;
 
  protected:
-  constexpr void set_stack(span<z_thread_stack_element> stack) {
-    stack_ = stack;
-  }
+  // We can't use `= default` here, because it allows to create an Context
+  // instance in C++17 with `pw::thread::zephyr::Context{}` syntax.
+  Context() {}
 
  private:
   friend Thread;
 
+  static void CreateThread(const Options& options,
+                           Function<void()>&& thread_fn,
+                           Context*& native_type_out);
+
+  k_tid_t task_handle() const { return task_handle_; }
+  void set_task_handle(const k_tid_t task_handle) {
+    task_handle_ = task_handle;
+  }
+
+  k_thread& thread_info() { return thread_info_; }
+
+  void set_thread_routine(Function<void()>&& rvalue) {
+    fn_ = std::move(rvalue);
+  }
+
   bool detached() const { return detached_; }
-  void set_detached() { detached_ = true; }
+  void set_detached(bool value = true) { detached_ = value; }
 
   bool thread_done() const { return thread_done_; }
-  void set_thread_done() { thread_done_ = true; }
+  void set_thread_done(bool value = true) { thread_done_ = value; }
 
   const char* name() const { return name_.data(); }
+  void set_name(const char* name) { string::Assign(name_, name).IgnoreError(); }
 
   static void ThreadEntryPoint(void* void_context_ptr, void*, void*);
 
   k_tid_t task_handle_ = nullptr;
-  k_thread thread_info_ = {};
+  k_thread thread_info_;
   Function<void()> fn_;
   bool detached_ = false;
   bool thread_done_ = false;
@@ -107,25 +97,43 @@ class NativeContext {
   // We will defer to our storage when queried for the name, but by setting
   // the name with the RTOS call, raw RTOS access to the thread's name should
   // work properly, though possibly with a truncated name.
-  pw::InlineString<kMaximumNameLength> name_;
-
-  span<z_thread_stack_element> stack_ = span<z_thread_stack_element>();
+  pw::InlineString<config::kMaximumNameLength> name_;
 };
 
-// Static thread context allocation including the stack along with the
-// Context.
+// Intermediate class to type-erase kStackSizeBytes parameter of
+// StaticContextWithStack.
+class StaticContext : public Context {
+ protected:
+  explicit StaticContext(z_thread_stack_element* stack,
+                         size_t available_stack_size)
+      : stack_(stack), available_stack_size_(available_stack_size) {}
+
+ private:
+  friend Context;
+
+  z_thread_stack_element* stack() { return stack_; }
+  size_t available_stack_size() { return available_stack_size_; }
+
+  // Zephyr RTOS doesn't specify how Zephyr-owned thread information is
+  // stored in the stack, how much spaces it takes, etc.
+  // All we know is that K_THREAD_STACK(stack, size) macro will allocate
+  // enough memory to hold size bytes of user-owned stack and that
+  // we must pass that stack pointer to k_thread_create.
+  z_thread_stack_element* stack_;
+  size_t available_stack_size_;
+};
+
+// Static thread context allocation including the stack along with the Context.
 //
 // See docs.rst for an usage example.
 template <size_t kStackSizeBytes>
-class NativeContextWithStack : public NativeContext {
+class StaticContextWithStack final : public StaticContext {
  public:
-  constexpr NativeContextWithStack() : NativeContext() {
-    set_stack(span<z_thread_stack_element>(stack_.data(), stack_.size()));
-  }
+  constexpr StaticContextWithStack()
+      : StaticContext(stack_storage_, kStackSizeBytes) {}
 
  private:
-  Stack<std::max(kStackSizeBytes, kMinimumStackSizeBytes)> stack_;
+  K_KERNEL_STACK_MEMBER(stack_storage_, kStackSizeBytes);
 };
 
-}  // namespace backend
-}  // namespace pw::thread
+}  // namespace pw::thread::zephyr

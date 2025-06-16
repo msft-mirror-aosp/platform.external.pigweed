@@ -188,6 +188,7 @@ genrule {
 
 cc_library_headers {
     name: "pw_bluetooth_emboss_group",
+    cpp_std: "c++20",
     defaults: [
         "pw_android_common_target_support",
     ],
@@ -217,6 +218,7 @@ cc_library_headers {
 
 cc_library_headers {
     name: "pw_bluetooth_emboss_util_include_dirs",
+    cpp_std: "c++20",
     defaults: [
         "pw_android_common_target_support",
     ],
@@ -225,6 +227,7 @@ cc_library_headers {
 
 cc_library_static {
     name: "pw_bluetooth_hci_util",
+    cpp_std: "c++20",
     defaults: [
         "pw_android_common_backends",
         "pw_android_common_target_support",

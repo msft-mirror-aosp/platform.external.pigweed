@@ -62,7 +62,7 @@ class McuxpressoResponder : public Responder {
         tx_dma_(tx_dma),
         rx_dma_(rx_dma) {}
 
-  ~McuxpressoResponder() override { PW_CRASH("Destruction not supported"); }
+  ~McuxpressoResponder() { PW_CRASH("Destruction not supported"); }
 
   McuxpressoResponder(const McuxpressoResponder&) = delete;
   McuxpressoResponder& operator=(const McuxpressoResponder&) = delete;
