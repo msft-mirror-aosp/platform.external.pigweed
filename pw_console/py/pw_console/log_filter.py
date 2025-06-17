@@ -94,6 +94,7 @@ class LogFilter:
         return self.regex.pattern  # pylint: disable=no-member
 
     def matches(self, log: LogLine) -> bool:
+        """Returns True if the given log line matches this log filter."""
         fields: dict[str, str] = {}
 
         if hasattr(log, 'metadata') and hasattr(log.metadata, 'fields'):
@@ -103,23 +104,31 @@ class LogFilter:
         fields['level'] = log.record.levelname
         fields['message'] = log.ansi_stripped_log
 
-        if self.field in ['msg', 'message']:
-            # Search the message only.
-            content = fields['message']
-
-        elif self.field is None:
+        if self.field is None:
             # Gather all fields to search
             content = ' '.join(str(field) for field in fields.values())
+
+        elif self.field in ['msg', 'message']:
+            # Search the message only.
+            content = fields['message']
 
         else:
             # Search a single field
             content = fields.get(self.field, log.ansi_stripped_log)
 
-        match = self.regex.search(content)  # pylint: disable=no-member
+        if content is None or not content:
+            # The field may be set to None or an empty string, in both cases
+            # this log should not match.
+            match = False
+        else:
+            match = bool(
+                self.regex.search(content)  # pylint: disable=no-member
+            )
 
+        # Reverse the match if invert is turned on.
         if self.invert:
             return not match
-        return bool(match)
+        return match
 
     def highlight_search_matches(
         self, line_fragments, selected=False

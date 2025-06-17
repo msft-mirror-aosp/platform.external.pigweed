@@ -11,6 +11,20 @@ them from the other. This allows "first in, first out", or FIFO, behavior.
 Pigweed provides both single and double-ended queues that are backed by fixed
 or dynamic storage.
 
+--------------------------------------
+pw::containers::internal::GenericDeque
+--------------------------------------
+These types are not meant to be used directly, but provide a number of common
+methods for all other deque types, and by extension, queues.
+
+.. doxygenclass:: pw::containers::internal::GenericDequeBase
+   :members:
+   :undoc-members:
+
+.. doxygenclass:: pw::containers::internal::GenericDeque
+   :members:
+   :undoc-members:
+
 ----------------
 pw::DynamicDeque
 ----------------
@@ -21,6 +35,7 @@ pw::DynamicDeque
 ---------------
 pw::InlineDeque
 ---------------
+.. doxygentypedef:: pw::BasicInlineDeque
 .. doxygentypedef:: pw::InlineDeque
 
 .. TODO: b/394341806 - Add missing examples
@@ -34,8 +49,19 @@ pw::InlineDeque
 
 API reference
 =============
-.. doxygenclass:: pw::BasicInlineDeque
+.. doxygenclass:: pw::containers::internal::BasicInlineDequeImpl
    :members:
+
+--------------------
+pw::InlineAsyncDeque
+--------------------
+.. doxygentypedef:: pw::InlineAsyncDeque
+
+API reference
+=============
+.. doxygenclass:: pw::BasicInlineAsyncDeque
+   :members:
+   :undoc-members:
 
 ----------------
 pw::DynamicQueue
@@ -48,22 +74,31 @@ pw::DynamicQueue
 pw::InlineQueue
 ---------------
 .. doxygentypedef:: pw::InlineQueue
+.. doxygenclass:: pw::BasicInlineQueue
+   :members:
 
 .. TODO: b/394341806 - Add missing examples
 .. Example
 .. =======
-.. .. literalinclude:: examples/inline_deque.cc
+.. .. literalinclude:: examples/inline_queue.cc
 ..    :language: cpp
 ..    :linenos:
-..    :start-after: [pw_containers-inline_deque]
-..    :end-before: [pw_containers-inline_deque]
+..    :start-after: [pw_containers-inline_queue]
+..    :end-before: [pw_containers-inline_queue]
 
 API reference
 =============
-.. doxygenclass:: pw::BasicInlineQueue
+.. doxygenclass:: pw::containers::internal::BasicInlineQueueImpl
    :members:
 
 .. _module-pw_containers-queues-inline_var_len_entry_queue:
+
+--------------------
+pw::InlineAsyncQueue
+--------------------
+.. doxygenclass:: pw::InlineAsyncQueue
+   :members:
+   :undoc-members:
 
 --------------------------
 pw::InlineVarLenEntryQueue

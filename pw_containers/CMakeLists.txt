@@ -77,12 +77,24 @@ pw_add_library(pw_containers._deque_common INTERFACE
   HEADERS
     public/pw_containers/internal/deque_iterator.h
     public/pw_containers/internal/generic_deque.h
+    public/pw_containers/internal/count_and_capacity.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
     pw_assert
     pw_containers._common
     pw_span
+)
+
+pw_add_library(pw_containers.async_count_and_capacity INTERFACE
+  HEADERS
+    public/pw_containers/internal/async_count_and_capacity.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_async2.dispatcher
+    pw_async2.poll
+    pw_containers._deque_common
 )
 
 pw_add_library(pw_containers.dynamic_deque INTERFACE
@@ -108,6 +120,25 @@ pw_add_library(pw_containers.inline_deque INTERFACE
     pw_toolchain.constexpr_tag
 )
 
+pw_add_library(pw_containers.inline_async_deque INTERFACE
+  HEADERS
+    public/pw_containers/inline_async_deque.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_containers.async_count_and_capacity
+    pw_containers.inline_deque
+)
+
+pw_add_library(pw_containers._queue_common INTERFACE
+  HEADERS
+    public/pw_containers/internal/generic_queue.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_containers._deque_common
+)
+
 pw_add_library(pw_containers.dynamic_queue INTERFACE
   HEADERS
     public/pw_containers/dynamic_queue.h
@@ -115,6 +146,7 @@ pw_add_library(pw_containers.dynamic_queue INTERFACE
     public
   PUBLIC_DEPS
     pw_containers.dynamic_queue
+    pw_containers._queue_common
 )
 
 pw_add_library(pw_containers.inline_queue INTERFACE
@@ -124,6 +156,19 @@ pw_add_library(pw_containers.inline_queue INTERFACE
     public
   PUBLIC_DEPS
     pw_containers.inline_deque
+    pw_containers._queue_common
+)
+
+pw_add_library(pw_containers.inline_async_queue INTERFACE
+  HEADERS
+    public/pw_containers/inline_async_queue.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_containers.async_count_and_capacity
+    pw_containers.inline_async_deque
+    pw_containers.inline_queue
+    pw_containers._queue_common
 )
 
 pw_add_library(pw_containers.iterator INTERFACE
@@ -365,6 +410,21 @@ pw_add_test(pw_containers.inline_deque_test
     pw_containers
 )
 
+pw_add_test(pw_containers.inline_async_deque_test
+  SOURCES
+    inline_async_deque_test.cc
+  PRIVATE_DEPS
+    pw_async2.dispatcher
+    pw_async2.pend_func_task
+    pw_async2.poll
+    pw_containers.inline_async_deque
+    pw_containers._test_helpers
+    pw_status
+  GROUPS
+    modules
+    pw_containers
+)
+
 pw_add_test(pw_containers.dynamic_queue_test
   SOURCES
     dynamic_queue_test.cc
@@ -385,6 +445,20 @@ pw_add_test(pw_containers.inline_queue_test
     pw_containers.algorithm
     pw_containers.inline_queue
     pw_containers._test_helpers
+  GROUPS
+    modules
+    pw_containers
+)
+
+pw_add_test(pw_containers.inline_async_queue_test
+  SOURCES
+    inline_async_queue_test.cc
+  PRIVATE_DEPS
+    pw_containers.inline_async_queue
+    pw_async2.dispatcher
+    pw_async2.pend_func_task
+    pw_async2.poll
+    pw_status
   GROUPS
     modules
     pw_containers
