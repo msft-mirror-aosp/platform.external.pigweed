@@ -586,6 +586,7 @@ pw_cc_test(
     name = "allocator_test",
     srcs = ["allocator_test.cc"],
     deps = [
+        ":counter",
         ":pw_allocator",
         ":testing",
     ],
@@ -663,6 +664,7 @@ pw_cc_test(
     srcs = ["chunk_pool_test.cc"],
     deps = [
         ":chunk_pool",
+        ":counter",
         ":testing",
     ],
 )

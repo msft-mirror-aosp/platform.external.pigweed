@@ -19,8 +19,9 @@
 pub mod call_graph;
 mod compression;
 mod elf_mem;
-use bitfield_struct::bitfield;
 use core::fmt::{Debug, Display};
+
+use bitfield_struct::bitfield;
 pub use elf_mem::ElfMem;
 /// Risc-V instruction with address
 #[derive(Clone, Copy)]
@@ -82,9 +83,11 @@ impl Instr {
     #[inline(always)]
     pub fn decode(self) -> DecodedInstr {
         if self.is_compressed() {
-            match compression::decompress_instr(pw_cast::try_cast!(self.0 => u16).unwrap()) {
+            // The instr is stored in the lower 16-bits.
+            let instr: u16 = (self.0 & 0xffff) as u16;
+            match compression::decompress_instr(instr) {
                 Some(instr) => instr.decode32(),
-                None => DecodedInstr::Unknown(self.0 & 0xffff),
+                None => DecodedInstr::Unknown(instr.into()),
             }
         } else {
             self.decode32()
@@ -668,7 +671,7 @@ impl Display for DecodedInstr {
             InstrType::R(i) => write!(f, "{:<8} {}", self.mnemonic(), i),
             InstrType::U(i) => write!(f, "{:<8} {}", self.mnemonic(), i),
             InstrType::Const(_) => write!(f, "{:<8}", self.mnemonic()),
-            InstrType::Unknown(i) => write!(f, "0x{:x}", i),
+            InstrType::Unknown(i) => write!(f, "0x{i:x}"),
         }
     }
 }

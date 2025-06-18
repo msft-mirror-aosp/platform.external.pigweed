@@ -14,21 +14,17 @@
 
 // TODO: refactor this file and crate::riscv to separate generic elf code from
 // riscv specific code.
-use crate::find_symbol_address;
-use crate::riscv::call_graph::list_functions;
-use crate::riscv::call_graph::FuncRepo;
-use crate::riscv::call_graph::Function;
-use crate::riscv::DecodedInstr;
-use crate::riscv::ElfMem;
-use crate::riscv::InstrA;
-use crate::riscv::Reg;
-use anyhow::anyhow;
-use anyhow::Context;
 use core::fmt::Debug;
-use object::elf;
-use object::read::elf::{ElfFile32, FileHeader};
 use std::collections::HashSet;
 use std::path::Path;
+
+use anyhow::{anyhow, Context};
+use object::elf;
+use object::read::elf::{ElfFile32, FileHeader};
+
+use crate::find_symbol_address;
+use crate::riscv::call_graph::{list_functions, FuncRepo, Function};
+use crate::riscv::{DecodedInstr, ElfMem, InstrA, Reg};
 /// Check to see if the elf-file at `elf_path` contains any calls to the
 /// `panic_is_possible`` symbol, and if so, try to find the line numbers where
 /// these potential panics originate from.
@@ -90,10 +86,7 @@ fn solve_riscv(elf_mem: &ElfMem, func_repo: &FuncRepo, panic_func: &Function) {
         );
         // Lookup the string contents from .rodata
         let Some(filename) = elf_mem.get(filename_ptr, filename_len) else {
-            println!(
-                "Couldn't find filename at addr {:x} len={}",
-                filename_ptr, filename_len
-            );
+            println!("Couldn't find filename at addr {filename_ptr:x} len={filename_len}");
             continue;
         };
         let Ok(filename) = core::str::from_utf8(filename) else {
@@ -196,10 +189,7 @@ impl Solver<'_> {
                     return;
                 }
                 if cfg!(feature = "solver_trace") && *expr != old_expr {
-                    println!(
-                        "Expr index {expr_index} changed from {:?} to {:?}",
-                        old_expr, expr
-                    );
+                    println!("Expr index {expr_index} changed from {old_expr:?} to {expr:?}");
                 }
                 let found = matches!(expr, Expr::Const(_) | Expr::GlobalDeref(_));
                 all_consts &= found;
@@ -262,7 +252,7 @@ impl Debug for Expr {
             Self::Const(val) => {
                 let val = (*val).cast_signed();
                 if (-1024..1024).contains(&val) {
-                    write!(f, "Const({})", val)
+                    write!(f, "Const({val})")
                 } else {
                     write!(f, "Const({val:08x})")
                 }

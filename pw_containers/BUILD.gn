@@ -108,6 +108,7 @@ pw_source_set("async_count_and_capacity") {
     ":deque_common",
     "$dir_pw_async2:dispatcher",
     "$dir_pw_async2:poll",
+    "$dir_pw_async2:waker_queue",
   ]
 }
 
@@ -180,7 +181,10 @@ pw_source_set("inline_async_queue") {
 pw_source_set("iterator") {
   public_configs = [ ":public_include_path" ]
   public_deps = [ dir_pw_polyfill ]
-  public = [ "public/pw_containers/iterator.h" ]
+  public = [
+    "public/pw_containers/iterator.h",
+    "public/pw_containers/ptr_iterator.h",
+  ]
 }
 
 pw_source_set("raw_storage") {
@@ -232,6 +236,16 @@ pw_source_set("vector") {
     dir_pw_preprocessor,
   ]
   public = [ "public/pw_containers/vector.h" ]
+}
+
+pw_source_set("dynamic_vector") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_containers/dynamic_vector.h" ]
+  public_deps = [
+    ":dynamic_deque",
+    ":iterator",
+    "$dir_pw_allocator:allocator",
+  ]
 }
 
 pw_source_set("wrapped_iterator") {
@@ -348,7 +362,9 @@ pw_test_group("tests") {
     ":to_array_test",
     ":inline_var_len_entry_queue_test",
     ":vector_test",
+    ":dynamic_vector_test",
     ":wrapped_iterator_test",
+    ":ptr_iterator_test",
   ]
   group_deps = [ "examples" ]
 }
@@ -517,12 +533,26 @@ pw_test("vector_test") {
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
+pw_test("dynamic_vector_test") {
+  sources = [ "dynamic_vector_test.cc" ]
+  deps = [
+    ":dynamic_vector",
+    ":test_helpers",
+    "$dir_pw_allocator:testing",
+  ]
+}
+
 pw_test("wrapped_iterator_test") {
   sources = [ "wrapped_iterator_test.cc" ]
   deps = [ ":wrapped_iterator" ]
 
   # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
+}
+
+pw_test("ptr_iterator_test") {
+  sources = [ "ptr_iterator_test.cc" ]
+  deps = [ ":iterator" ]
 }
 
 pw_test("intrusive_forward_list_test") {

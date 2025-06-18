@@ -19,9 +19,8 @@ use list::*;
 use pw_log::info;
 use pw_status::Result;
 
-use crate::arch::{Arch, ArchInterface, ThreadState};
-
 use super::SCHEDULER_STATE;
+use crate::arch::{Arch, ArchInterface, ThreadState};
 
 /// The memory backing a thread's stack before it has been started.
 ///
@@ -375,4 +374,104 @@ impl Thread {
         // https://doc.rust-lang.org/beta/core/ptr/fn.null.html).
         0usize
     }
+}
+
+// TODO: davidroth - Add const assertions to ensure stack sizes aren't too
+// small, once the sizing analysis has been done to understand what a
+// reasonable minimum is.
+#[macro_export]
+macro_rules! init_thread {
+    ($name:literal, $entry:expr, $stack_size:expr) => {{
+        info!("allocating thread: {}", $name as &'static str);
+        use $crate::{Stack, ThreadBuffer};
+        let mut thread = {
+            static mut THREAD_BUFFER: ThreadBuffer = ThreadBuffer::new();
+            #[allow(static_mut_refs)]
+            unsafe {
+                THREAD_BUFFER.alloc_thread($name)
+            }
+        };
+
+        info!("initializing thread: {}", $name as &'static str);
+        thread.initialize_kernel_thread(
+            {
+                static mut STACK_STORAGE: $crate::StackStorage<{ $stack_size }> =
+                    $crate::StackStorageExt::ZEROED;
+                #[allow(static_mut_refs)]
+                unsafe {
+                    Stack::from_slice(&STACK_STORAGE)
+                }
+            },
+            $entry,
+            0,
+        );
+
+        thread
+    }};
+}
+
+#[cfg(feature = "user_space")]
+#[macro_export]
+macro_rules! init_non_priv_process {
+    ($name:literal, $memory_config:expr) => {{
+        use kernel::StaticProcess;
+        use pw_log::info;
+        info!(
+            "allocating non-privileged process: {}",
+            $name as &'static str
+        );
+
+        static PROCESS: StaticProcess = StaticProcess::new($name, $memory_config);
+        unsafe { (*PROCESS.get()).register() };
+        &PROCESS
+    }};
+}
+
+#[cfg(feature = "user_space")]
+#[macro_export]
+macro_rules! init_non_priv_thread {
+    ($name:literal, $process:expr, $entry:expr, $initial_sp:expr, $kernel_stack_size:expr) => {{
+        use pw_log::info;
+        info!(
+            "allocating non-privileged thread: {}, entry {:#x}",
+            $name as &'static str, $entry as usize
+        );
+        use $crate::{Stack, ThreadBuffer};
+        let mut thread = {
+            static mut THREAD_BUFFER: ThreadBuffer = ThreadBuffer::new();
+            #[allow(static_mut_refs)]
+            unsafe {
+                THREAD_BUFFER.alloc_thread($name)
+            }
+        };
+
+        info!(
+            "initializing non-privileged thread: {}",
+            $name as &'static str
+        );
+        unsafe {
+            if let Err(e) = thread.initialize_non_priv_thread(
+                {
+                    static mut STACK_STORAGE: $crate::StackStorage<{ $kernel_stack_size }> =
+                        $crate::StackStorageExt::ZEROED;
+                    #[allow(static_mut_refs)]
+                    unsafe {
+                        Stack::from_slice(&STACK_STORAGE)
+                    }
+                },
+                $initial_sp,
+                $process.get(),
+                $entry,
+                0,
+            ) {
+                $crate::macro_exports::pw_assert::panic!(
+                    "Error initializing thread: {}: {}",
+                    $name as &'static str,
+                    e as u32
+                );
+            }
+        }
+
+        thread
+    }};
 }

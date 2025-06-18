@@ -39,12 +39,9 @@
 
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{
-    parse::{Parse, ParseStream, Result},
-    parse_macro_input,
-    punctuated::Punctuated,
-    Ident, ItemFn, Token,
-};
+use syn::parse::{Parse, ParseStream, Result};
+use syn::punctuated::Punctuated;
+use syn::{parse_macro_input, Ident, ItemFn, Token};
 
 #[derive(Eq, PartialEq, Hash, Debug)]
 enum KernelMode {
@@ -80,7 +77,7 @@ impl Parse for Attribute {
                 let value = Self::parse_value(input)?;
                 Ok(Attribute::Exception(value))
             }
-            _ => Err(input.error(format!("unknown attribute {}", name_str))),
+            _ => Err(input.error(format!("unknown attribute {name_str}"))),
         }
     }
 }
@@ -320,7 +317,7 @@ fn exception(attr: TokenStream, item: TokenStream, kernel_mode: KernelMode) -> T
 
     quote! {
         #[no_mangle]
-        #[naked]
+        #[unsafe(naked)]
         #[link_section = ".trap"]
         pub unsafe extern "C" fn #exception_ident() -> ! {
             unsafe {

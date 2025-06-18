@@ -40,7 +40,7 @@ bazel_dep(name = "protobuf", version = "28.2", repo_name = "com_google_protobuf"
 bazel_dep(name = "abseil-cpp", version = "20240116.1")
 bazel_dep(name = "re2", version = "2024-07-02.bcr.1")
 bazel_dep(name = "rules_android", version = "0.6.0")
-bazel_dep(name = "rules_cc", version = "0.1.1")
+bazel_dep(name = "rules_cc", version = "0.1.2")
 bazel_dep(name = "rules_fuzzing", version = "0.5.2")
 bazel_dep(name = "rules_go", version = "0.52.0", repo_name = "io_bazel_rules_go")
 bazel_dep(name = "rules_java", version = "8.6.1")
@@ -207,7 +207,7 @@ register_toolchains(
 
 # Rust toolchains
 pw_rust = use_extension("//pw_toolchain/rust:extensions.bzl", "pw_rust")
-pw_rust.toolchain(cipd_tag = "git_revisions:afa859f8121bf2985362a2c8414dc71a825ccf2d,03b0f55d9c6319a851a60bb084faca0e32a38f2b")
+pw_rust.toolchain(cipd_tag = "git_revisions:fe5c95d4ae33ec9d7831921e448e2daf8264ea42,7b074fc9362a4a6a5f172dd8936a22fb25eff96b")
 use_repo(pw_rust, "pw_rust_toolchains")
 
 register_toolchains(

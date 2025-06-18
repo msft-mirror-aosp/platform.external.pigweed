@@ -535,6 +535,7 @@ pw_test("allocator_as_pool_test") {
 
 pw_test("allocator_test") {
   deps = [
+    ":counter",
     ":pw_allocator",
     ":testing",
   ]
@@ -605,6 +606,7 @@ pw_test("bump_allocator_test") {
 pw_test("chunk_pool_test") {
   deps = [
     ":chunk_pool",
+    ":counter",
     ":testing",
   ]
   sources = [ "chunk_pool_test.cc" ]

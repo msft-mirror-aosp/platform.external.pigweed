@@ -21,7 +21,8 @@ use pw_status::Result;
 use crate::arch::riscv::protection::MemoryConfig;
 use crate::arch::riscv::regs::{MStatusVal, PrivilegeLevel};
 use crate::arch::{Arch, ArchInterface};
-use crate::scheduler::{self, thread::Stack, SchedulerState};
+use crate::scheduler::thread::Stack;
+use crate::scheduler::{self, SchedulerState};
 use crate::sync::spinlock::SpinLockGuard;
 
 const LOG_CONTEXT_SWITCH: bool = false;
@@ -166,14 +167,13 @@ impl super::super::ThreadState for ArchThreadState {
 }
 
 #[no_mangle]
-#[naked]
+#[unsafe(naked)]
 extern "C" fn riscv_context_switch(
     old_frame: *mut *mut ContextSwitchFrame,
     new_frame: *mut ContextSwitchFrame,
 ) {
-    unsafe {
-        naked_asm!(
-            "
+    naked_asm!(
+        "
                 // Push all of the s registers + ra onto the stack,
                 // save the stack pointer into the old frame pointer.
                 addi sp, sp, -52
@@ -210,18 +210,16 @@ extern "C" fn riscv_context_switch(
 
                 ret
             "
-        )
-    }
+    )
 }
 
 // Since the context switch frame does not contain the function arg registers,
 // pass the initial function and arguments via two of the saved s registers.
 #[no_mangle]
-#[naked]
+#[unsafe(naked)]
 extern "C" fn asm_user_trampoline() {
-    unsafe {
-        naked_asm!(
-            "
+    naked_asm!(
+        "
                 // Store the kernel stack pointer in mscratch.
                 csrw    mscratch, sp
 
@@ -237,18 +235,16 @@ extern "C" fn asm_user_trampoline() {
                 csrw    mepc, s0
                 mret
             "
-        )
-    }
+    )
 }
 
 // Since the context switch frame does not contain the function arg registers,
 // pass the initial function and arguments via two of the saved s registers.
 #[no_mangle]
-#[naked]
+#[unsafe(naked)]
 extern "C" fn asm_trampoline() {
-    unsafe {
-        naked_asm!(
-            "
+    naked_asm!(
+        "
                 // Zero out mscratch to signify that this is a kernel thread.
                 csrw    mscratch, zero
                 mv a0, s0
@@ -256,8 +252,7 @@ extern "C" fn asm_trampoline() {
                 mv a2, s2
                 tail trampoline
             "
-        )
-    }
+    )
 }
 
 #[allow(unused)]

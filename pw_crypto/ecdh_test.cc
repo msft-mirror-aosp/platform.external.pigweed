@@ -17,10 +17,6 @@
 #include "pw_unit_test/framework.h"
 #include "pw_unit_test/status_macros.h"
 
-#ifdef MBEDTLS_ECDH_C
-#include <random>
-#endif  // defined(MBEDTLS_ECDH_C)
-
 #define STR_TO_BYTES(str) (as_bytes(span(str).subspan<0, sizeof(str) - 1>()))
 
 namespace pw::crypto::ecdh {
@@ -41,47 +37,21 @@ Result<P256PublicKey> ExtractPublicKey(const P256Keypair& keypair) {
   return P256PublicKey::Import(x, y);
 }
 
-#ifdef MBEDTLS_ECDH_C
-// Not actually a CSPRNG, and seeded deterministically, purely for test.
-class TestRng final : public backend::Csprng {
- public:
-  void Seed(size_t seed) {
-    engine_.seed(static_cast<std::mt19937::result_type>(seed));
-  }
-
- private:
-  GenerateResult Generate(ByteSpan out) override {
-    std::generate(out.begin(), out.end(), [this] {
-      return std::byte(distribution_(engine_));
-    });
-    return GenerateResult::kSuccess;
-  }
-
-  std::mt19937 engine_;
-  std::uniform_int_distribution<unsigned char> distribution_;
-};
-
-void SetUpBackend(std::string_view test_name) {
-  static TestRng fake_rng;
-  fake_rng.Seed(std::hash<std::string_view>().operator()(test_name));
-  backend::SetCsprng(&fake_rng);
-}
-
-void ResetBackend() { backend::ResetCsprngForTesting(); }
-#else   // !defined(MBEDTLS_ECDH_C)
-void SetUpBackend(std::string_view) {}
-void ResetBackend() {}
-#endif  // defined(MBEDTLS_ECDH_C)
-
 class EcdhP256Test : public ::testing::Test {
- protected:
-  void SetUp(std::string_view test_name) { SetUpBackend(test_name); }
-
  private:
-  void SetUp() override {}
+  static bool backend_set_up;
 
-  void TearDown() override { ResetBackend(); }
+  void SetUp() override {
+    if (!backend_set_up) {
+      SetUpBackendForTesting();
+      backend_set_up = true;
+    }
+  }
+
+  void TearDown() override {}
 };
+
+bool EcdhP256Test::backend_set_up = false;
 
 struct NistTestCase {
   P256ConstCoordinate other_x;
@@ -598,8 +568,6 @@ const NistTestCase kNistTestCases[] = {
 };
 
 TEST_F(EcdhP256Test, NistTestCases) {
-  SetUp("NistTestCases");
-
   std::array<std::byte, kP256DiffieHellmanKeySize> dh_key_out;
 
   std::array<std::byte, kP256CoordSize> other_x{};
@@ -690,8 +658,6 @@ TEST_F(EcdhP256Test, NistTestCases) {
 }
 
 TEST_F(EcdhP256Test, GenerateAndComputeSharedSecret) {
-  SetUp("GenerateAndComputeSharedSecret");
-
   PW_TEST_ASSERT_OK_AND_ASSIGN(auto keypair_alice, P256Keypair::Generate());
   PW_TEST_ASSERT_OK_AND_ASSIGN(auto keypair_bob, P256Keypair::Generate());
 
@@ -711,6 +677,77 @@ TEST_F(EcdhP256Test, GenerateAndComputeSharedSecret) {
       keypair_bob.ComputeDiffieHellman(pubkey_alice, shared_key_bob));
 
   EXPECT_EQ(shared_key_alice, shared_key_bob);
+}
+
+TEST_F(EcdhP256Test, PointNotOnCurveFails) {
+  std::array<std::byte, kP256CoordSize> other_x{};
+  std::array<std::byte, kP256CoordSize> other_y{};
+  std::array<std::byte, kP256CoordSize> x{};
+  std::array<std::byte, kP256CoordSize> y{};
+
+  std::array<std::byte, kP256PrivateKeySize> private_key{};
+
+  // Big-endian.
+  for (const auto& test_case : kNistTestCases) {
+    std::memcpy(other_x.data(), test_case.other_x.data(), kP256CoordSize);
+    std::memcpy(other_y.data(), test_case.other_y.data(), kP256CoordSize);
+    std::memcpy(x.data(), test_case.x.data(), kP256CoordSize);
+    std::memcpy(y.data(), test_case.y.data(), kP256CoordSize);
+    std::memcpy(
+        private_key.data(), test_case.private_key.data(), kP256CoordSize);
+
+    // Modify the points to no longer be on the curve.
+    x[0] = ~x[0];
+    other_x[0] = ~x[0];
+
+    EXPECT_FALSE(P256PublicKey::Import(other_x, other_y, endian::big).ok());
+    EXPECT_FALSE(
+        P256Keypair::ImportForTesting(private_key, x, y, endian::big).ok());
+
+    // Modify local keypair to be valid again, and double check it is valid.
+    x[0] = ~x[0];
+    PW_TEST_EXPECT_OK(
+        P256Keypair::ImportForTesting(private_key, x, y, endian::big));
+
+    // Modify private key to no longer be on the curve.
+    ZeroOut(private_key);
+    EXPECT_FALSE(
+        P256Keypair::ImportForTesting(private_key, x, y, endian::big).ok());
+  }
+
+  // Little-endian.
+  for (const auto& test_case : kNistTestCases) {
+    std::memcpy(other_x.data(), test_case.other_x.data(), kP256CoordSize);
+    std::memcpy(other_y.data(), test_case.other_y.data(), kP256CoordSize);
+    std::memcpy(x.data(), test_case.x.data(), kP256CoordSize);
+    std::memcpy(y.data(), test_case.y.data(), kP256CoordSize);
+    std::memcpy(
+        private_key.data(), test_case.private_key.data(), kP256PrivateKeySize);
+
+    std::reverse(other_x.begin(), other_x.end());
+    std::reverse(other_y.begin(), other_y.end());
+    std::reverse(private_key.begin(), private_key.end());
+    std::reverse(x.begin(), x.end());
+    std::reverse(y.begin(), y.end());
+
+    // Modify the points to no longer be on the curve.
+    x[kP256CoordSize - 1] = ~x[kP256CoordSize - 1];
+    other_x[kP256CoordSize - 1] = ~other_x[kP256CoordSize - 1];
+
+    EXPECT_FALSE(P256PublicKey::Import(other_x, other_y, endian::big).ok());
+    EXPECT_FALSE(
+        P256Keypair::ImportForTesting(private_key, x, y, endian::big).ok());
+
+    // Modify local keypair to be valid again, and double check it is valid.
+    x[kP256CoordSize - 1] = ~x[kP256CoordSize - 1];
+    PW_TEST_EXPECT_OK(
+        P256Keypair::ImportForTesting(private_key, x, y, endian::little));
+
+    // Modify private key to be invalid for P256.
+    ZeroOut(private_key);
+    EXPECT_FALSE(
+        P256Keypair::ImportForTesting(private_key, x, y, endian::little).ok());
+  }
 }
 
 }  // namespace

@@ -35,6 +35,17 @@ def make_crate_aliases(name):
         visibility = ["//visibility:public"],
     )
     native.alias(
+        name = "askama",
+        target_compatible_with = select({
+            ":std": [],
+            "//conditions:default": ["@platforms//:incompatible"],
+        }),
+        actual = select({
+            ":std": "@crates_std//:askama",
+        }),
+        visibility = ["//visibility:public"],
+    )
+    native.alias(
         name = "bitfield-struct",
         target_compatible_with = select({
             ":std": [],
@@ -129,6 +140,17 @@ def make_crate_aliases(name):
         actual = select({
             ":no_std": "@crates_no_std//:embedded-io",
             ":std": "@crates_std//:embedded-io",
+        }),
+        visibility = ["//visibility:public"],
+    )
+    native.alias(
+        name = "hashlink",
+        target_compatible_with = select({
+            ":std": [],
+            "//conditions:default": ["@platforms//:incompatible"],
+        }),
+        actual = select({
+            ":std": "@crates_std//:hashlink",
         }),
         visibility = ["//visibility:public"],
     )
@@ -328,6 +350,17 @@ def make_crate_aliases(name):
         }),
         actual = select({
             ":std": "@crates_std//:syn",
+        }),
+        visibility = ["//visibility:public"],
+    )
+    native.alias(
+        name = "toml",
+        target_compatible_with = select({
+            ":std": [],
+            "//conditions:default": ["@platforms//:incompatible"],
+        }),
+        actual = select({
+            ":std": "@crates_std//:toml",
         }),
         visibility = ["//visibility:public"],
     )

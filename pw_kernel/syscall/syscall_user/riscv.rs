@@ -15,14 +15,13 @@
 use core::arch::naked_asm;
 
 use pw_status::Result;
-
 use syscall_defs::{SysCallId, SysCallInterface, SysCallReturnValue};
 
 pub struct SysCall {}
 
 macro_rules! syscall_veneer {
     ($id:ident, $name:ident($($arg_name:ident: $arg_type:ty),*)) => {
-        #[naked]
+        #[unsafe(naked)]
         unsafe extern "C" fn $name($($arg_name: $arg_type),*) -> i64 {
             naked_asm!("
                 li   t0, {id}

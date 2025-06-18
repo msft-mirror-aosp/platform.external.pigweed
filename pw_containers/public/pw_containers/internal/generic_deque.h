@@ -13,6 +13,7 @@
 // the License.
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <initializer_list>
 #include <iterator>
@@ -293,12 +294,10 @@ class GenericDeque : public GenericDequeBase<CountAndCapacityType> {
     return const_iterator(&derived(), 0);
   }
 
-  constexpr iterator end() noexcept {
-    return iterator(&derived(), std::numeric_limits<size_type>::max());
-  }
+  constexpr iterator end() noexcept { return iterator(&derived(), size()); }
   constexpr const_iterator end() const noexcept { return cend(); }
   constexpr const_iterator cend() const noexcept {
-    return const_iterator(&derived(), std::numeric_limits<size_type>::max());
+    return const_iterator(&derived(), size());
   }
 
   // Infallible modify
@@ -309,6 +308,16 @@ class GenericDeque : public GenericDequeBase<CountAndCapacityType> {
     }
     Base::ClearIndices();
   }
+
+  /// Erases the item at `pos`, which must be a dereferenceable iterator.
+  iterator erase(const_iterator pos) {
+    PW_DASSERT(pos.pos_ < size());
+    return erase(pos, pos + 1);
+  }
+
+  /// Erases the items in the range `[first, last)`. Does nothing if `first ==
+  /// last`.
+  iterator erase(const_iterator first, const_iterator last);
 
   void push_back(const value_type& value) { PW_ASSERT(try_push_back(value)); }
 
@@ -592,6 +601,38 @@ bool GenericDeque<Derived, ValueType, CountAndCapacityType>::try_resize(
     }
   }
   return true;
+}
+
+template <typename Derived, typename ValueType, typename CountAndCapacityType>
+typename GenericDeque<Derived, ValueType, CountAndCapacityType>::iterator
+GenericDeque<Derived, ValueType, CountAndCapacityType>::erase(
+    const_iterator first, const_iterator last) {
+  PW_DASSERT(first <= last);
+  const iterator first_it(static_cast<Derived*>(this), first.pos_);
+  const iterator last_it(static_cast<Derived*>(this), last.pos_);
+
+  const size_type items_to_erase = static_cast<size_type>(last - first);
+  if (items_to_erase == 0) {
+    return first_it;
+  }
+
+  const size_type items_after = static_cast<size_type>(size() - last.pos_);
+  // Shift head forward or tail backwards -- whichever involves fewer moves.
+  if (first.pos_ < items_after) {  // fewer before than after
+    std::move_backward(begin(), first_it, last_it);
+    if constexpr (!std::is_trivially_destructible_v<value_type>) {
+      std::destroy(begin(), begin() + items_to_erase);
+    }
+    Base::head_ = Base::AbsoluteIndex(items_to_erase);
+  } else {  // fewer after than before
+    std::move(last_it, end(), first_it);
+    if constexpr (!std::is_trivially_destructible_v<value_type>) {
+      std::destroy(first_it + items_after, end());
+    }
+    Base::tail_ = Base::AbsoluteIndex(first.pos_ + items_after);
+  }
+  Base::count_and_capacity().SetCount(size() - items_to_erase);
+  return first_it;
 }
 
 }  // namespace pw::containers::internal
