@@ -14,24 +14,21 @@
 
 use core::arch::asm;
 
-use riscv;
+use crate::scheduler::SchedulerContext as _;
+use crate::{KernelState, KernelStateContext};
 
 mod exceptions;
-mod protection;
+pub mod protection;
 mod regs;
-mod spinlock;
+pub mod spinlock;
 mod threads;
 mod timer;
 
-use crate::arch::ArchInterface;
+#[derive(Copy, Clone)]
+pub struct Arch;
 
-pub struct Arch {}
-
-impl ArchInterface for Arch {
-    type ThreadState = threads::ArchThreadState;
-    type BareSpinLock = spinlock::BareSpinLock;
+impl crate::KernelContext for Arch {
     type Clock = timer::Clock;
-    type MemoryConfig = protection::MemoryConfig;
 
     fn early_init() {
         // Make sure interrupts are disabled
@@ -44,31 +41,18 @@ impl ArchInterface for Arch {
         timer::init();
     }
 
-    fn enable_interrupts() {
-        unsafe {
-            riscv::register::mstatus::set_mie();
-        }
-    }
-
-    fn disable_interrupts() {
-        unsafe {
-            riscv::register::mstatus::clear_mie();
-        }
-    }
-
-    fn interrupts_enabled() -> bool {
-        riscv::register::mstatus::read().mie()
-    }
-
-    fn idle() {
-        riscv::asm::wfi();
-    }
-
     fn panic() -> ! {
         unsafe {
             asm!("ebreak");
         }
         #[allow(clippy::empty_loop)]
         loop {}
+    }
+}
+
+impl KernelStateContext for Arch {
+    fn get_state(self) -> &'static KernelState<Arch> {
+        static STATE: KernelState<Arch> = KernelState::new();
+        &STATE
     }
 }

@@ -15,27 +15,53 @@
 use pw_log::info;
 use pw_status::Result;
 
-use crate::arch::{ArchInterface, MemoryRegionType};
-use crate::scheduler::thread::Stack;
-use crate::scheduler::SchedulerState;
+use crate::arch::MemoryRegionType;
+use crate::scheduler::thread::{Stack, ThreadState};
+use crate::scheduler::{SchedulerContext, SchedulerState};
 use crate::sync::spinlock::SpinLockGuard;
+use crate::{KernelState, KernelStateContext};
 
 mod spinlock;
 
-pub struct ThreadState {}
+#[derive(Copy, Clone)]
+pub struct Arch;
 
-impl super::ThreadState for ThreadState {
-    fn new() -> Self {
-        Self {}
-    }
+pub struct ArchThreadState;
+
+impl SchedulerContext for Arch {
+    type ThreadState = ArchThreadState;
+    type BareSpinLock = spinlock::BareSpinLock;
 
     unsafe fn context_switch(
-        mut _sched_state: SpinLockGuard<'_, SchedulerState>,
-        _old_thread_state: *mut ThreadState,
-        _new_thread_state: *mut ThreadState,
-    ) -> SpinLockGuard<'_, SchedulerState> {
+        self,
+        _sched_state: SpinLockGuard<'_, spinlock::BareSpinLock, SchedulerState<ArchThreadState>>,
+        _old_thread_state: *mut ArchThreadState,
+        _new_thread_state: *mut ArchThreadState,
+    ) -> SpinLockGuard<'_, spinlock::BareSpinLock, SchedulerState<ArchThreadState>> {
         pw_assert::panic!("unimplemented");
     }
+
+    fn enable_interrupts() {
+        todo!("unimplemented");
+    }
+    fn disable_interrupts() {
+        todo!("");
+    }
+    fn interrupts_enabled() -> bool {
+        todo!("");
+    }
+}
+
+impl KernelStateContext for Arch {
+    fn get_state(self) -> &'static KernelState<Arch> {
+        static STATE: KernelState<Arch> = KernelState::new();
+        &STATE
+    }
+}
+
+impl ThreadState for ArchThreadState {
+    const NEW: Self = Self;
+    type MemoryConfig = MemoryConfig;
 
     fn initialize_kernel_frame(
         &mut self,
@@ -71,11 +97,10 @@ impl time::Clock for Clock {
 }
 
 pub struct MemoryConfig;
-impl MemoryConfig {
-    pub const KERNEL_THREAD_MEMORY_CONFIG: Self = Self;
-}
 
 impl crate::arch::MemoryConfig for MemoryConfig {
+    const KERNEL_THREAD_MEMORY_CONFIG: Self = Self;
+
     fn range_has_access(
         &self,
         _access_type: MemoryRegionType,
@@ -86,27 +111,13 @@ impl crate::arch::MemoryConfig for MemoryConfig {
     }
 }
 
-pub struct Arch;
-
-impl ArchInterface for Arch {
-    type ThreadState = ThreadState;
-    type BareSpinLock = spinlock::BareSpinLock;
+impl crate::KernelContext for Arch {
     type Clock = Clock;
-    type MemoryConfig = MemoryConfig;
 
     fn early_init() {
         info!("HOST arch early init");
     }
     fn init() {
         info!("HOST arch init");
-    }
-    fn enable_interrupts() {
-        todo!("unimplemented");
-    }
-    fn disable_interrupts() {
-        todo!("");
-    }
-    fn interrupts_enabled() -> bool {
-        todo!("");
     }
 }

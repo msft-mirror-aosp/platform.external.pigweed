@@ -14,33 +14,36 @@
 
 {% if apps.len() > 0 %}
 pub fn start() {
+    type MemoryConfig = kernel::arch::ArchMemoryConfig;
+
 {%- for (app_name, app) in apps %}
     let start_fn_{{app_name}} = {{app.start_fn_address | to_hex}}_usize;
-    const MEMORY_CONFIG_{{app_name | uppercase }}: <kernel::Arch as kernel::ArchInterface>::MemoryConfig =
-        <kernel::Arch as kernel::ArchInterface>::MemoryConfig::const_new(&[
-            kernel::MemoryRegion {
-                ty: kernel::MemoryRegionType::ReadOnlyExecutable,
-                start: {{app.flash_start_address | to_hex}},
-                end: {{app.flash_end_address | to_hex}},
-            },
-            kernel::MemoryRegion {
-                ty: kernel::MemoryRegionType::ReadWriteData,
-                start: {{app.ram_start_address | to_hex}},
-                end: {{app.ram_end_address | to_hex}},
-            },
-        ]);
+    const MEMORY_CONFIG_{{app_name | uppercase }}: MemoryConfig = MemoryConfig::const_new(&[
+        kernel::MemoryRegion {
+            ty: kernel::MemoryRegionType::ReadOnlyExecutable,
+            start: {{app.flash_start_address | to_hex}},
+            end: {{app.flash_end_address | to_hex}},
+        },
+        kernel::MemoryRegion {
+            ty: kernel::MemoryRegionType::ReadWriteData,
+            start: {{app.ram_start_address | to_hex}},
+            end: {{app.ram_end_address | to_hex}},
+        },
+    ]);
 
-    let process_{{app_name}} = kernel::init_non_priv_process!("{{app.process.name}}", MEMORY_CONFIG_{{app_name | uppercase}});
+    let process_{{app_name}} = unsafe { kernel::init_non_priv_process!("{{app.process.name}}", MEMORY_CONFIG_{{app_name | uppercase}}) };
 {%- for thread in app.process.threads -%}
 {% set thread_index = loop.index0 %}
-    let thread_{{app_name}}_{{thread_index}} = kernel::init_non_priv_thread!(
-        "{{thread.name}}",
-        process_{{app_name}},
-        start_fn_{{app_name}},
-        {{app.initial_sp | to_hex}},
-        {{thread.stack_size_bytes}}
-    );
-    kernel::start_thread(thread_{{app_name}}_{{thread_index}});
+    let thread_{{app_name}}_{{thread_index}} = unsafe {
+        kernel::init_non_priv_thread!(
+            "{{thread.name}}",
+            process_{{app_name}},
+            start_fn_{{app_name}},
+            {{app.initial_sp | to_hex}},
+            {{thread.stack_size_bytes}}
+        )
+    };
+    kernel::start_thread(kernel::arch::Arch, thread_{{app_name}}_{{thread_index}});
 {%- endfor -%}
 {%- endfor -%}
 }

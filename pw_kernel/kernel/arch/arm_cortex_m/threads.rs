@@ -19,17 +19,17 @@ use cortex_m::peripheral::SCB;
 use pw_cast::CastInto as _;
 use pw_status::{Error, Result};
 
-// use pw_log::info;
 use crate::arch::arm_cortex_m::exceptions::{
     exception, ExcReturn, ExcReturnFrameType, ExcReturnMode, ExcReturnRegisterStacking,
     ExcReturnStack, ExceptionFrame, KernelExceptionFrame, RetPsrVal,
 };
 use crate::arch::arm_cortex_m::protection::MemoryConfig;
 use crate::arch::arm_cortex_m::regs::msr::{ControlVal, Spsel};
+use crate::arch::arm_cortex_m::spinlock::BareSpinLock;
 use crate::arch::arm_cortex_m::{in_interrupt_handler, Arch};
-use crate::arch::{ArchInterface, MemoryConfig as _, MemoryRegionType};
+use crate::arch::{MemoryConfig as _, MemoryRegionType};
 use crate::scheduler::thread::Stack;
-use crate::scheduler::{self, SchedulerState, SCHEDULER_STATE};
+use crate::scheduler::{self, SchedulerContext, SchedulerState, SchedulerStateContext as _};
 use crate::sync::spinlock::SpinLockGuard;
 
 const STACK_ALIGNMENT: usize = 8;
@@ -83,19 +83,16 @@ impl ArchThreadState {
     }
 }
 
-impl super::super::ThreadState for ArchThreadState {
-    fn new() -> Self {
-        Self {
-            frame: core::ptr::null_mut(),
-            memory_config: core::ptr::null(),
-        }
-    }
+impl SchedulerContext for Arch {
+    type ThreadState = ArchThreadState;
+    type BareSpinLock = BareSpinLock;
 
     unsafe fn context_switch<'a>(
-        mut sched_state: SpinLockGuard<'a, SchedulerState>,
+        self,
+        mut sched_state: SpinLockGuard<'a, BareSpinLock, SchedulerState<ArchThreadState>>,
         old_thread_state: *mut ArchThreadState,
         new_thread_state: *mut ArchThreadState,
-    ) -> SpinLockGuard<'a, SchedulerState> {
+    ) -> SpinLockGuard<'a, BareSpinLock, SchedulerState<ArchThreadState>> {
         pw_assert::assert!(new_thread_state == sched_state.get_current_arch_thread_state());
         // TODO - konkers: Allow $expr to be tokenized.
 
@@ -133,13 +130,46 @@ impl super::super::ThreadState for ArchThreadState {
             // The next line of code is only executed in this context after the
             // old thread is context switched back to.
 
-            sched_state = SCHEDULER_STATE.lock();
+            sched_state = Arch::get_scheduler_lock(Arch).lock();
         } else {
             // in interrupt context the pendsv should have already triggered it
             pw_assert::assert!(SCB::is_pendsv_pending());
         }
         sched_state
     }
+
+    fn enable_interrupts() {
+        unsafe {
+            cortex_m::interrupt::enable();
+        }
+    }
+
+    fn disable_interrupts() {
+        cortex_m::interrupt::disable();
+    }
+
+    fn interrupts_enabled() -> bool {
+        // It's a complicated concept in cortex-m:
+        // If PRIMASK is inactive, then interrupts are 100% disabled otherwise
+        // if the current interrupt priority level is not zero (BASEPRI register) interrupts
+        // at that level are not allowed. For now we're treating nonzero as full disabled.
+        let primask = cortex_m::register::primask::read();
+        let basepri = cortex_m::register::basepri::read();
+        primask.is_active() && (basepri == 0)
+    }
+
+    fn idle() {
+        cortex_m::asm::wfi();
+    }
+}
+
+impl crate::scheduler::thread::ThreadState for ArchThreadState {
+    type MemoryConfig = crate::arch::arm_cortex_m::protection::MemoryConfig;
+
+    const NEW: Self = Self {
+        frame: core::ptr::null_mut(),
+        memory_config: core::ptr::null(),
+    };
 
     fn initialize_kernel_frame(
         &mut self,
@@ -243,7 +273,7 @@ extern "C" fn trampoline(initial_function: extern "C" fn(usize, usize), arg0: us
     // Get a pointer to the current thread and call exit.
     // Note: must let the scope of the lock guard close,
     // since exit_thread() does not return.
-    scheduler::exit_thread();
+    scheduler::exit_thread(Arch);
 
     // Does not reach.
 }
@@ -283,7 +313,7 @@ extern "C" fn pendsv_swap_sp(frame: *mut KernelExceptionFrame) -> *mut KernelExc
     }
 
     // Return the arch frame for the current thread
-    let mut sched_state = SCHEDULER_STATE.lock();
+    let mut sched_state = Arch.get_scheduler_lock().lock();
     let new_thread = unsafe { sched_state.get_current_arch_thread_state() };
     // info!(
     //     "new frame {:08x}: pc {:08x}",
