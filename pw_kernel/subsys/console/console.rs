@@ -14,6 +14,7 @@
 #![no_std]
 
 use core::fmt::{Error, Write};
+
 use embedded_io::ErrorType;
 use pw_status::Result;
 
@@ -34,6 +35,7 @@ impl Default for Console {
 }
 
 impl Console {
+    #[must_use]
     #[inline]
     pub const fn new() -> Self {
         Self {}

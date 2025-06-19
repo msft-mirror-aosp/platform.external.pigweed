@@ -12,25 +12,17 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-use super::elf_mem::ElfMem;
-use super::DecodedInstr;
-use super::Instr;
-use super::InstrA;
-use super::InstrType;
-use super::Reg;
-use anyhow::anyhow;
-use object::elf::STB_GLOBAL;
-use object::elf::STB_LOCAL;
-use object::elf::STB_WEAK;
-use object::elf::STT_FUNC;
-use object::read::elf::ElfFile32;
-use object::read::elf::Sym;
-use std::collections::btree_map;
-use std::collections::hash_map;
-use std::collections::BTreeMap;
-use std::collections::HashMap;
-use std::ops::Bound;
+use core::ops::Bound;
+use std::collections::{btree_map, hash_map, BTreeMap, HashMap};
 use std::rc::Rc;
+
+use anyhow::anyhow;
+use object::elf::{STB_GLOBAL, STB_LOCAL, STB_WEAK, STT_FUNC};
+use object::read::elf::{ElfFile32, Sym};
+use pw_cast::CastFrom as _;
+
+use super::elf_mem::ElfMem;
+use super::{DecodedInstr, Instr, InstrA, InstrType, Reg};
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Binding {
     Unknown = 0,
@@ -57,7 +49,7 @@ pub fn list_functions<'a>(
     let t = elf.elf_symbol_table();
     let mut result = vec![];
     for sym in t.symbols() {
-        let name = std::str::from_utf8(t.symbol_name(E, sym)?)?;
+        let name = core::str::from_utf8(t.symbol_name(E, sym)?)?;
         if sym.st_type() != STT_FUNC || name.is_empty() {
             continue;
         }
@@ -157,10 +149,10 @@ impl<'a> FuncRepo<'a> {
             .map(|v| v.as_slice())
             .unwrap_or(&[])
     }
-    pub fn get_func_by_symbol(&self, name: &str) -> Option<&Function> {
+    pub fn get_func_by_symbol(&self, name: &str) -> Option<&Function<'_>> {
         self.by_symbol.get(name).map(|v| &**v)
     }
-    pub fn instructions_at_addr(&self, addr: u32) -> Option<(&Function, InstrIterator)> {
+    pub fn instructions_at_addr(&self, addr: u32) -> Option<(&Function<'_>, InstrIterator<'_>)> {
         let (_, func) = self
             .by_addr
             .range((Bound::Unbounded, Bound::Included(addr)))
@@ -183,7 +175,9 @@ impl Function<'_> {
         self.body.addr
     }
     pub fn end_addr(&self) -> u32 {
-        self.body.addr.wrapping_add(self.body.data.len() as u32)
+        self.body
+            .addr
+            .wrapping_add(self.body.data.len().try_into().unwrap())
     }
 }
 pub struct Snippet<'a> {
@@ -327,7 +321,7 @@ impl InstrIterator<'_> {
         let Some(prev_instr_size) = self.instr_sizes.prev_instr_size(self.offset) else {
             println!(
                 "Can't find prev instr at addr {:x} offset={}",
-                self.offset + self.start_addr as usize,
+                self.offset + usize::cast_from(self.start_addr),
                 self.offset
             );
             return None;

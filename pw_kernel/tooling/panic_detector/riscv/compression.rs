@@ -13,29 +13,12 @@
 // the License.
 
 use super::Instr;
-use crate::riscv::Instr32B;
-use crate::riscv::Instr32I;
-use crate::riscv::Instr32IS;
-use crate::riscv::Instr32J;
-use crate::riscv::Instr32R;
-use crate::riscv::Instr32S;
-use crate::riscv::Instr32U;
-use crate::riscv::Opcode;
-use crate::riscv::Reg;
-use crate::riscv::FUNCT10_ADD;
-use crate::riscv::FUNCT10_AND;
-use crate::riscv::FUNCT10_OR;
-use crate::riscv::FUNCT10_SRAI;
-use crate::riscv::FUNCT10_SRLI;
-use crate::riscv::FUNCT10_SUB;
-use crate::riscv::FUNCT10_XOR;
-use crate::riscv::FUNCT3_BRANCH_EQ;
-use crate::riscv::FUNCT3_BRANCH_NE;
-use crate::riscv::FUNCT3_LOAD_W;
-use crate::riscv::FUNCT3_OP_ADDI;
-use crate::riscv::FUNCT3_OP_ANDI;
-use crate::riscv::FUNCT3_OP_SLI;
-use crate::riscv::FUNCT3_STORE_W;
+use crate::riscv::{
+    Instr32B, Instr32I, Instr32IS, Instr32J, Instr32R, Instr32S, Instr32U, Opcode, Reg,
+    FUNCT10_ADD, FUNCT10_AND, FUNCT10_OR, FUNCT10_SRAI, FUNCT10_SRLI, FUNCT10_SUB, FUNCT10_XOR,
+    FUNCT3_BRANCH_EQ, FUNCT3_BRANCH_NE, FUNCT3_LOAD_W, FUNCT3_OP_ADDI, FUNCT3_OP_ANDI,
+    FUNCT3_OP_SLI, FUNCT3_STORE_W,
+};
 const OP_MASK_5: u16 = 0xe003;
 const OP_MASK_6: u16 = 0xf003;
 const OP_MASK_7: u16 = 0xec03;
@@ -353,8 +336,10 @@ pub fn decompress_instr(instr: u16) -> Option<Instr> {
     None
 }
 mod rv16 {
-    use crate::riscv::{sign_extend_i16, sign_extend_i32, Reg};
     use bitfield_struct::bitfield;
+    use pw_cast::try_cast;
+
+    use crate::riscv::{sign_extend_i16, sign_extend_i32, Reg};
     const fn unwrap_or_0(val: Option<u16>) -> u16 {
         match val {
             Some(val) => val,
@@ -367,24 +352,18 @@ mod rv16 {
             None => 0,
         }
     }
-    const fn bit_range(val: u16, msb: usize, lsb: usize) -> u16 {
+    const fn bit_range(val: u16, msb: u32, lsb: u32) -> u16 {
         assert!(msb < 16 && lsb < 16);
-        let msb = msb as u32;
-        let lsb = lsb as u32;
         (val >> lsb) & (unwrap_or_0(1_u16.checked_shl(msb + 1 - lsb)) - 1)
     }
-    const fn set_bit_range(result: &mut u16, msb: usize, lsb: usize, val: u16) {
+    const fn set_bit_range(result: &mut u16, msb: u32, lsb: u32, val: u16) {
         assert!(msb < 16 && lsb < 16);
-        let msb = msb as u32;
-        let lsb = lsb as u32;
         let mask = unwrap_or_0(1_u16.checked_shl(msb + 1 - lsb)) - 1;
         let val = val & mask;
         *result = (*result & !(mask << lsb)) | (val << lsb);
     }
-    const fn set_bit_range_32(result: &mut u32, msb: usize, lsb: usize, val: u32) {
+    const fn set_bit_range_32(result: &mut u32, msb: u32, lsb: u32, val: u32) {
         assert!(msb < 32 && lsb < 32);
-        let msb = msb as u32;
-        let lsb = lsb as u32;
         let mask = unwrap_or_0_32(1_u32.checked_shl(msb + 1 - lsb)) - 1;
         let val = val & mask;
         *result = (*result & !(mask << lsb)) | (val << lsb);
@@ -443,10 +422,10 @@ mod rv16 {
         pub const OP_MASK: u16 = 0xe003;
         pub const OP_CODE: u16 = 0x4000;
         pub const fn rs1(&self) -> Reg {
-            Reg::from_bits((bit_range(self.0, 9, 7) + 8) as u8)
+            Reg::from_bits(try_cast!(bit_range(self.0, 9, 7) + 8 => u8).unwrap())
         }
         pub const fn rd(&self) -> Reg {
-            Reg::from_bits((bit_range(self.0, 4, 2) + 8) as u8)
+            Reg::from_bits(try_cast!(bit_range(self.0, 4, 2) + 8 => u8).unwrap())
         }
         pub const fn uimm(&self) -> u16 {
             let mut result = 0;
@@ -467,10 +446,10 @@ mod rv16 {
         pub const OP_MASK: u16 = 0xe003;
         pub const OP_CODE: u16 = 0xc000;
         pub const fn rs1(&self) -> Reg {
-            Reg::from_bits((bit_range(self.0, 9, 7) + 8) as u8)
+            Reg::from_bits(try_cast!(bit_range(self.0, 9, 7) + 8 => u8).unwrap())
         }
         pub const fn rs2(&self) -> Reg {
-            Reg::from_bits((bit_range(self.0, 4, 2) + 8) as u8)
+            Reg::from_bits(try_cast!(bit_range(self.0, 4, 2) + 8 => u8).unwrap())
         }
         pub const fn uimm(&self) -> u16 {
             let mut result = 0;
@@ -534,7 +513,7 @@ mod rv16 {
             sign_extend_i16(result, 5)
         }
         pub const fn rs1rd(&self) -> Reg {
-            Reg::from_bits(bit_range(self.0, 11, 7) as u8)
+            Reg::from_bits(try_cast!(bit_range(self.0, 11, 7) => u8).unwrap())
         }
     }
     /// RISCV C.ADDI4SPN instruction
@@ -556,7 +535,7 @@ mod rv16 {
             result
         }
         pub fn rd(&self) -> Reg {
-            Reg::from_bits(bit_range(self.0, 4, 2) as u8 + 8)
+            Reg::from_bits(try_cast!(bit_range(self.0, 4, 2) => u8).unwrap() + 8)
         }
     }
     /// RISCV C.ADDI4SPN instruction
@@ -572,11 +551,11 @@ mod rv16 {
         pub const OP_CODE: u16 = 0x6001;
         pub fn nzimm(&self) -> i32 {
             let mut result = 0_u32;
-            set_bit_range_32(&mut result, 9, 9, bit_range(self.0, 12, 12) as u32);
-            set_bit_range_32(&mut result, 4, 4, bit_range(self.0, 6, 6) as u32);
-            set_bit_range_32(&mut result, 6, 6, bit_range(self.0, 5, 5) as u32);
-            set_bit_range_32(&mut result, 8, 7, bit_range(self.0, 4, 3) as u32);
-            set_bit_range_32(&mut result, 5, 5, bit_range(self.0, 2, 2) as u32);
+            set_bit_range_32(&mut result, 9, 9, u32::from(bit_range(self.0, 12, 12)));
+            set_bit_range_32(&mut result, 4, 4, u32::from(bit_range(self.0, 6, 6)));
+            set_bit_range_32(&mut result, 6, 6, u32::from(bit_range(self.0, 5, 5)));
+            set_bit_range_32(&mut result, 8, 7, u32::from(bit_range(self.0, 4, 3)));
+            set_bit_range_32(&mut result, 5, 5, u32::from(bit_range(self.0, 2, 2)));
             sign_extend_i32(result, 9)
         }
     }
@@ -597,7 +576,7 @@ mod rv16 {
             sign_extend_i32(result, 5)
         }
         pub const fn rd(&self) -> Reg {
-            Reg::from_bits(bit_range(self.0, 11, 7) as u8)
+            Reg::from_bits(try_cast!(bit_range(self.0, 11, 7) => u8).unwrap())
         }
     }
     /// RISCV C.LUI instruction
@@ -620,7 +599,7 @@ mod rv16 {
             sign_extend_i32(result, 17)
         }
         pub const fn rd(&self) -> Reg {
-            Reg::from_bits(bit_range(self.0, 11, 7) as u8)
+            Reg::from_bits(try_cast!(bit_range(self.0, 11, 7) => u8).unwrap())
         }
     }
     /// RISCV C.BEQZ instruction
@@ -643,7 +622,7 @@ mod rv16 {
             sign_extend_i16(result, 8)
         }
         pub const fn rs1(&self) -> Reg {
-            Reg::from_bits(bit_range(self.0, 9, 7) as u8 + 8)
+            Reg::from_bits(try_cast!(bit_range(self.0, 9, 7) => u8).unwrap() + 8)
         }
     }
     /// RISCV C.BNEZ instruction
@@ -771,7 +750,7 @@ mod rv16 {
             result
         }
         pub const fn rs1rd(&self) -> Reg {
-            Reg::from_bits(bit_range(self.0, 9, 7) as u8 + 8)
+            Reg::from_bits(try_cast!(bit_range(self.0, 9, 7) => u8).unwrap() + 8)
         }
     }
     /// RISCV C.SRAI instruction
@@ -822,10 +801,10 @@ mod rv16 {
         pub const OP_MASK: u16 = 0xfc63;
         pub const OP_CODE: u16 = 0x8c61;
         pub const fn rs1rd(&self) -> Reg {
-            Reg::from_bits(bit_range(self.0, 9, 7) as u8 + 8)
+            Reg::from_bits(try_cast!(bit_range(self.0, 9, 7) => u8).unwrap() + 8)
         }
         pub const fn rs2(&self) -> Reg {
-            Reg::from_bits(bit_range(self.0, 4, 2) as u8 + 8)
+            Reg::from_bits(try_cast!(bit_range(self.0, 4, 2) => u8).unwrap() + 8)
         }
     }
     #[bitfield(u16)]

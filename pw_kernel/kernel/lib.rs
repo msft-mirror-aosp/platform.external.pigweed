@@ -12,10 +12,9 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 #![no_std]
-#![feature(const_trait_impl)]
-#![feature(naked_functions)]
 
 use core::cell::UnsafeCell;
+
 use foreign_box::ForeignBox;
 use pw_log::info;
 
@@ -28,19 +27,15 @@ mod syscall;
 mod target;
 mod timer;
 
-use arch::{Arch, ArchInterface};
+pub use arch::{Arch, ArchInterface, MemoryRegion, MemoryRegionType};
 use kernel_config::{KernelConfig, KernelConfigInterface};
-use scheduler::SCHEDULER_STATE;
-pub use scheduler::{
-    sleep_until, start_thread,
-    thread::{Process, Stack, Thread},
-    yield_timeslice,
-};
-pub use timer::{Clock, Duration};
-
+pub use scheduler::thread::{Process, Stack, Thread};
 // Used by the `init_thread!` macro.
 #[doc(hidden)]
 pub use scheduler::thread::{StackStorage, StackStorageExt};
+use scheduler::SCHEDULER_STATE;
+pub use scheduler::{sleep_until, start_thread, yield_timeslice};
+pub use timer::{Clock, Duration};
 
 #[no_mangle]
 #[allow(non_snake_case)]
@@ -56,6 +51,7 @@ pub struct ThreadBuffer {
 }
 
 impl ThreadBuffer {
+    #[must_use]
     pub const fn new() -> Self {
         ThreadBuffer {
             buffer: [0; size_of::<Thread>()],
@@ -69,9 +65,9 @@ impl ThreadBuffer {
     pub fn alloc_thread(&mut self, name: &'static str) -> ForeignBox<Thread> {
         pw_assert::eq!(
             self.buffer.as_ptr().align_offset(align_of::<Thread>()) as usize,
-            0 as usize
+            0 as usize,
         );
-        let thread_ptr = self.buffer.as_mut_ptr() as *mut Thread;
+        let thread_ptr = self.buffer.as_mut_ptr().cast::<Thread>();
         unsafe {
             thread_ptr.write(Thread::new(name));
             ForeignBox::new_from_ptr(&mut *thread_ptr)
@@ -93,12 +89,17 @@ pub struct StaticProcess {
 
 #[allow(dead_code)]
 impl StaticProcess {
-    pub const fn new(name: &'static str) -> Self {
+    #[must_use]
+    pub const fn new(
+        name: &'static str,
+        memory_config: <Arch as ArchInterface>::MemoryConfig,
+    ) -> Self {
         Self {
-            process_cell: UnsafeCell::new(Process::new(name)),
+            process_cell: UnsafeCell::new(Process::new(name, memory_config)),
         }
     }
 
+    #[must_use]
     pub fn get(&self) -> *mut Process {
         self.process_cell.get()
     }
@@ -107,104 +108,11 @@ impl StaticProcess {
 unsafe impl Sync for StaticProcess {}
 unsafe impl Send for StaticProcess {}
 
-#[cfg(feature = "user_space")]
-#[macro_export]
-macro_rules! init_non_priv_process {
-    ($name:literal) => {{
-        use kernel::StaticProcess;
-        use pw_log::info;
-        info!(
-            "allocating non-privileged process: {}",
-            $name as &'static str
-        );
-
-        static process: StaticProcess = StaticProcess::new($name);
-        unsafe { (*process.get()).register() };
-        &process
-    }};
-}
-
-#[macro_export]
-macro_rules! init_thread {
-    ($name:literal, $entry:expr, $stack_size:expr) => {{
-        info!("allocating thread: {}", $name as &'static str);
-        use $crate::Stack;
-        use $crate::ThreadBuffer;
-        let mut thread = {
-            static mut THREAD_BUFFER: ThreadBuffer = ThreadBuffer::new();
-            #[allow(static_mut_refs)]
-            unsafe {
-                THREAD_BUFFER.alloc_thread($name)
-            }
-        };
-
-        info!("initializing thread: {}", $name as &'static str);
-        thread.initialize_kernel_thread(
-            {
-                static mut STACK_STORAGE: $crate::StackStorage<{ $stack_size }> =
-                    $crate::StackStorageExt::ZEROED;
-                #[allow(static_mut_refs)]
-                unsafe {
-                    Stack::from_slice(&STACK_STORAGE)
-                }
-            },
-            $entry,
-            0,
-        );
-
-        thread
-    }};
-}
-
-#[cfg(feature = "user_space")]
-#[macro_export]
-macro_rules! init_non_priv_thread {
-    ($name:literal, $process:expr, $entry:expr, $stack_size:expr) => {{
-        use pw_log::info;
-        info!(
-            "allocating non-privileged thread: {}, entry {:#x}",
-            $name as &'static str, $entry as usize
-        );
-        use $crate::Stack;
-        use $crate::ThreadBuffer;
-        let mut thread = {
-            static mut THREAD_BUFFER: ThreadBuffer = ThreadBuffer::new();
-            #[allow(static_mut_refs)]
-            unsafe {
-                THREAD_BUFFER.alloc_thread($name)
-            }
-        };
-
-        info!(
-            "initializing non-privileged thread: {}",
-            $name as &'static str
-        );
-        unsafe {
-            thread.initialize_non_priv_thread(
-                {
-                    static mut STACK_STORAGE: $crate::StackStorage<{ $stack_size }> =
-                        $crate::StackStorageExt::ZEROED;
-                    #[allow(static_mut_refs)]
-                    unsafe {
-                        Stack::from_slice(&STACK_STORAGE)
-                    }
-                },
-                {
-                    static mut STACK_STORAGE: $crate::StackStorage<{ $stack_size }> =
-                        $crate::StackStorageExt::ZEROED;
-                    #[allow(static_mut_refs)]
-                    unsafe {
-                        Stack::from_slice(&STACK_STORAGE)
-                    }
-                },
-                $process.get(),
-                $entry,
-                0,
-            );
-        }
-
-        thread
-    }};
+// Module re-exporting modules into a scope that can be referenced by macros
+// in this crate.
+#[doc(hidden)]
+pub mod macro_exports {
+    pub use pw_assert;
 }
 
 impl Kernel {

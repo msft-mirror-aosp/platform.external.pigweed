@@ -15,9 +15,8 @@
 use core::cell::UnsafeCell;
 use core::ops::{Deref, DerefMut};
 
-use crate::arch::{Arch, ArchInterface};
-
 pub use crate::arch::BareSpinLock as BareSpinLockApi;
+use crate::arch::{Arch, ArchInterface};
 
 pub type BareSpinLock = <Arch as ArchInterface>::BareSpinLock;
 
@@ -69,5 +68,42 @@ impl<T> SpinLock<T> {
             lock: self,
             _inner_guard: inner_guard,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use unittest::test;
+
+    use super::*;
+
+    #[test]
+    fn bare_try_lock_returns_correct_value() -> unittest::Result<()> {
+        let lock = BareSpinLock::new();
+
+        {
+            let _sentinel = lock.lock();
+            unittest::assert_true!(lock.try_lock().is_none());
+        }
+
+        unittest::assert_true!(lock.try_lock().is_some());
+
+        Ok(())
+    }
+
+    #[test]
+    fn try_lock_returns_correct_value() -> unittest::Result<()> {
+        let lock = SpinLock::new(false);
+
+        {
+            let mut guard = lock.lock();
+            *guard = true;
+            unittest::assert_true!(lock.try_lock().is_none());
+        }
+
+        let guard = lock.lock();
+        unittest::assert_true!(*guard);
+
+        Ok(())
     }
 }

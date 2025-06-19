@@ -12,10 +12,11 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//pw_build:merge_flags.bzl", "flags_from_dict")
 load("//pw_build:pw_linker_script.bzl", "pw_linker_script")
 load("//pw_kernel:flags.bzl", "KERNEL_DEVICE_COMMON_FLAGS")
+load("//pw_kernel/tooling:system_codegen.bzl", "system_codegen")
 load("//pw_kernel/tooling:system_image.bzl", "system_image")
 
 platform(
@@ -30,7 +31,6 @@ platform(
     flags = flags_from_dict(
         KERNEL_DEVICE_COMMON_FLAGS | {
             "//pw_kernel/config:kernel_config": ":config",
-            "//pw_kernel/lib/unittest:unittest_runner": ":unittest_runner",
             "//pw_kernel/subsys/console:console_backend": ":console",
             "//pw_kernel/target:linker_script": ":linker_script",
         },
@@ -42,6 +42,11 @@ constraint_value(
     constraint_setting = "//pw_kernel/target:target",
     visibility = ["//visibility:public"],
 )
+
+TARGET_COMPATIBLE_WITH = select({
+    ":target_pw_rp2350": [],
+    "//conditions:default": ["@platforms//:incompatible"],
+})
 
 system_image(
     name = "kernel_only_demo",
@@ -58,6 +63,7 @@ system_image(
     ],
     kernel = ":userspace_target",
     platform = ":pw_rp2350",
+    system_config = ":userspace_demo_config",
     tags = ["kernel"],
 )
 
@@ -79,47 +85,47 @@ rust_binary(
     srcs = SRCS,
     edition = "2021",
     tags = ["kernel"],
-    target_compatible_with = [
-        "//pw_build/constraints/arm:cortex-m33",
-    ],
+    target_compatible_with = TARGET_COMPATIBLE_WITH,
     deps = [
         "//pw_kernel/apps/kernel_only_demo:demo",
     ] + COMMON_DEPS,
+)
+
+filegroup(
+    name = "userspace_demo_config",
+    srcs = ["userspace_demo.toml"],
+)
+
+system_codegen(
+    name = "userspace_demo_codegen",
+    system_config = ":userspace_demo_config",
 )
 
 rust_binary(
     name = "userspace_target",
     srcs = [
         "userspace_target.rs",
+        ":userspace_demo_codegen",
     ],
     edition = "2021",
     tags = ["kernel"],
-    target_compatible_with = [
-        "//pw_build/constraints/arm:cortex-m33",
-    ],
+    target_compatible_with = TARGET_COMPATIBLE_WITH,
     visibility = ["//visibility:public"],
     deps = [
         "//pw_log/rust:pw_log",
     ] + COMMON_DEPS,
 )
 
-# When building as a unit test runner, this target will be depended upon by
-# other libraries (in other words, it won't be the root of the dependency
-# graph). Declaring this as a `rust_binary` would result in it being built, but
-# not linked against the other libraries in the build graph.
-rust_library(
+rust_test(
     name = "unittest_runner",
     srcs = SRCS,
-    crate_name = "unittest_runner",
     edition = "2021",
-    rustc_flags = ["--cfg=test"],
     tags = ["kernel"],
-    target_compatible_with = [
-        "//pw_build/constraints/arm:cortex-m33",
-    ],
+    target_compatible_with = TARGET_COMPATIBLE_WITH,
+    use_libtest_harness = False,
     deps = COMMON_DEPS + [
         "//pw_kernel/lib/unittest:unittest_core",
-        "@pigweed//pw_log/rust:pw_log",
+        "//pw_log/rust:pw_log",
         "@rust_crates//:cortex-m-semihosting",
     ],
 )
@@ -129,9 +135,7 @@ rust_library(
     srcs = ["config.rs"],
     crate_name = "kernel_config",
     tags = ["kernel"],
-    target_compatible_with = [
-        "//pw_build/constraints/arm:cortex-m33",
-    ],
+    target_compatible_with = TARGET_COMPATIBLE_WITH,
     deps = [
         "//pw_kernel/config:kernel_config_interface",
     ],
@@ -142,9 +146,7 @@ rust_library(
     srcs = ["console.rs"],
     crate_name = "console_backend",
     tags = ["kernel"],
-    target_compatible_with = [
-        "//pw_build/constraints/arm:cortex-m33",
-    ],
+    target_compatible_with = TARGET_COMPATIBLE_WITH,
     deps = [
         "//pw_kernel/kernel",
         "//pw_kernel/lib/pw_status",
@@ -157,7 +159,8 @@ pw_linker_script(
     name = "linker_script",
     linker_script = "system.ld",
     tags = ["kernel"],
-    target_compatible_with = [
-        "//pw_build/constraints/arm:cortex-m33",
-    ],
+    target_compatible_with = select({
+        ":target_pw_rp2350": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
 )

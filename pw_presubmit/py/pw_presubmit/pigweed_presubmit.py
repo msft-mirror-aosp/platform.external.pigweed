@@ -479,6 +479,9 @@ gn_chre_googletest_nanopb_sapphire_build = PigweedGnGenNinja(
         pw_crypto_AES_BACKEND=lambda ctx: '"{}"'.format(
             ctx.root / 'pw_crypto:aes_boringssl'
         ),
+        pw_crypto_ECDH_BACKEND=lambda ctx: '"{}"'.format(
+            ctx.root / 'pw_crypto:ecdh_boringssl'
+        ),
         pw_bluetooth_sapphire_ENABLED=True,
         pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
     ),
@@ -562,9 +565,8 @@ def zephyr_build(ctx: PresubmitContext) -> None:
     )
     # Run twister
     call(
-        sys.executable,
-        '-m',
-        'pw_build.zephyr_twister_runner',
+        'pw',
+        'twister-runner',
         '-vvv',
         '--ninja',
         '--integration',
@@ -575,8 +577,7 @@ def zephyr_build(ctx: PresubmitContext) -> None:
         '--coverage-basedir',
         str(ctx.pw_root),
         *platform_filters,
-        f'-x=TOOLCHAIN_C_FLAGS=--sysroot={sysroot_dir}',
-        f'-x=TOOLCHAIN_LD_FLAGS=--sysroot={sysroot_dir}',
+        f'-x=SYSROOT_DIR={sysroot_dir}',
         '--testsuite-root',
         str(ctx.pw_root),
         env=env,

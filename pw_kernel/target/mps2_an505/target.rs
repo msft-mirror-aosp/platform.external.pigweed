@@ -14,10 +14,8 @@
 #![no_std]
 #![no_main]
 
-use console_backend as _;
-use kernel as _;
-
 use target_common::{declare_target, TargetInterface};
+use {console_backend as _, kernel as _};
 
 pub struct Target {}
 
@@ -38,7 +36,7 @@ impl TargetInterface for Target {
             use cortex_m_semihosting::debug::*;
             use unittest_core::TestsResult;
 
-            exit(match unittest_core::run_all_tests() {
+            exit(match unittest_core::run_all_tests!() {
                 TestsResult::AllPassed => EXIT_SUCCESS,
                 TestsResult::SomeFailed => EXIT_FAILURE,
             });

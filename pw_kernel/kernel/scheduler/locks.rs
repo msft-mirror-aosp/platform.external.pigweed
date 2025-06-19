@@ -12,21 +12,16 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-use core::{
-    cell::UnsafeCell,
-    ops::{Deref, DerefMut},
-    ptr::NonNull,
-};
+use core::cell::UnsafeCell;
+use core::ops::{Deref, DerefMut};
+use core::ptr::NonNull;
 
 use pw_status::Result;
 
-use crate::sync::spinlock::SpinLockGuard;
-use crate::{
-    scheduler::{SchedulerState, WaitQueue},
-    timer::Instant,
-};
-
 use super::SCHEDULER_STATE;
+use crate::scheduler::{SchedulerState, WaitQueue};
+use crate::sync::spinlock::SpinLockGuard;
+use crate::timer::Instant;
 
 pub struct SmuggledSchedLock<T> {
     inner: NonNull<T>,
@@ -75,8 +70,9 @@ impl<'lock, T> SchedLockGuard<'lock, T> {
     /// The caller must guarantee that the underlying lock remains valid and
     /// un-moved for the live the smuggled lock.
     pub unsafe fn smuggle(&self) -> SmuggledSchedLock<T> {
+        let inner: *const T = self.inner;
         SmuggledSchedLock {
-            inner: unsafe { NonNull::new_unchecked(self.inner as *const T as *mut T) },
+            inner: unsafe { NonNull::new_unchecked(inner.cast_mut()) },
         }
     }
 }

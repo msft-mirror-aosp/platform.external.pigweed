@@ -46,13 +46,10 @@
 
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{
-    parse::{Parse, ParseStream, Result},
-    parse_macro_input,
-    punctuated::Punctuated,
-    spanned::Spanned,
-    Error, FnArg, Ident, ItemFn, Token, Type,
-};
+use syn::parse::{Parse, ParseStream, Result};
+use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
+use syn::{parse_macro_input, Error, FnArg, Ident, ItemFn, Token, Type};
 
 #[derive(Eq, PartialEq, Hash, Debug)]
 enum KernelMode {
@@ -90,7 +87,7 @@ impl Parse for Attribute {
                 Ok(Attribute::Exception(value))
             }
             "disable_interrupts" => Ok(Attribute::DisableInterrupts),
-            _ => Err(input.error(format!("unknown attribute {}", name_str))),
+            _ => Err(input.error(format!("unknown attribute {name_str}"))),
         }
     }
 }
@@ -256,7 +253,7 @@ fn exception(attr: TokenStream, item: TokenStream, kernel_mode: KernelMode) -> T
         disable_interrupts(&mut asm);
     }
 
-    asm.push_str(&format!("bl     {}\n", handler_name));
+    asm.push_str(&format!("bl     {handler_name}\n"));
 
     if attributes.disable_interrupts {
         enable_interrupts(&mut asm);
@@ -266,7 +263,7 @@ fn exception(attr: TokenStream, item: TokenStream, kernel_mode: KernelMode) -> T
 
     quote! {
         #[no_mangle]
-        #[naked]
+        #[unsafe(naked)]
         pub unsafe extern "C" fn #exception_ident() -> ! {
             unsafe {
                 core::arch::naked_asm!(#asm)

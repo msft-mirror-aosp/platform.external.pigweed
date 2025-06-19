@@ -19,9 +19,10 @@
 pub mod call_graph;
 mod compression;
 mod elf_mem;
+use core::fmt::{Debug, Display};
+
 use bitfield_struct::bitfield;
 pub use elf_mem::ElfMem;
-use std::fmt::{Debug, Display};
 /// Risc-V instruction with address
 #[derive(Clone, Copy)]
 pub struct InstrA {
@@ -58,12 +59,12 @@ impl InstrA {
     }
 }
 impl Display for InstrA {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{:08x} {}", self.addr, self.instr.decode())
     }
 }
 impl Debug for InstrA {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
             "InstrA{{addr: 0x{:08x}, \"{}\"}}",
@@ -82,9 +83,11 @@ impl Instr {
     #[inline(always)]
     pub fn decode(self) -> DecodedInstr {
         if self.is_compressed() {
-            match compression::decompress_instr(self.0 as u16) {
+            // The instr is stored in the lower 16-bits.
+            let instr: u16 = (self.0 & 0xffff) as u16;
+            match compression::decompress_instr(instr) {
                 Some(instr) => instr.decode32(),
-                None => DecodedInstr::Unknown(self.0 & 0xffff),
+                None => DecodedInstr::Unknown(instr.into()),
             }
         } else {
             self.decode32()
@@ -200,11 +203,11 @@ impl From<u16> for Instr {
 }
 const fn sign_extend_i16(val: u16, msb: u16) -> i16 {
     let sh = 15 - msb;
-    ((val << sh) as i16) >> sh
+    ((val << sh).cast_signed()) >> sh
 }
 const fn sign_extend_i32(val: u32, msb: u32) -> i32 {
     let sh = 31 - msb;
-    ((val << sh) as i32) >> sh
+    ((val << sh).cast_signed()) >> sh
 }
 const OP_MASK_32: u32 = 0x3;
 #[derive(Debug, Eq, PartialEq)]
@@ -657,7 +660,7 @@ impl DecodedInstr {
     }
 }
 impl Display for DecodedInstr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self.ty() {
             InstrType::B(i) => write!(f, "{:<8} {}", self.mnemonic(), i),
             InstrType::I(i) => write!(f, "{:<8} {}", self.mnemonic(), i),
@@ -668,7 +671,7 @@ impl Display for DecodedInstr {
             InstrType::R(i) => write!(f, "{:<8} {}", self.mnemonic(), i),
             InstrType::U(i) => write!(f, "{:<8} {}", self.mnemonic(), i),
             InstrType::Const(_) => write!(f, "{:<8}", self.mnemonic()),
-            InstrType::Unknown(i) => write!(f, "0x{:x}", i),
+            InstrType::Unknown(i) => write!(f, "0x{i:x}"),
         }
     }
 }
@@ -697,7 +700,7 @@ impl Instr32R {
     }
 }
 impl Display for Instr32R {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{},{},{}", self.rd(), self.rs1(), self.rs2())
     }
 }
@@ -719,11 +722,11 @@ impl Instr32I {
         sign_extend_i32(self.uimm(), 11)
     }
     pub fn set_imm(&mut self, val: i32) {
-        self.set_uimm(val as u32 & 0xfff);
+        self.set_uimm(val.cast_unsigned() & 0xfff);
     }
 }
 impl Display for Instr32I {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if self.opcode() == Opcode::LOAD {
             write!(f, "{},{}({})", self.rd(), self.imm(), self.rs1())
         } else {
@@ -759,7 +762,7 @@ impl Instr32IS {
     }
 }
 impl Display for Instr32IS {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{},{},{}", self.rd(), self.rs1(), self.uimm())
     }
 }
@@ -786,7 +789,7 @@ impl Instr32IB {
     }
 }
 impl Display for Instr32IB {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{},{}", self.rd(), self.rs1())
     }
 }
@@ -817,11 +820,11 @@ impl Instr32S {
         sign_extend_i32(self.uimm(), 11)
     }
     pub fn set_imm(&mut self, val: i32) {
-        self.set_uimm(val as u32 & 0xfff);
+        self.set_uimm(val.cast_unsigned() & 0xfff);
     }
 }
 impl Display for Instr32S {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{},{}({})", self.rs2(), self.imm(), self.rs1())
     }
 }
@@ -858,11 +861,11 @@ impl Instr32B {
         sign_extend_i32(self.uimm(), 11)
     }
     fn set_imm(&mut self, val: i32) {
-        self.set_uimm(val as u32 & 0xfff);
+        self.set_uimm(val.cast_unsigned() & 0xfff);
     }
 }
 impl Display for Instr32B {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{},{},{}", self.rs1(), self.rs2(), self.imm())
     }
 }
@@ -886,7 +889,7 @@ impl Instr32J {
         sign_extend_i32(self.uimm(), 20)
     }
     fn set_imm(&mut self, val: i32) {
-        self.set_uimm(val as u32 & 0x1fffff);
+        self.set_uimm(val.cast_unsigned() & 0x1fffff);
     }
     fn uimm(&self) -> u32 {
         (self.imm1() << 1) | (self.imm11() << 11) | (self.imm12() << 12) | (self.imm20() << 20)
@@ -899,7 +902,7 @@ impl Instr32J {
     }
 }
 impl Display for Instr32J {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{},{}", self.rd(), self.imm())
     }
 }
@@ -920,14 +923,14 @@ impl Instr32U {
         self.set_imm12(val >> 12);
     }
     pub fn imm(&self) -> i32 {
-        self.uimm() as i32
+        self.uimm().cast_signed()
     }
     pub fn set_imm(&mut self, val: i32) {
-        self.set_uimm(val as u32)
+        self.set_uimm(val.cast_unsigned())
     }
 }
 impl Display for Instr32U {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{},0x{:x}", self.rd(), self.uimm() >> 12)
     }
 }
@@ -1089,7 +1092,7 @@ impl Reg {
     }
 }
 impl Display for Reg {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(self.abi_mnemonic())
     }
 }

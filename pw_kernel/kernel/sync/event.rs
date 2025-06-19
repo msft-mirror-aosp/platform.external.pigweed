@@ -14,7 +14,8 @@
 
 use pw_status::Result;
 
-use crate::{scheduler::WaitQueueLock, timer::Instant};
+use crate::scheduler::WaitQueueLock;
+use crate::timer::Instant;
 
 /// Configuration for the behavior of an [`Event`].
 #[derive(Eq, PartialEq)]
@@ -60,6 +61,7 @@ unsafe impl Send for Event {}
 
 impl Event {
     /// Constructs a new `Event` with the given configuration.
+    #[must_use]
     pub const fn new(config: EventConfig) -> Self {
         Self {
             config,

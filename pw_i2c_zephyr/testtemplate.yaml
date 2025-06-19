@@ -26,6 +26,7 @@ testcase:
     pw_i2c.controller:
       extra_configs:
         - CONFIG_PIGWEED_CHRONO_SYSTEM_CLOCK=y
+        - CONFIG_PIGWEED_I2C=y
         - CONFIG_PIGWEED_SYNC_MUTEX=y
       extra_args:
         - TEST_LIB=pw_i2c_zephyr.initiator_test

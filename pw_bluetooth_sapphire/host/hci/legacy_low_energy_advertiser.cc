@@ -25,6 +25,9 @@
 namespace bt::hci {
 namespace pwemb = pw::bluetooth::emboss;
 
+const uint8_t kAdvertisingHandle = 0x01;
+const uint8_t kInvalidAdvertisingHandle = 0xFF;
+
 LegacyLowEnergyAdvertiser::~LegacyLowEnergyAdvertiser() {
   // This object is probably being destroyed because the stack is shutting down,
   // in which case the HCI layer may have already been destroyed.
@@ -36,9 +39,7 @@ LegacyLowEnergyAdvertiser::~LegacyLowEnergyAdvertiser() {
 }
 
 CommandPacket LegacyLowEnergyAdvertiser::BuildEnablePacket(
-    const DeviceAddress&,
-    pwemb::GenericEnableParam enable,
-    bool /*extended_pdu*/) const {
+    hci_spec::AdvertisingHandle, pwemb::GenericEnableParam enable) const {
   auto packet =
       hci::CommandPacket::New<pwemb::LESetAdvertisingEnableCommandWriter>(
           hci_spec::kLESetAdvertisingEnable);
@@ -49,17 +50,16 @@ CommandPacket LegacyLowEnergyAdvertiser::BuildEnablePacket(
 
 std::optional<CommandPacket>
 LegacyLowEnergyAdvertiser::BuildSetAdvertisingRandomAddr(
-    const DeviceAddress& /*address*/, bool /*extended_pdu*/) const {
+    hci_spec::AdvertisingHandle) const {
   // In legacy advertising, random addresses use a single, global address set by
   // the controlleer
   return std::nullopt;
 }
 
 std::vector<CommandPacket> LegacyLowEnergyAdvertiser::BuildSetAdvertisingData(
-    const DeviceAddress&,
+    hci_spec::AdvertisingHandle,
     const AdvertisingData& data,
-    AdvFlags flags,
-    bool /*extended_pdu*/) const {
+    AdvFlags flags) const {
   if (data.CalculateBlockSize() == 0) {
     std::vector<CommandPacket> packets;
     return packets;
@@ -83,9 +83,7 @@ std::vector<CommandPacket> LegacyLowEnergyAdvertiser::BuildSetAdvertisingData(
 }
 
 std::vector<CommandPacket> LegacyLowEnergyAdvertiser::BuildSetScanResponse(
-    const DeviceAddress&,
-    const AdvertisingData& scan_rsp,
-    bool /*extended_pdu*/) const {
+    hci_spec::AdvertisingHandle, const AdvertisingData& scan_rsp) const {
   if (scan_rsp.CalculateBlockSize() == 0) {
     std::vector<CommandPacket> packets;
     return packets;
@@ -108,13 +106,12 @@ std::vector<CommandPacket> LegacyLowEnergyAdvertiser::BuildSetScanResponse(
   return packets;
 }
 
-std::optional<CommandPacket>
+std::optional<LowEnergyAdvertiser::SetAdvertisingParams>
 LegacyLowEnergyAdvertiser::BuildSetAdvertisingParams(
     const DeviceAddress&,
     const AdvertisingEventProperties& properties,
     pwemb::LEOwnAddressType own_address_type,
-    const AdvertisingIntervalRange& interval,
-    bool /*extended_pdu*/) {
+    const AdvertisingIntervalRange& interval) {
   auto packet =
       CommandPacket::New<pwemb::LESetAdvertisingParametersCommandWriter>(
           hci_spec::kLESetAdvertisingParameters);
@@ -133,24 +130,24 @@ LegacyLowEnergyAdvertiser::BuildSetAdvertisingParams(
   // peer_address_type as 0x00
   // (|packet| parameters are initialized to zero above).
 
-  return packet;
+  return SetAdvertisingParams{std::move(packet), kAdvertisingHandle};
 }
 
 CommandPacket LegacyLowEnergyAdvertiser::BuildUnsetAdvertisingData(
-    const DeviceAddress&, bool /*extended_pdu*/) const {
+    hci_spec::AdvertisingHandle) const {
   return CommandPacket::New<pwemb::LESetAdvertisingDataCommandWriter>(
       hci_spec::kLESetAdvertisingData);
 }
 
 CommandPacket LegacyLowEnergyAdvertiser::BuildUnsetScanResponse(
-    const DeviceAddress&, bool /*extended_pdu*/) const {
+    hci_spec::AdvertisingHandle) const {
   auto packet = CommandPacket::New<pwemb::LESetScanResponseDataCommandWriter>(
       hci_spec::kLESetScanResponseData);
   return packet;
 }
 
 CommandPacket LegacyLowEnergyAdvertiser::BuildRemoveAdvertisingSet(
-    const DeviceAddress&, bool /*extended_pdu*/) const {
+    hci_spec::AdvertisingHandle) const {
   auto packet =
       hci::CommandPacket::New<pwemb::LESetAdvertisingEnableCommandWriter>(
           hci_spec::kLESetAdvertisingEnable);
@@ -170,62 +167,28 @@ void LegacyLowEnergyAdvertiser::StartAdvertising(
     const AdvertisingData& scan_rsp,
     const AdvertisingOptions& options,
     ConnectionCallback connect_callback,
-    ResultFunction<> result_callback) {
+    ResultFunction<hci_spec::AdvertisingHandle> result_callback) {
   if (options.extended_pdu) {
     bt_log(INFO,
            "hci-le",
            "legacy advertising cannot use extended advertising PDUs");
-    result_callback(ToResult(HostError::kNotSupported));
+    result_callback(fit::error(HostError::kNotSupported));
     return;
   }
 
-  fit::result<HostError> result =
+  fit::result<HostError> can_start_result =
       CanStartAdvertising(address, data, scan_rsp, options, connect_callback);
-  if (result.is_error()) {
-    result_callback(ToResult(result.error_value()));
+  if (can_start_result.is_error()) {
+    result_callback(can_start_result.take_error());
     return;
   }
 
-  if (IsAdvertising() && !IsAdvertising(address, options.extended_pdu)) {
+  if (IsAdvertising() || starting_) {
     bt_log(INFO,
            "hci-le",
            "already advertising (only one advertisement supported at a time)");
-    result_callback(ToResult(HostError::kNotSupported));
+    result_callback(fit::error(HostError::kNotSupported));
     return;
-  }
-
-  if (IsAdvertising()) {
-    bt_log(DEBUG, "hci-le", "updating existing advertisement");
-  }
-
-  // Midst of a TX power level read - send a cancel over the previous status
-  // callback.
-  if (staged_params_.has_value()) {
-    auto result_cb = std::move(staged_params_.value().result_callback);
-    result_cb(ToResult(HostError::kCanceled));
-  }
-
-  // If the TX Power level is requested, then stage the parameters for the read
-  // operation. If there already is an outstanding TX Power Level read request,
-  // return early. Advertising on the outstanding call will now use the updated
-  // |staged_params_|.
-  if (options.include_tx_power_level) {
-    AdvertisingData data_copy;
-    data.Copy(&data_copy);
-
-    AdvertisingData scan_rsp_copy;
-    scan_rsp.Copy(&scan_rsp_copy);
-
-    staged_params_ = StagedParams{address,
-                                  std::move(data_copy),
-                                  std::move(scan_rsp_copy),
-                                  options,
-                                  std::move(connect_callback),
-                                  std::move(result_callback)};
-
-    if (starting_ && hci_cmd_runner().IsReady()) {
-      return;
-    }
   }
 
   if (!hci_cmd_runner().IsReady()) {
@@ -243,12 +206,38 @@ void LegacyLowEnergyAdvertiser::StartAdvertising(
   starting_ = true;
   local_address_ = DeviceAddress();
 
+  auto result_cb_wrapper =
+      [this, address_copy = address, cb = std::move(result_callback)](
+          StartAdvertisingInternalResult result) {
+        starting_ = false;
+        if (result.is_error()) {
+          local_address_ = DeviceAddress();
+          cb(fit::error(std::get<Error>(result.error_value())));
+          return;
+        }
+        local_address_ = address_copy;
+        cb(result.take_value());
+      };
+
   // If the TX Power Level is requested, read it from the controller, update the
   // data buf, and proceed with starting advertising.
   //
   // If advertising was canceled during the TX power level read (either
   // |starting_| was reset or the |result_callback| was moved), return early.
   if (options.include_tx_power_level) {
+    AdvertisingData data_copy;
+    data.Copy(&data_copy);
+
+    AdvertisingData scan_rsp_copy;
+    scan_rsp.Copy(&scan_rsp_copy);
+
+    staged_params_ = StagedParams{address,
+                                  std::move(data_copy),
+                                  std::move(scan_rsp_copy),
+                                  options,
+                                  std::move(connect_callback),
+                                  std::move(result_cb_wrapper)};
+
     auto power_cb = [this](auto, const hci::EventPacket& event) mutable {
       PW_CHECK(staged_params_.has_value());
       if (!starting_ || !staged_params_.value().result_callback) {
@@ -258,10 +247,10 @@ void LegacyLowEnergyAdvertiser::StartAdvertising(
       }
 
       if (HCI_IS_ERROR(event, WARN, "hci-le", "read TX power level failed")) {
-        staged_params_.value().result_callback(event.ToResult());
+        staged_params_.value().result_callback(fit::error(
+            std::make_tuple(event.ToResult().error_value(),
+                            std::optional<hci_spec::AdvertisingHandle>())));
         staged_params_ = {};
-        local_address_ = DeviceAddress();
-        starting_ = false;
         return;
       }
 
@@ -277,20 +266,12 @@ void LegacyLowEnergyAdvertiser::StartAdvertising(
         staged_params.scan_rsp.SetTxPower(view.tx_power_level().Read());
       }
 
-      StartAdvertisingInternal(
-          staged_params.address,
-          staged_params.data,
-          staged_params.scan_rsp,
-          staged_params.options,
-          std::move(staged_params.connect_callback),
-          [this,
-           address_copy = staged_params.address,
-           result_cb = std::move(staged_params.result_callback)](
-              const Result<>& start_result) {
-            starting_ = false;
-            local_address_ = address_copy;
-            result_cb(start_result);
-          });
+      StartAdvertisingInternal(staged_params.address,
+                               staged_params.data,
+                               staged_params.scan_rsp,
+                               staged_params.options,
+                               std::move(staged_params.connect_callback),
+                               std::move(staged_params.result_callback));
     };
 
     hci()->command_channel()->SendCommand(BuildReadAdvertisingTxPower(),
@@ -298,18 +279,12 @@ void LegacyLowEnergyAdvertiser::StartAdvertising(
     return;
   }
 
-  StartAdvertisingInternal(
-      address,
-      data,
-      scan_rsp,
-      options,
-      std::move(connect_callback),
-      [this, address_copy = address, result_cb = std::move(result_callback)](
-          const Result<>& start_result) {
-        starting_ = false;
-        local_address_ = address_copy;
-        result_cb(start_result);
-      });
+  StartAdvertisingInternal(address,
+                           data,
+                           scan_rsp,
+                           options,
+                           std::move(connect_callback),
+                           std::move(result_cb_wrapper));
 }
 
 void LegacyLowEnergyAdvertiser::StopAdvertising() {
@@ -318,12 +293,9 @@ void LegacyLowEnergyAdvertiser::StopAdvertising() {
   local_address_ = DeviceAddress();
 }
 
-void LegacyLowEnergyAdvertiser::StopAdvertising(const DeviceAddress& address,
-                                                bool extended_pdu) {
-  if (extended_pdu) {
-    bt_log(INFO,
-           "hci-le",
-           "legacy advertising cannot use extended advertising PDUs");
+void LegacyLowEnergyAdvertiser::StopAdvertising(
+    hci_spec::AdvertisingHandle handle) {
+  if (handle != kAdvertisingHandle) {
     return;
   }
 
@@ -331,13 +303,13 @@ void LegacyLowEnergyAdvertiser::StopAdvertising(const DeviceAddress& address,
     hci_cmd_runner().Cancel();
   }
 
-  LowEnergyAdvertiser::StopAdvertisingInternal(address, extended_pdu);
+  LowEnergyAdvertiser::StopAdvertisingInternal(kAdvertisingHandle);
   starting_ = false;
   local_address_ = DeviceAddress();
 }
 
 void LegacyLowEnergyAdvertiser::OnIncomingConnection(
-    hci_spec::ConnectionHandle handle,
+    hci_spec::ConnectionHandle connection_handle,
     pwemb::ConnectionRole role,
     const DeviceAddress& peer_address,
     const hci_spec::LEConnectionParameters& conn_params) {
@@ -348,16 +320,18 @@ void LegacyLowEnergyAdvertiser::OnIncomingConnection(
   // If we aren't advertising, this is obviously wrong. However, the link will
   // be disconnected in that case before it can propagate to higher layers.
   DeviceAddress local_address = identity_address;
+  hci_spec::AdvertisingHandle adv_handle = kInvalidAdvertisingHandle;
   if (IsAdvertising()) {
     local_address = local_address_;
+    adv_handle = kAdvertisingHandle;
   }
 
-  CompleteIncomingConnection(handle,
+  CompleteIncomingConnection(connection_handle,
                              role,
                              local_address,
                              peer_address,
                              conn_params,
-                             /*extended_pdu=*/false);
+                             adv_handle);
 }
 
 }  // namespace bt::hci

@@ -15,11 +15,9 @@
 // This module uses the std test harness to allow catching of panics.
 #![cfg_attr(not(test), no_std)]
 
-use core::{
-    marker::PhantomData,
-    ops::{Deref, DerefMut},
-    ptr::NonNull,
-};
+use core::marker::PhantomData;
+use core::ops::{Deref, DerefMut};
+use core::ptr::NonNull;
 
 pub struct ForeignBox<T: ?Sized> {
     inner: NonNull<T>,
@@ -42,6 +40,7 @@ impl<T: ?Sized> ForeignBox<T> {
     /// # Safety
     /// The caller guarantees that `ptr` remains valid throughout the lifetime
     /// of the `ForeignBox` object.
+    #[must_use]
     pub unsafe fn new(ptr: NonNull<T>) -> Self {
         Self {
             inner: ptr,
@@ -57,6 +56,7 @@ impl<T: ?Sized> ForeignBox<T> {
     /// # Safety
     /// The caller guarantees that `ptr` remains valid throughout the lifetime
     /// of the `ForeignBox` object.
+    #[must_use]
     pub unsafe fn new_from_ptr(ptr: *mut T) -> Self {
         let Some(ptr) = NonNull::new(ptr) else {
             if cfg!(feature = "core_panic") {
@@ -68,6 +68,7 @@ impl<T: ?Sized> ForeignBox<T> {
         Self::new(ptr)
     }
 
+    #[allow(clippy::must_use_candidate)]
     pub fn consume(mut self) -> NonNull<T> {
         self.consumed = true;
         self.inner
@@ -77,6 +78,7 @@ impl<T: ?Sized> ForeignBox<T> {
     ///
     /// # Safety
     /// Creates an "unenforceable borrow" of the contained data.
+    #[must_use]
     pub unsafe fn as_ptr(&self) -> *const T {
         self.inner.as_ptr()
     }
@@ -85,6 +87,7 @@ impl<T: ?Sized> ForeignBox<T> {
     ///
     ///  # Safety
     /// Creates an "mutable unenforceable borrow" of the contained data.
+    #[must_use]
     pub unsafe fn as_mut_ptr(&mut self) -> *mut T {
         self.inner.as_mut()
     }
@@ -96,12 +99,12 @@ impl<T: ?Sized> Drop for ForeignBox<T> {
             if cfg!(feature = "core_panic") {
                 panic!(
                     "ForeignBox@{:08x} dropped before being consumed!",
-                    self.inner.as_ptr() as *const () as usize
+                    self.inner.as_ptr().cast::<()>().expose_provenance()
                 );
             } else {
                 pw_assert::panic!(
                     "ForeignBox@{:08x} dropped before being consumed!",
-                    self.inner.as_ptr() as *const () as usize
+                    self.inner.as_ptr().cast::<()>() as usize
                 );
             }
         }
@@ -136,10 +139,10 @@ impl<T: ?Sized> DerefMut for ForeignBox<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     // Ensure that the console backend (needed for pw_log) is linked.
     use console_backend as _;
+
+    use super::*;
     #[test]
     fn consume_returns_the_same_pointer() {
         let mut value = 0xdecafbad_u32;

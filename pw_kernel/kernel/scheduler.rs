@@ -19,12 +19,11 @@ use foreign_box::ForeignBox;
 use list::*;
 use pw_log::info;
 use pw_status::{Error, Result};
+use thread::*;
 
 use crate::arch::{Arch, ArchInterface, ArchThreadState, ThreadState};
 use crate::sync::spinlock::{SpinLock, SpinLockGuard};
 use crate::timer::{Instant, TimerCallback, TimerQueue};
-
-use thread::*;
 
 mod locks;
 pub(crate) mod thread;
@@ -157,7 +156,10 @@ impl SchedulerState {
     #[allow(dead_code)]
     const fn new() -> Self {
         Self {
-            kernel_process: UnsafeCell::new(Process::new("kernel")),
+            kernel_process: UnsafeCell::new(Process::new(
+                "kernel",
+                <Arch as ArchInterface>::MemoryConfig::KERNEL_THREAD_MEMORY_CONFIG,
+            )),
             current_thread: None,
             current_arch_thread_state: core::ptr::null_mut(),
             process_list: UnsafeList::new(),
