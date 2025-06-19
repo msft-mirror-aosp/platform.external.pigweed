@@ -13,6 +13,7 @@
 // the License.
 #![no_std]
 
+use kernel::arch::Arch;
 use kernel::sync::mutex::Mutex;
 use kernel::{Clock, Duration};
 use kernel_config::{KernelConfig, KernelConfigInterface};
@@ -20,12 +21,15 @@ use pw_log::info;
 use time::Clock as _;
 
 pub fn main() -> ! {
-    let thread_b = kernel::init_thread!(
-        "B",
-        test_thread_entry_b,
-        KernelConfig::KERNEL_STACK_SIZE_BYTES
-    );
-    kernel::start_thread(thread_b);
+    // SAFETY: The `main` function thread is never executed more than once.
+    let thread_b = unsafe {
+        kernel::init_thread!(
+            "B",
+            test_thread_entry_b,
+            KernelConfig::KERNEL_STACK_SIZE_BYTES
+        )
+    };
+    kernel::start_thread(Arch, thread_b);
 
     info!("Thread A re-using bootstrap thread");
     thread_a()
@@ -36,12 +40,12 @@ fn test_thread_entry_b(_arg: usize) {
     thread_b();
 }
 
-static TEST_COUNTER: Mutex<u64> = Mutex::new(0);
+static TEST_COUNTER: Mutex<Arch, u64> = Mutex::new(Arch, 0);
 
 fn thread_a() -> ! {
     loop {
         let mut counter = TEST_COUNTER.lock();
-        kernel::sleep_until(Clock::now() + Duration::from_secs(1));
+        kernel::sleep_until(Arch, Clock::now() + Duration::from_secs(1));
         info!("Thread A: incrementing counter");
         *counter = (*counter).saturating_add(1);
     }
@@ -59,6 +63,6 @@ fn thread_b() {
         pw_assert::ne!(*counter as u64, 4 as u64);
         drop(counter);
         // Give Thread A a chance to acquire the mutex.
-        kernel::yield_timeslice();
+        kernel::yield_timeslice(Arch);
     }
 }

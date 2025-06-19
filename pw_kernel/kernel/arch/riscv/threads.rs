@@ -20,9 +20,10 @@ use pw_status::Result;
 
 use crate::arch::riscv::protection::MemoryConfig;
 use crate::arch::riscv::regs::{MStatusVal, PrivilegeLevel};
-use crate::arch::{Arch, ArchInterface};
+use crate::arch::riscv::spinlock::BareSpinLock;
+use crate::arch::riscv::Arch;
 use crate::scheduler::thread::Stack;
-use crate::scheduler::{self, SchedulerState};
+use crate::scheduler::{self, SchedulerContext, SchedulerState};
 use crate::sync::spinlock::SpinLockGuard;
 
 const LOG_CONTEXT_SWITCH: bool = false;
@@ -81,21 +82,17 @@ impl ArchThreadState {
     }
 }
 
-impl super::super::ThreadState for ArchThreadState {
-    fn new() -> Self {
-        Self {
-            frame: core::ptr::null_mut(),
-            #[cfg(feature = "user_space")]
-            memory_config: core::ptr::null(),
-        }
-    }
+impl SchedulerContext for super::Arch {
+    type ThreadState = ArchThreadState;
+    type BareSpinLock = BareSpinLock;
 
     #[inline(never)]
     unsafe fn context_switch<'a>(
-        sched_state: SpinLockGuard<'a, SchedulerState>,
+        self,
+        sched_state: SpinLockGuard<'a, BareSpinLock, SchedulerState<ArchThreadState>>,
         old_thread_state: *mut ArchThreadState,
         new_thread_state: *mut ArchThreadState,
-    ) -> SpinLockGuard<'a, SchedulerState> {
+    ) -> SpinLockGuard<'a, BareSpinLock, SchedulerState<ArchThreadState>> {
         debug_if!(
             LOG_CONTEXT_SWITCH,
             "context switch from frame {:#08x} to frame {:#08x}",
@@ -123,6 +120,36 @@ impl super::super::ThreadState for ArchThreadState {
         sched_state
     }
 
+    fn idle() {
+        riscv::asm::wfi();
+    }
+
+    fn enable_interrupts() {
+        unsafe {
+            riscv::register::mstatus::set_mie();
+        }
+    }
+
+    fn disable_interrupts() {
+        unsafe {
+            riscv::register::mstatus::clear_mie();
+        }
+    }
+
+    fn interrupts_enabled() -> bool {
+        riscv::register::mstatus::read().mie()
+    }
+}
+
+impl crate::scheduler::thread::ThreadState for ArchThreadState {
+    type MemoryConfig = crate::arch::riscv::protection::MemoryConfig;
+    const NEW: Self = Self {
+        frame: core::ptr::null_mut(),
+        #[cfg(feature = "user_space")]
+        memory_config: core::ptr::null(),
+    };
+
+    #[inline(never)]
     fn initialize_kernel_frame(
         &mut self,
         kernel_stack: Stack,
@@ -277,7 +304,7 @@ extern "C" fn trampoline(initial_function: extern "C" fn(usize, usize), arg0: us
     // Get a pointer to the current thread and call exit.
     // Note: must let the scope of the lock guard close,
     // since exit_thread() does not return.
-    scheduler::exit_thread();
+    scheduler::exit_thread(Arch);
 
     // Does not reach.
 }
