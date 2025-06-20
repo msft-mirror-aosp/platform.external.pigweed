@@ -15,36 +15,30 @@
 
 use pw_log::info;
 
-pub mod arch;
+pub mod memory;
 #[cfg(not(feature = "std_panic_handler"))]
 mod panic;
 pub mod scheduler;
 pub mod sync;
-mod syscall;
+pub mod syscall;
 mod target;
 
-pub use arch::{Arch, MemoryRegion, MemoryRegionType};
+// Used by the `init_thread!` macro.
 use kernel_config::{KernelConfig, KernelConfigInterface};
+pub use memory::{MemoryRegion, MemoryRegionType};
+use scheduler::thread::{self, ThreadState};
 pub use scheduler::thread::{Process, Stack, Thread};
 #[doc(hidden)]
 pub use scheduler::thread::{StackStorage, StackStorageExt};
-// Used by the `init_thread!` macro.
-pub use scheduler::timer::{Clock, Duration};
+pub use scheduler::timer::Duration;
+use scheduler::timer::TimerQueue;
 pub use scheduler::{sleep_until, start_thread, yield_timeslice};
-use scheduler::{SchedulerContext, SchedulerState, SchedulerStateContext as _};
+use scheduler::{SchedulerContext, SchedulerState, SchedulerStateContext};
 use sync::spinlock::SpinLock;
 
-#[no_mangle]
-#[allow(non_snake_case)]
-pub extern "C" fn pw_assert_HandleFailure() -> ! {
-    Arch::panic();
-}
-
-pub trait KernelContext: SchedulerContext {
-    type Clock: time::Clock;
-
-    fn early_init() {}
-    fn init() {}
+pub trait KernelContext: Sized {
+    fn early_init(self) {}
+    fn init(self) {}
 
     fn panic() -> ! {
         #[allow(clippy::empty_loop)]
@@ -58,6 +52,7 @@ pub trait KernelStateContext: SchedulerContext + KernelContext {
 
 pub struct KernelState<C: KernelStateContext> {
     scheduler: SpinLock<C::BareSpinLock, SchedulerState<C::ThreadState>>,
+    timer_queue: SpinLock<C::BareSpinLock, TimerQueue<C::Clock>>,
 }
 
 impl<C: KernelStateContext> KernelState<C> {
@@ -65,6 +60,36 @@ impl<C: KernelStateContext> KernelState<C> {
     pub const fn new() -> Self {
         Self {
             scheduler: SpinLock::new(SchedulerState::new()),
+            timer_queue: SpinLock::new(TimerQueue::new()),
+        }
+    }
+}
+
+struct ThreadStorage<S: ThreadState> {
+    thread: Thread<S>,
+    stack: StackStorage<{ KernelConfig::KERNEL_STACK_SIZE_BYTES }>,
+}
+
+impl<S: ThreadState> ThreadStorage<S> {
+    pub const fn new() -> Self {
+        Self {
+            thread: Thread::new(""),
+            stack: StackStorage::ZEROED,
+        }
+    }
+}
+
+pub struct InitKernelState<S: ThreadState> {
+    bootstrap_thread: ThreadStorage<S>,
+    idle_thread: ThreadStorage<S>,
+}
+
+impl<S: ThreadState> InitKernelState<S> {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            bootstrap_thread: ThreadStorage::new(),
+            idle_thread: ThreadStorage::new(),
         }
     }
 }
@@ -79,62 +104,68 @@ pub mod macro_exports {
 }
 
 impl Kernel {
-    pub fn main() -> ! {
+    pub fn main<C: KernelStateContext>(
+        ctx: C,
+        init_state: &'static mut InitKernelState<C::ThreadState>,
+    ) -> ! {
         target::console_init();
         info!("Welcome to Maize on {}!", target::name() as &str);
 
-        Arch::early_init();
+        ctx.early_init();
 
         // Prepare the scheduler for thread initialization.
-        scheduler::initialize(Arch);
+        scheduler::initialize(ctx);
 
-        // SAFETY: The `main` function thread is never executed more than once.
-        let bootstrap_thread = unsafe {
-            init_thread!(
-                "bootstrap",
-                bootstrap_thread_entry,
-                KernelConfig::KERNEL_STACK_SIZE_BYTES
-            )
-        };
+        let bootstrap_thread = thread::init_thread_in(
+            ctx,
+            &mut init_state.bootstrap_thread.thread,
+            &mut init_state.bootstrap_thread.stack,
+            "bootstrap",
+            bootstrap_thread_entry,
+            &mut init_state.idle_thread,
+        );
         info!("created thread, bootstrapping");
 
         // special case where we bootstrap the system by half context switching to this thread
-        scheduler::bootstrap_scheduler(Arch, bootstrap_thread);
+        scheduler::bootstrap_scheduler(ctx, bootstrap_thread);
 
         // never get to here
     }
 }
 
 // completion of main in thread context
-fn bootstrap_thread_entry(_arg: usize) {
+fn bootstrap_thread_entry<C: KernelStateContext>(
+    ctx: C,
+    idle_thread_storage: &'static mut ThreadStorage<C::ThreadState>,
+) {
     info!("Welcome to the first thread, continuing bootstrap");
-    pw_assert::assert!(Arch::interrupts_enabled());
+    pw_assert::assert!(ctx.interrupts_enabled());
 
-    Arch::init();
+    ctx.init();
 
-    Arch.get_scheduler_lock().lock().dump_all_threads();
+    ctx.get_scheduler().lock().dump_all_threads();
 
-    // SAFETY: The bootstrap thread is never executed more than once.
-    let idle_thread = unsafe {
-        init_thread!(
-            "idle",
-            idle_thread_entry,
-            KernelConfig::KERNEL_STACK_SIZE_BYTES
-        )
-    };
+    let idle_thread = thread::init_thread_in(
+        ctx,
+        &mut idle_thread_storage.thread,
+        &mut idle_thread_storage.stack,
+        "idle",
+        idle_thread_entry,
+        0,
+    );
 
-    Arch::get_scheduler_lock(Arch).lock().dump_all_threads();
+    ctx.get_scheduler().lock().dump_all_threads();
 
-    scheduler::start_thread(Arch, idle_thread);
+    scheduler::start_thread(ctx, idle_thread);
 
     target::main()
 }
 
-fn idle_thread_entry(_arg: usize) {
+fn idle_thread_entry<C: KernelStateContext>(ctx: C, _arg: usize) {
     // Fake idle thread to keep the runqueue from being empty if all threads are blocked.
-    pw_assert::assert!(Arch::interrupts_enabled());
+    pw_assert::assert!(ctx.interrupts_enabled());
     loop {
-        Arch::idle();
+        ctx.idle();
     }
 }
 
@@ -160,10 +191,5 @@ pub mod __private {
         }};
     }
 
-    pub type ArchThreadState =
-        <crate::arch::Arch as crate::scheduler::SchedulerContext>::ThreadState;
-
     pub use foreign_box;
-
-    pub use crate::arch::Arch;
 }

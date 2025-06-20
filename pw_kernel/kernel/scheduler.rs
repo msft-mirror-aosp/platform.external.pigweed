@@ -21,9 +21,9 @@ use pw_log::info;
 use pw_status::{Error, Result};
 use thread::*;
 
-use crate::arch::MemoryConfig as _;
+use crate::memory::MemoryConfig as _;
 use crate::scheduler::timer::{Instant, TimerCallback, TimerQueue};
-use crate::sync::spinlock::{SpinLock, SpinLockGuard};
+use crate::sync::spinlock::{BareSpinLock, SpinLock, SpinLockGuard};
 
 mod locks;
 pub mod thread;
@@ -38,9 +38,10 @@ macro_rules! wait_queue_debug {
   }}
 }
 
-pub trait SchedulerContext: 'static + Copy {
-    type BareSpinLock: crate::sync::spinlock::BareSpinLock;
+pub trait SchedulerContext: 'static + Copy + thread::ThreadArg {
     type ThreadState: ThreadState;
+    type BareSpinLock: BareSpinLock;
+    type Clock: time::Clock;
 
     /// Switches to a new thread.
     ///
@@ -58,30 +59,38 @@ pub trait SchedulerContext: 'static + Copy {
         new_thread_state: *mut Self::ThreadState,
     ) -> SpinLockGuard<'_, Self::BareSpinLock, SchedulerState<Self::ThreadState>>;
 
+    fn now(self) -> Instant<Self::Clock>;
+
     // fill in more arch implementation functions from the kernel here:
     // arch-specific backtracing
     #[allow(dead_code)]
-    fn enable_interrupts();
+    fn enable_interrupts(self);
     #[allow(dead_code)]
-    fn disable_interrupts();
+    fn disable_interrupts(self);
     #[allow(dead_code)]
-    fn interrupts_enabled() -> bool;
+    fn interrupts_enabled(self) -> bool;
 
     #[allow(dead_code)]
-    fn idle() {}
+    fn idle(self) {}
 }
 
 pub trait SchedulerStateContext: SchedulerContext {
-    fn get_scheduler_lock(
+    fn get_scheduler(
         self,
     ) -> &'static SpinLock<Self::BareSpinLock, SchedulerState<Self::ThreadState>>;
+
+    fn get_timer_queue(self) -> &'static SpinLock<Self::BareSpinLock, TimerQueue<Self::Clock>>;
 }
 
 impl<C: SchedulerContext + crate::KernelStateContext> SchedulerStateContext for C {
-    fn get_scheduler_lock(
+    fn get_scheduler(
         self,
     ) -> &'static SpinLock<Self::BareSpinLock, SchedulerState<Self::ThreadState>> {
         &self.get_state().scheduler
+    }
+
+    fn get_timer_queue(self) -> &'static SpinLock<Self::BareSpinLock, TimerQueue<C::Clock>> {
+        &self.get_state().timer_queue
     }
 }
 
@@ -99,7 +108,7 @@ pub fn start_thread<C: SchedulerStateContext>(
 
     thread.state = State::Ready;
 
-    let mut sched_state = ctx.get_scheduler_lock().lock();
+    let mut sched_state = ctx.get_scheduler().lock();
 
     // If there is a current thread, put it back on the top of the run queue.
     let id = if let Some(mut current_thread) = sched_state.current_thread.take() {
@@ -118,7 +127,7 @@ pub fn start_thread<C: SchedulerStateContext>(
 }
 
 pub fn initialize<C: SchedulerStateContext>(ctx: C) {
-    let mut sched_state = ctx.get_scheduler_lock().lock();
+    let mut sched_state = ctx.get_scheduler().lock();
 
     // The kernel process needs be to initialized before any kernel threads so
     // that they can properly be parented underneath it.
@@ -132,7 +141,7 @@ pub fn bootstrap_scheduler<C: SchedulerStateContext>(
     ctx: C,
     mut thread: ForeignBox<Thread<C::ThreadState>>,
 ) -> ! {
-    let mut sched_state = ctx.get_scheduler_lock().lock();
+    let mut sched_state = ctx.get_scheduler().lock();
 
     // TODO: assert that this is called exactly once at bootup to switch
     // to this particular thread.
@@ -155,7 +164,7 @@ struct PremptDisableGuard<C: SchedulerStateContext>(C);
 
 impl<C: SchedulerStateContext> PremptDisableGuard<C> {
     pub fn new(ctx: C) -> Self {
-        let mut sched_state = ctx.get_scheduler_lock().lock();
+        let mut sched_state = ctx.get_scheduler().lock();
         let thread = sched_state.current_thread_mut();
 
         #[allow(clippy::needless_else)]
@@ -171,7 +180,7 @@ impl<C: SchedulerStateContext> PremptDisableGuard<C> {
 
 impl<C: SchedulerStateContext> Drop for PremptDisableGuard<C> {
     fn drop(&mut self) {
-        let mut sched_state = self.0.get_scheduler_lock().lock();
+        let mut sched_state = self.0.get_scheduler().lock();
         let thread = sched_state.current_thread_mut();
 
         if let Some(val) = thread.preempt_disable_count.checked_sub(1) {
@@ -221,8 +230,18 @@ impl<S: ThreadState> SchedulerState<S> {
         }
     }
 
+    /// Returns a pointer to the current threads architecture thread state
+    /// struct.
+    ///
+    /// Only meant to be called from within an architecture implementation.
+    ///
+    /// # Safety
+    ///
+    /// Must be called with the scheduler lock held.  Pointer is only valid
+    /// while the current threads remains the current thread.
     #[allow(dead_code)]
-    pub(super) unsafe fn get_current_arch_thread_state(&mut self) -> *mut S {
+    #[doc(hidden)]
+    pub unsafe fn get_current_arch_thread_state(&mut self) -> *mut S {
         self.current_arch_thread_state
     }
 
@@ -388,7 +407,7 @@ fn reschedule<C: SchedulerContext>(
 #[allow(dead_code)]
 pub fn yield_timeslice<C: SchedulerStateContext>(ctx: C) {
     // info!("yielding thread {:#x}", current_thread.id());
-    let mut sched_state = ctx.get_scheduler_lock().lock();
+    let mut sched_state = ctx.get_scheduler().lock();
 
     // Yielding always moves the current task to the back of the run queue
     let current_thread_id = sched_state.move_current_thread_to_back();
@@ -399,7 +418,7 @@ pub fn yield_timeslice<C: SchedulerStateContext>(ctx: C) {
 #[allow(dead_code)]
 pub fn preempt<C: SchedulerStateContext>(ctx: C) {
     // info!("preempt thread {:#x}", current_thread.id());
-    let mut sched_state = ctx.get_scheduler_lock().lock();
+    let mut sched_state = ctx.get_scheduler().lock();
 
     // For now, always move the current thread to the back of the run queue.
     // When the scheduler gets more complex, it should evaluate if it has used
@@ -412,17 +431,17 @@ pub fn preempt<C: SchedulerStateContext>(ctx: C) {
 // Tick that is called from a timer handler. The scheduler will evaluate if the current thread
 // should be preempted or not
 #[allow(dead_code)]
-pub fn tick<C: SchedulerStateContext>(ctx: C, now: Instant) {
+pub fn tick<C: SchedulerStateContext>(ctx: C, now: Instant<C::Clock>) {
     //info!("tick {} ms", time_ms);
 
     // In lieu of a proper timer interface, the scheduler needs to be robust
     // to timer ticks arriving before it is initialized.
-    if ctx.get_scheduler_lock().lock().current_thread.is_none() {
+    if ctx.get_scheduler().lock().current_thread.is_none() {
         return;
     }
 
     let _guard = PremptDisableGuard::new(ctx);
-    TimerQueue::process_queue(now);
+    timer::process_queue(ctx, now);
 }
 
 // Exit the current thread.
@@ -430,7 +449,7 @@ pub fn tick<C: SchedulerStateContext>(ctx: C, now: Instant) {
 // is performed.
 #[allow(dead_code)]
 pub fn exit_thread<C: SchedulerStateContext>(ctx: C) -> ! {
-    let mut sched_state = ctx.get_scheduler_lock().lock();
+    let mut sched_state = ctx.get_scheduler().lock();
 
     let mut current_thread = sched_state.take_current_thread();
     let current_thread_id = current_thread.id();
@@ -445,7 +464,7 @@ pub fn exit_thread<C: SchedulerStateContext>(ctx: C) -> ! {
     loop {}
 }
 
-pub fn sleep_until<C: SchedulerStateContext>(ctx: C, deadline: Instant) {
+pub fn sleep_until<C: SchedulerStateContext>(ctx: C, deadline: Instant<C::Clock>) {
     let wait_queue = WaitQueueLock::new(ctx, ());
     let _ = wait_queue.lock().wait_until(deadline);
 }
@@ -542,7 +561,7 @@ impl<C: SchedulerStateContext> SchedLockGuard<'_, C, WaitQueue<C::ThreadState>> 
         self
     }
 
-    pub fn wait_until(mut self, deadline: Instant) -> (Self, Result<()>) {
+    pub fn wait_until(mut self, deadline: Instant<C::Clock>) -> (Self, Result<()>) {
         let mut thread = self.sched_mut().take_current_thread();
         wait_queue_debug!("<{}> wait_until", thread.name as &str);
 
@@ -564,7 +583,7 @@ impl<C: SchedulerStateContext> SchedLockGuard<'_, C, WaitQueue<C::ThreadState>> 
 
         // Timeout callback will remove the thread from the wait queue and put
         // it back on the run queue.
-        let mut callback_closure = move |callback: ForeignBox<TimerCallback>, _now| {
+        let mut callback_closure = move |callback: ForeignBox<TimerCallback<C::Clock>>, _now| {
             // Safety: wait queue lock is valid for the lifetime of the callback.
             let mut wait_queue = unsafe { smuggled_wait_queue.lock() };
 
@@ -592,7 +611,7 @@ impl<C: SchedulerStateContext> SchedLockGuard<'_, C, WaitQueue<C::ThreadState>> 
             ForeignBox::new_from_ptr(&raw mut callback_closure)
         });
         let callback_ptr = &raw mut callback;
-        TimerQueue::schedule_timer(unsafe { ForeignBox::new_from_ptr(callback_ptr) });
+        timer::schedule_timer(self.ctx, unsafe { ForeignBox::new_from_ptr(callback_ptr) });
 
         // Safety: It is important hold on to the WaitQueue lock that is returned
         // from reschedule as the pointers needed by the timer canceling code
@@ -604,7 +623,7 @@ impl<C: SchedulerStateContext> SchedLockGuard<'_, C, WaitQueue<C::ThreadState>> 
         // Cancel timeout callback if has not already fired.
         //
         // Safety: callback_ptr is valid until callback goes out of scope.
-        unsafe { TimerQueue::cancel_and_consume_timer(NonNull::new_unchecked(callback_ptr)) };
+        unsafe { timer::cancel_and_consume_timer(self.ctx, NonNull::new_unchecked(callback_ptr)) };
 
         wait_queue_debug!(
             "<{}> exiting wait_until",

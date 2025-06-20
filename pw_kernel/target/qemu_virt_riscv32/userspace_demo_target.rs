@@ -14,9 +14,10 @@
 #![no_std]
 #![no_main]
 
+use arch_riscv::{Arch, ArchThreadState};
 use console_backend as _;
-use kernel::{self as _, Clock, Duration};
-use time::Clock as _;
+use kernel::scheduler::SchedulerContext as _;
+use kernel::{self as _, Duration, InitKernelState};
 
 use target_common::{declare_target, TargetInterface};
 mod userspace_demo_codegen;
@@ -29,14 +30,26 @@ impl TargetInterface for Target {
     fn main() -> ! {
         userspace_demo_codegen::start();
         loop {
-            kernel::sleep_until(kernel::Arch, Clock::now() + Duration::from_secs(10));
+            kernel::sleep_until(Arch, Arch.now() + Duration::from_secs(10));
         }
     }
 }
 
 declare_target!(Target);
 
+#[no_mangle]
+#[allow(non_snake_case)]
+pub extern "C" fn pw_assert_HandleFailure() -> ! {
+    use kernel::KernelContext as _;
+    Arch::panic()
+}
+
 #[riscv_rt::entry]
 fn main() -> ! {
-    kernel::Kernel::main();
+    static mut INIT_STATE: InitKernelState<ArchThreadState> = InitKernelState::new();
+
+    // SAFETY: `main` is only executed once, so we never generate more than one
+    // `&mut` reference to `INIT_STATE`.
+    #[allow(static_mut_refs)]
+    kernel::Kernel::main(Arch, unsafe { &mut INIT_STATE });
 }

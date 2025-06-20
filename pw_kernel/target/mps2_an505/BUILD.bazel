@@ -85,6 +85,7 @@ SRCS = ["target.rs"]
 COMMON_DEPS = [
     ":linker_script",
     "//pw_kernel/kernel",
+    "//pw_kernel/arch/arm_cortex_m:arch_arm_cortex_m",
     "//pw_kernel/subsys/console:console_backend_semihosting",
     "//pw_kernel/target:target_common",
     "@rust_crates//:cortex-m",
@@ -137,6 +138,7 @@ rust_test(
     target_compatible_with = TARGET_COMPATIBLE_WITH,
     use_libtest_harness = False,
     deps = COMMON_DEPS + [
+        "//pw_kernel/kernel/tests:integration_tests",
         "//pw_kernel/lib/unittest:unittest_core",
         "@pigweed//pw_log/rust:pw_log",
         "@rust_crates//:cortex-m-semihosting",
