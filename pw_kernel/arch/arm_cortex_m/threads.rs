@@ -16,21 +16,24 @@ use core::arch::asm;
 use core::mem::{self, MaybeUninit};
 
 use cortex_m::peripheral::SCB;
+use kernel::memory::{MemoryConfig as _, MemoryRegionType};
+use kernel::scheduler::thread::Stack;
+use kernel::scheduler::{self, SchedulerContext, SchedulerState, SchedulerStateContext as _};
+use kernel::sync::spinlock::SpinLockGuard;
+use log_if::debug_if;
 use pw_cast::CastInto as _;
 use pw_status::{Error, Result};
 
-use crate::arch::arm_cortex_m::exceptions::{
-    exception, ExcReturn, ExcReturnFrameType, ExcReturnMode, ExcReturnRegisterStacking,
-    ExcReturnStack, ExceptionFrame, KernelExceptionFrame, RetPsrVal,
+use crate::exceptions::{
+    ExcReturn, ExcReturnFrameType, ExcReturnMode, ExcReturnRegisterStacking, ExcReturnStack,
+    ExceptionFrame, KernelExceptionFrame, RetPsrVal, exception,
 };
-use crate::arch::arm_cortex_m::protection::MemoryConfig;
-use crate::arch::arm_cortex_m::regs::msr::{ControlVal, Spsel};
-use crate::arch::arm_cortex_m::spinlock::BareSpinLock;
-use crate::arch::arm_cortex_m::{in_interrupt_handler, Arch};
-use crate::arch::{MemoryConfig as _, MemoryRegionType};
-use crate::scheduler::thread::Stack;
-use crate::scheduler::{self, SchedulerContext, SchedulerState, SchedulerStateContext as _};
-use crate::sync::spinlock::SpinLockGuard;
+use crate::protection::MemoryConfig;
+use crate::regs::msr::{ControlVal, Spsel};
+use crate::spinlock::BareSpinLock;
+use crate::{Arch, in_interrupt_handler};
+
+const LOG_THREAD_CREATE: bool = false;
 
 const STACK_ALIGNMENT: usize = 8;
 
@@ -62,7 +65,7 @@ impl ArchThreadState {
         psp: u32,
         return_address: ExcReturn,
         initial_pc: usize,
-        (r0, r1, r2): (usize, usize, usize),
+        (r0, r1, r2, r3): (usize, usize, usize, usize),
     ) {
         // Clear the stack and set up the exception frame such that it would
         // return to the function passed in with arg0 and arg1 passed in the
@@ -72,6 +75,7 @@ impl ArchThreadState {
             (*user_frame).r0 = r0.cast_into();
             (*user_frame).r1 = r1.cast_into();
             (*user_frame).r2 = r2.cast_into();
+            (*user_frame).r3 = r3.cast_into();
             (*user_frame).pc = initial_pc.cast_into();
             (*user_frame).psr = RetPsrVal(0).with_t(true);
             (*kernel_frame) = mem::zeroed();
@@ -86,6 +90,7 @@ impl ArchThreadState {
 impl SchedulerContext for Arch {
     type ThreadState = ArchThreadState;
     type BareSpinLock = BareSpinLock;
+    type Clock = super::timer::Clock;
 
     unsafe fn context_switch<'a>(
         self,
@@ -121,7 +126,7 @@ impl SchedulerContext for Arch {
 
             // TODO: make sure this always drops interrupts, may need to force a cpsid here.
             drop(sched_state);
-            pw_assert::debug_assert!(Arch::interrupts_enabled());
+            pw_assert::debug_assert!(Arch.interrupts_enabled());
 
             // PendSV should fire and a context switch will happen.
 
@@ -130,7 +135,7 @@ impl SchedulerContext for Arch {
             // The next line of code is only executed in this context after the
             // old thread is context switched back to.
 
-            sched_state = Arch::get_scheduler_lock(Arch).lock();
+            sched_state = Arch::get_scheduler(Arch).lock();
         } else {
             // in interrupt context the pendsv should have already triggered it
             pw_assert::assert!(SCB::is_pendsv_pending());
@@ -138,17 +143,22 @@ impl SchedulerContext for Arch {
         sched_state
     }
 
-    fn enable_interrupts() {
+    fn now(self) -> time::Instant<super::timer::Clock> {
+        use time::Clock as _;
+        super::timer::Clock::now()
+    }
+
+    fn enable_interrupts(self) {
         unsafe {
             cortex_m::interrupt::enable();
         }
     }
 
-    fn disable_interrupts() {
+    fn disable_interrupts(self) {
         cortex_m::interrupt::disable();
     }
 
-    fn interrupts_enabled() -> bool {
+    fn interrupts_enabled(self) -> bool {
         // It's a complicated concept in cortex-m:
         // If PRIMASK is inactive, then interrupts are 100% disabled otherwise
         // if the current interrupt priority level is not zero (BASEPRI register) interrupts
@@ -158,13 +168,13 @@ impl SchedulerContext for Arch {
         primask.is_active() && (basepri == 0)
     }
 
-    fn idle() {
+    fn idle(self) {
         cortex_m::asm::wfi();
     }
 }
 
-impl crate::scheduler::thread::ThreadState for ArchThreadState {
-    type MemoryConfig = crate::arch::arm_cortex_m::protection::MemoryConfig;
+impl kernel::scheduler::thread::ThreadState for ArchThreadState {
+    type MemoryConfig = crate::protection::MemoryConfig;
 
     const NEW: Self = Self {
         frame: core::ptr::null_mut(),
@@ -175,8 +185,8 @@ impl crate::scheduler::thread::ThreadState for ArchThreadState {
         &mut self,
         kernel_stack: Stack,
         memory_config: *const MemoryConfig,
-        initial_function: extern "C" fn(usize, usize),
-        args: (usize, usize),
+        initial_function: extern "C" fn(usize, usize, usize),
+        args: (usize, usize, usize),
     ) {
         self.memory_config = memory_config;
         let user_frame: *mut ExceptionFrame =
@@ -207,7 +217,7 @@ impl crate::scheduler::thread::ThreadState for ArchThreadState {
                 ExcReturnMode::ThreadSecure,
             ),
             trampoline as usize,
-            (initial_function as usize, args.0, args.1),
+            (initial_function as usize, args.0, args.1, args.2),
         );
     }
 
@@ -217,8 +227,8 @@ impl crate::scheduler::thread::ThreadState for ArchThreadState {
         kernel_stack: Stack,
         memory_config: *const MemoryConfig,
         initial_sp: usize,
-        entry_point: usize,
-        arg: usize,
+        initial_pc: usize,
+        args: (usize, usize, usize),
     ) -> Result<()> {
         self.memory_config = memory_config;
 
@@ -251,24 +261,33 @@ impl crate::scheduler::thread::ThreadState for ArchThreadState {
                 ExcReturnFrameType::Standard,
                 ExcReturnMode::ThreadSecure,
             ),
-            entry_point,
-            (arg, 0x0, 0x0),
+            initial_pc,
+            (args.0, args.1, args.2, 0),
         );
 
         Ok(())
     }
 }
 
-extern "C" fn trampoline(initial_function: extern "C" fn(usize, usize), arg0: usize, arg1: usize) {
-    // info!(
-    //     "cortex-m trampoline: initial function {:#x} arg {:#x}",
-    //     initial_function as usize, arg0
-    // );
+extern "C" fn trampoline(
+    initial_function: extern "C" fn(usize, usize, usize),
+    arg0: usize,
+    arg1: usize,
+    arg2: usize,
+) {
+    debug_if!(
+        LOG_THREAD_CREATE,
+        "arm_cortex_m trampoline: initial function {:#x} arg0 {:#x} arg1 {:#x} arg2 {:#}",
+        initial_function as usize,
+        arg0 as usize,
+        arg1 as usize,
+        arg2 as usize,
+    );
 
-    pw_assert::assert!(Arch::interrupts_enabled());
+    pw_assert::assert!(Arch.interrupts_enabled());
 
     // Call the actual initial function of the thread.
-    initial_function(arg0, arg1);
+    initial_function(arg0, arg1, arg2);
 
     // Get a pointer to the current thread and call exit.
     // Note: must let the scope of the lock guard close,
@@ -293,7 +312,7 @@ extern "C" fn pendsv_swap_sp(frame: *mut KernelExceptionFrame) -> *mut KernelExc
     unsafe { asm!("clrex") };
 
     pw_assert::assert!(in_interrupt_handler());
-    pw_assert::assert!(!Arch::interrupts_enabled());
+    pw_assert::assert!(!Arch.interrupts_enabled());
 
     // Save the incoming frame to the current active thread's arch state, that will function
     // as the context switch frame for when it is returned to later. Clear active thread
@@ -313,7 +332,7 @@ extern "C" fn pendsv_swap_sp(frame: *mut KernelExceptionFrame) -> *mut KernelExc
     }
 
     // Return the arch frame for the current thread
-    let mut sched_state = Arch.get_scheduler_lock().lock();
+    let mut sched_state = Arch.get_scheduler().lock();
     let new_thread = unsafe { sched_state.get_current_arch_thread_state() };
     // info!(
     //     "new frame {:08x}: pc {:08x}",

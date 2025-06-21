@@ -15,6 +15,7 @@
 use core::cell::UnsafeCell;
 use core::mem::MaybeUninit;
 
+use foreign_box::ForeignBox;
 use list::*;
 use pw_log::info;
 use pw_status::Result;
@@ -146,7 +147,7 @@ pub trait ThreadState: 'static + Sized {
     const NEW: Self;
 
     // TODO: Maybe have a `MemoryConfigContext` super-trait of `ThreadState`?
-    type MemoryConfig: crate::arch::MemoryConfig;
+    type MemoryConfig: crate::memory::MemoryConfig;
 
     /// Initialize the default frame of a kernel thread
     ///
@@ -157,8 +158,8 @@ pub trait ThreadState: 'static + Sized {
         &mut self,
         kernel_stack: Stack,
         memory_config: *const Self::MemoryConfig,
-        initial_function: extern "C" fn(usize, usize),
-        args: (usize, usize),
+        initial_function: extern "C" fn(usize, usize, usize),
+        args: (usize, usize, usize),
     );
 
     /// Initialize the default frame of a user thread
@@ -171,8 +172,8 @@ pub trait ThreadState: 'static + Sized {
         kernel_stack: Stack,
         memory_config: *const Self::MemoryConfig,
         initial_sp: usize,
-        entry_point: usize,
-        arg: usize,
+        initial_pc: usize,
+        args: (usize, usize, usize),
     ) -> Result<()>;
 }
 
@@ -205,7 +206,7 @@ impl<S: ThreadState> Process<S> {
     /// Registers process with scheduler.
     pub fn register<C: SchedulerStateContext<ThreadState = S>>(&mut self, ctx: C) {
         unsafe {
-            ctx.get_scheduler_lock().lock().add_process_to_list(self);
+            ctx.get_scheduler().lock().add_process_to_list(self);
         }
     }
 
@@ -282,7 +283,11 @@ impl<S: ThreadState> Thread<S> {
         }
     }
 
-    extern "C" fn trampoline(entry_point: usize, arg: usize) {
+    extern "C" fn trampoline<A0: ThreadArg, A1: ThreadArg>(
+        entry_point: usize,
+        arg0: usize,
+        arg1: usize,
+    ) {
         let entry_point = core::ptr::with_exposed_provenance::<()>(entry_point);
         // SAFETY: This function is only ever passed to the
         // architecture-specific call to `initialize_frame` below. It is
@@ -291,25 +296,27 @@ impl<S: ThreadState> Thread<S> {
         // this transmute preserves validity, and the preceding
         // `with_exposed_provenance` ensures that the resulting `fn(usize)`
         // has valid provenance for its referent.
-        let entry_point: fn(usize) = unsafe { core::mem::transmute(entry_point) };
-        entry_point(arg);
+        let entry_point: fn(A0, A1) = unsafe { core::mem::transmute(entry_point) };
+        let arg0 = unsafe { A0::from_usize(arg0) };
+        let arg1 = unsafe { A1::from_usize(arg1) };
+        entry_point(arg0, arg1);
     }
 
-    pub fn initialize_kernel_thread<C: SchedulerStateContext<ThreadState = S>>(
+    pub fn initialize_kernel_thread<C: SchedulerStateContext<ThreadState = S>, A: ThreadArg>(
         &mut self,
         ctx: C,
         kernel_stack: Stack,
-        entry_point: fn(usize),
-        arg: usize,
+        entry_point: fn(C, A),
+        arg: A,
     ) -> &mut Thread<S> {
         pw_assert::assert!(self.state == State::New);
-        let process = ctx.get_scheduler_lock().lock().kernel_process.get();
-        let args = (entry_point as usize, arg);
+        let process = ctx.get_scheduler().lock().kernel_process.get();
+        let args = (entry_point as usize, ctx.into_usize(), arg.into_usize());
         unsafe {
             (*self.arch_thread_state.get()).initialize_kernel_frame(
                 kernel_stack,
                 &raw const (*process).memory_config,
-                Self::trampoline,
+                Self::trampoline::<C, A>,
                 args,
             );
         }
@@ -328,8 +335,8 @@ impl<S: ThreadState> Thread<S> {
         kernel_stack: Stack,
         initial_sp: usize,
         process: *mut Process<S>,
-        entry_point: usize,
-        arg: usize,
+        initial_pc: usize,
+        args: (usize, usize, usize),
     ) -> Result<&mut Thread<S>> {
         pw_assert::assert!(self.state == State::New);
 
@@ -339,8 +346,8 @@ impl<S: ThreadState> Thread<S> {
                 &raw const (*process).memory_config,
                 // be passed in from user space.
                 initial_sp,
-                entry_point,
-                arg,
+                initial_pc,
+                args,
             )?;
         }
         unsafe { Ok(self.initialize(ctx, process, kernel_stack)) }
@@ -364,7 +371,7 @@ impl<S: ThreadState> Thread<S> {
 
         self.state = State::Initial;
 
-        let _sched_state = ctx.get_scheduler_lock().lock();
+        let _sched_state = ctx.get_scheduler().lock();
         unsafe {
             // Safety: *process is only accessed with the scheduler lock held.
 
@@ -414,6 +421,112 @@ impl<S: ThreadState> Thread<S> {
     }
 }
 
+pub use arg::ThreadArg;
+mod arg {
+    pub trait ThreadArg {
+        fn into_usize(self) -> usize;
+
+        /// # Safety
+        ///
+        /// `u` must have previously been returned by [`x.into_usize()`]. The
+        /// returned `Self` is guaranteed to be equal to `x`.
+        ///
+        /// [`x.into_usize()`]: ThreadArg::into_usize
+        unsafe fn from_usize(u: usize) -> Self;
+    }
+
+    impl ThreadArg for usize {
+        fn into_usize(self) -> usize {
+            self
+        }
+
+        unsafe fn from_usize(u: usize) -> Self {
+            u
+        }
+    }
+
+    impl<T> ThreadArg for *const T {
+        fn into_usize(self) -> usize {
+            self.expose_provenance()
+        }
+
+        unsafe fn from_usize(u: usize) -> Self {
+            core::ptr::with_exposed_provenance(u)
+        }
+    }
+
+    impl<T> ThreadArg for *mut T {
+        fn into_usize(self) -> usize {
+            self.expose_provenance()
+        }
+
+        unsafe fn from_usize(u: usize) -> Self {
+            core::ptr::with_exposed_provenance_mut(u)
+        }
+    }
+
+    #[allow(clippy::needless_lifetimes)]
+    impl<'a, T> ThreadArg for &'a T {
+        fn into_usize(self) -> usize {
+            let s: *const T = self;
+            s.into_usize()
+        }
+
+        unsafe fn from_usize(u: usize) -> Self {
+            // SAFETY: The caller promises that `u` was previously returned by
+            // `into_usize`, which is implemented as `<*const T as
+            // ThreadArg>::into_usize`. Thus, `u` was previously returned by
+            // `<*const T as ThreadArg>::into_usize`.
+            let ptr = unsafe { <*const T>::from_usize(u) };
+            // SAFETY: By the preceding safety comment, `ptr` is equal to `self
+            // as *const T` where `self: &'a T`, including provenance.
+            unsafe { &*ptr }
+        }
+    }
+
+    #[allow(clippy::needless_lifetimes)]
+    impl<'a, T> ThreadArg for &'a mut T {
+        fn into_usize(self) -> usize {
+            let s: *mut T = self;
+            s.into_usize()
+        }
+
+        unsafe fn from_usize(u: usize) -> Self {
+            // SAFETY: The caller promises that `u` was previously returned by
+            // `into_usize`, which is implemented as `<*mut T as
+            // ThreadArg>::into_usize`. Thus, `u` was previously returned by
+            // `<*mut T as ThreadArg>::into_usize`.
+            let ptr = unsafe { <*mut T>::from_usize(u) };
+            // SAFETY: By the preceding safety comment, `ptr` is equal to `self
+            // as *mut T` where `self: &'a mut T`, including provenance. Since
+            // `into_usize` consumes `self` by value, no other references to the
+            // same referent exist, and so mutable aliasing is satisfied.
+            unsafe { &mut *ptr }
+        }
+    }
+
+    #[macro_export]
+    macro_rules! impl_thread_arg_for_default_zst {
+        ($t:ty) => {
+            const _: () = assert!(size_of::<$t>() == 0);
+            impl $crate::scheduler::thread::ThreadArg for $t {
+                fn into_usize(self) -> usize {
+                    0
+                }
+
+                unsafe fn from_usize(_u: usize) -> Self {
+                    // SAFETY: We asserted above that `size_of::<$t>() == 0`, so
+                    // there is only one value of `Self`. Thus, this
+                    // implementation of `from_usize` returns the same value
+                    // passed to any call to `into_usize`, as there is only one
+                    // possible such value.
+                    <$t as Default>::default()
+                }
+            }
+        };
+    }
+}
+
 /// Constructs a new [`Thread`] in global static storage.
 ///
 /// # Safety
@@ -425,9 +538,11 @@ impl<S: ThreadState> Thread<S> {
 #[macro_export]
 macro_rules! init_thread {
     ($name:literal, $entry:expr, $stack_size:expr $(,)?) => {{
-        use $crate::__private::{foreign_box::ForeignBox, ArchThreadState};
+        use $crate::__private::foreign_box::ForeignBox;
         use $crate::scheduler::thread::{Stack, StackStorage, StackStorageExt, Thread};
         use $crate::static_mut_ref;
+
+        type ArchThreadState = <arch::Arch as $crate::scheduler::SchedulerContext>::ThreadState;
 
         /// SAFETY: This must be executed at most once at run time.
         unsafe fn __init_thread() -> ForeignBox<Thread<ArchThreadState>> {
@@ -444,7 +559,7 @@ macro_rules! init_thread {
                 // executed at most once.
                 Stack::from_slice(unsafe { static_mut_ref!(StackStorage<{ $stack_size }> = StackStorageExt::ZEROED)}),
                 $entry,
-                0,
+                0
             );
 
             thread
@@ -465,7 +580,8 @@ macro_rules! init_thread {
 macro_rules! init_non_priv_process {
     ($name:literal, $memory_config:expr) => {{
         use $crate::scheduler::thread::Process;
-        use $crate::__private::{ArchThreadState};
+
+        type ArchThreadState = <arch::Arch as $crate::scheduler::SchedulerContext>::ThreadState;
 
         /// SAFETY: This must be executed at most once at run time.
         unsafe fn __init_non_priv_process() -> &'static mut Process<ArchThreadState> {
@@ -479,7 +595,7 @@ macro_rules! init_non_priv_process {
             // at most once.
             let proc =
                 unsafe { $crate::static_mut_ref!(Process<ArchThreadState> = Process::new($name, $memory_config)) };
-            proc.register($crate::arch::Arch);
+            proc.register(arch::Arch);
             proc
         }
 
@@ -498,8 +614,10 @@ macro_rules! init_non_priv_process {
 macro_rules! init_non_priv_thread {
     ($name:literal, $process:expr, $entry:expr, $initial_sp:expr, $kernel_stack_size:expr) => {{
         use $crate::static_mut_ref;
-        use $crate::__private::{foreign_box::ForeignBox, ArchThreadState};
+        use $crate::__private::foreign_box::ForeignBox;
         use $crate::scheduler::thread::{Process, Stack, StackStorage, StackStorageExt, Thread};
+
+        type ArchThreadState = <arch::Arch as $crate::scheduler::SchedulerContext>::ThreadState;
 
         /// SAFETY: This must be executed at most once at run time.
         unsafe fn __init_non_priv_thread(
@@ -523,14 +641,14 @@ macro_rules! init_non_priv_thread {
             );
             unsafe {
                 if let Err(e) = thread.initialize_non_priv_thread(
-                    $crate::arch::Arch,
+                    arch::Arch,
                     // SAFETY: The caller promises that this function will be
                     // executed at most once.
                     Stack::from_slice(unsafe { static_mut_ref!(StackStorage<{ $kernel_stack_size }> = StackStorageExt::ZEROED)}),
                     initial_sp,
                     proc,
                     entry,
-                    0,
+                    (0, 0, 0)
                 ) {
                     $crate::macro_exports::pw_assert::panic!(
                         "Error initializing thread: {}: {}",
@@ -545,4 +663,19 @@ macro_rules! init_non_priv_thread {
 
         __init_non_priv_thread($process, $entry, $initial_sp)
     }};
+}
+
+/// Initializes a thread in the given storage.
+pub fn init_thread_in<C: SchedulerStateContext, T: ThreadArg, const STACK_SIZE: usize>(
+    ctx: C,
+    thread: &'static mut Thread<C::ThreadState>,
+    stack: &'static mut StackStorage<STACK_SIZE>,
+    name: &'static str,
+    entry: fn(C, T),
+    arg: T,
+) -> ForeignBox<Thread<C::ThreadState>> {
+    *thread = Thread::new(name);
+    let mut thread = ForeignBox::from(thread);
+    thread.initialize_kernel_thread(ctx, Stack::from_slice(&*stack), entry, arg);
+    thread
 }

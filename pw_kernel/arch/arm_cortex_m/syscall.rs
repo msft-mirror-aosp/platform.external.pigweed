@@ -12,9 +12,10 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+use kernel::syscall::raw_handle_syscall;
+
 use super::exceptions::{exception, KernelExceptionFrame};
 use super::regs::Regs;
-use crate::syscall::raw_handle_syscall;
 
 // Pulls arguments out of the exception frame and calls the arch-independent
 // syscall handler.
@@ -33,6 +34,7 @@ extern "C" fn handle_svc(frame: *mut KernelExceptionFrame) -> *mut KernelExcepti
     scb.shcsr.write(val);
 
     let ret_val = raw_handle_syscall(
+        super::Arch,
         unsafe { &*frame }.r11 as u16,
         unsafe { &*frame }.r4 as usize,
         unsafe { &*frame }.r5 as usize,

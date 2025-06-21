@@ -12,25 +12,28 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+#![no_std]
+
+use kernel::scheduler::thread::{Stack, ThreadState};
+use kernel::scheduler::{SchedulerContext, SchedulerState};
+use kernel::sync::spinlock::SpinLockGuard;
+use kernel::{KernelState, KernelStateContext, MemoryRegionType};
 use pw_log::info;
 use pw_status::Result;
 
-use crate::arch::MemoryRegionType;
-use crate::scheduler::thread::{Stack, ThreadState};
-use crate::scheduler::{SchedulerContext, SchedulerState};
-use crate::sync::spinlock::SpinLockGuard;
-use crate::{KernelState, KernelStateContext};
-
 mod spinlock;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct Arch;
+
+kernel::impl_thread_arg_for_default_zst!(Arch);
 
 pub struct ArchThreadState;
 
 impl SchedulerContext for Arch {
     type ThreadState = ArchThreadState;
     type BareSpinLock = spinlock::BareSpinLock;
+    type Clock = Clock;
 
     unsafe fn context_switch(
         self,
@@ -41,13 +44,18 @@ impl SchedulerContext for Arch {
         pw_assert::panic!("unimplemented");
     }
 
-    fn enable_interrupts() {
+    fn now(self) -> time::Instant<Clock> {
+        use time::Clock as _;
+        Clock::now()
+    }
+
+    fn enable_interrupts(self) {
         todo!("unimplemented");
     }
-    fn disable_interrupts() {
+    fn disable_interrupts(self) {
         todo!("");
     }
-    fn interrupts_enabled() -> bool {
+    fn interrupts_enabled(self) -> bool {
         todo!("");
     }
 }
@@ -67,8 +75,8 @@ impl ThreadState for ArchThreadState {
         &mut self,
         _kernel_stack: Stack,
         _memory_config: *const MemoryConfig,
-        _initial_function: extern "C" fn(usize, usize),
-        _args: (usize, usize),
+        _initial_function: extern "C" fn(usize, usize, usize),
+        _args: (usize, usize, usize),
     ) {
         pw_assert::panic!("unimplemented");
     }
@@ -79,8 +87,8 @@ impl ThreadState for ArchThreadState {
         _kernel_stack: Stack,
         _memory_config: *const MemoryConfig,
         _initial_sp: usize,
-        _entry_point: usize,
-        _arg: usize,
+        _initial_pc: usize,
+        _args: (usize, usize, usize),
     ) -> Result<()> {
         pw_assert::panic!("unimplemented");
     }
@@ -98,7 +106,7 @@ impl time::Clock for Clock {
 
 pub struct MemoryConfig;
 
-impl crate::arch::MemoryConfig for MemoryConfig {
+impl kernel::memory::MemoryConfig for MemoryConfig {
     const KERNEL_THREAD_MEMORY_CONFIG: Self = Self;
 
     fn range_has_access(
@@ -111,13 +119,11 @@ impl crate::arch::MemoryConfig for MemoryConfig {
     }
 }
 
-impl crate::KernelContext for Arch {
-    type Clock = Clock;
-
-    fn early_init() {
+impl kernel::KernelContext for Arch {
+    fn early_init(self) {
         info!("HOST arch early init");
     }
-    fn init() {
+    fn init(self) {
         info!("HOST arch init");
     }
 }

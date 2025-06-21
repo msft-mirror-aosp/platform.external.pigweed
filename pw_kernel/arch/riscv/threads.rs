@@ -15,16 +15,16 @@
 use core::arch::naked_asm;
 use core::mem;
 
+use kernel::scheduler::thread::Stack;
+use kernel::scheduler::{self, SchedulerContext, SchedulerState};
+use kernel::sync::spinlock::SpinLockGuard;
 use log_if::debug_if;
 use pw_status::Result;
 
-use crate::arch::riscv::protection::MemoryConfig;
-use crate::arch::riscv::regs::{MStatusVal, PrivilegeLevel};
-use crate::arch::riscv::spinlock::BareSpinLock;
-use crate::arch::riscv::Arch;
-use crate::scheduler::thread::Stack;
-use crate::scheduler::{self, SchedulerContext, SchedulerState};
-use crate::sync::spinlock::SpinLockGuard;
+use crate::protection::MemoryConfig;
+use crate::regs::{MStatusVal, PrivilegeLevel};
+use crate::spinlock::BareSpinLock;
+use crate::Arch;
 
 const LOG_CONTEXT_SWITCH: bool = false;
 const LOG_THREAD_CREATE: bool = false;
@@ -60,7 +60,7 @@ impl ArchThreadState {
         trampoline: extern "C" fn(),
         initial_mstatus: MStatusVal,
         initial_sp: usize,
-        (s0, s1, s2): (usize, usize, usize),
+        (s0, s1, s2, s3): (usize, usize, usize, usize),
     ) {
         let frame: *mut ContextSwitchFrame =
             Stack::aligned_stack_allocation_mut(unsafe { kernel_stack.end_mut() }, 8);
@@ -71,9 +71,13 @@ impl ArchThreadState {
             // first two argument slots.
             (*frame) = mem::zeroed();
             (*frame).ra = trampoline as usize;
+            // The `s` registers are used here instead of the ABI prescribed `a`
+            // registers because the `a` registers are in the exception frame,
+            // not the context switch frame.
             (*frame).s0 = s0;
             (*frame).s1 = s1;
             (*frame).s2 = s2;
+            (*frame).s3 = s3;
             (*frame).s5 = initial_sp;
             (*frame).s6 = initial_mstatus.0;
         }
@@ -85,6 +89,7 @@ impl ArchThreadState {
 impl SchedulerContext for super::Arch {
     type ThreadState = ArchThreadState;
     type BareSpinLock = BareSpinLock;
+    type Clock = super::timer::Clock;
 
     #[inline(never)]
     unsafe fn context_switch<'a>(
@@ -120,29 +125,34 @@ impl SchedulerContext for super::Arch {
         sched_state
     }
 
-    fn idle() {
+    fn now(self) -> time::Instant<super::timer::Clock> {
+        use time::Clock as _;
+        super::timer::Clock::now()
+    }
+
+    fn idle(self) {
         riscv::asm::wfi();
     }
 
-    fn enable_interrupts() {
+    fn enable_interrupts(self) {
         unsafe {
             riscv::register::mstatus::set_mie();
         }
     }
 
-    fn disable_interrupts() {
+    fn disable_interrupts(self) {
         unsafe {
             riscv::register::mstatus::clear_mie();
         }
     }
 
-    fn interrupts_enabled() -> bool {
+    fn interrupts_enabled(self) -> bool {
         riscv::register::mstatus::read().mie()
     }
 }
 
-impl crate::scheduler::thread::ThreadState for ArchThreadState {
-    type MemoryConfig = crate::arch::riscv::protection::MemoryConfig;
+impl kernel::scheduler::thread::ThreadState for ArchThreadState {
+    type MemoryConfig = crate::protection::MemoryConfig;
     const NEW: Self = Self {
         frame: core::ptr::null_mut(),
         #[cfg(feature = "user_space")]
@@ -154,8 +164,8 @@ impl crate::scheduler::thread::ThreadState for ArchThreadState {
         &mut self,
         kernel_stack: Stack,
         memory_config: *const MemoryConfig,
-        initial_function: extern "C" fn(usize, usize),
-        args: (usize, usize),
+        initial_function: extern "C" fn(usize, usize, usize),
+        args: (usize, usize, usize),
     ) {
         self.memory_config = memory_config;
         self.initialize_frame(
@@ -163,7 +173,7 @@ impl crate::scheduler::thread::ThreadState for ArchThreadState {
             asm_trampoline,
             MStatusVal::default(),
             0x0,
-            (initial_function as usize, args.0, args.1),
+            (initial_function as usize, args.0, args.1, args.2),
         );
     }
 
@@ -173,8 +183,8 @@ impl crate::scheduler::thread::ThreadState for ArchThreadState {
         kernel_stack: Stack,
         memory_config: *const MemoryConfig,
         initial_sp: usize,
-        entry_point: usize,
-        arg: usize,
+        initial_pc: usize,
+        args: (usize, usize, usize),
     ) -> Result<()> {
         self.memory_config = memory_config;
         let mstatus = MStatusVal::default()
@@ -186,7 +196,7 @@ impl crate::scheduler::thread::ThreadState for ArchThreadState {
             asm_user_trampoline,
             mstatus,
             initial_sp as usize,
-            (entry_point, arg, 0),
+            (initial_pc, args.0, args.1, args.2),
         );
 
         Ok(())
@@ -253,9 +263,11 @@ extern "C" fn asm_user_trampoline() {
                 // Set initial SP as passed in by `initialize_frame()`.
                 mv      sp, s5
 
-                // Set args for function call.
+                // Set args for function call.  `s` registers are offset by 1
+                // because `initial_pc` is stored in s0.
                 mv      a0, s1
                 mv      a1, s2
+                mv      a2, s3
 
                 // Mstatus and Mepc are set up for a return to U-Mode.
                 csrw    mstatus, s6
@@ -274,9 +286,13 @@ extern "C" fn asm_trampoline() {
         "
                 // Zero out mscratch to signify that this is a kernel thread.
                 csrw    mscratch, zero
+
+                // Set args for function call.
                 mv a0, s0
                 mv a1, s1
                 mv a2, s2
+                mv a3, s3
+
                 tail trampoline
             "
     )
@@ -284,22 +300,28 @@ extern "C" fn asm_trampoline() {
 
 #[allow(unused)]
 #[no_mangle]
-extern "C" fn trampoline(initial_function: extern "C" fn(usize, usize), arg0: usize, arg1: usize) {
+extern "C" fn trampoline(
+    initial_function: extern "C" fn(usize, usize, usize),
+    arg0: usize,
+    arg1: usize,
+    arg2: usize,
+) {
     debug_if!(
         LOG_THREAD_CREATE,
-        "riscv trampoline: initial function {:#x} arg0 {:#x} arg1 {:#x}",
+        "riscv trampoline: initial function {:#x} arg0 {:#x} arg1 {:#x} arg2 {:#}",
         initial_function as usize,
         arg0 as usize,
-        arg1 as usize
+        arg1 as usize,
+        arg2 as usize,
     );
 
     // Enable interrupts
-    Arch::enable_interrupts();
+    Arch.enable_interrupts();
 
     // TODO: figure out how to drop the scheduler lock here?
 
     // Call the actual initial function of the thread.
-    initial_function(arg0, arg1);
+    initial_function(arg0, arg1, arg2);
 
     // Get a pointer to the current thread and call exit.
     // Note: must let the scope of the lock guard close,

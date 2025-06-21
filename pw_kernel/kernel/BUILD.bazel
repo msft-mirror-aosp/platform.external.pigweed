@@ -13,7 +13,6 @@
 # the License.
 
 load("@rules_rust//rust:defs.bzl", "rust_doc", "rust_library")
-load("//pw_kernel:flags.bzl", "KERNEL_TEST_DEPS", "KERNEL_TEST_RUSTC_FLAGS")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -30,32 +29,8 @@ RISCV_DEPS = [
 rust_library(
     name = "kernel",
     srcs = [
-        "arch.rs",
-        "arch/arm_cortex_m.rs",
-        "arch/arm_cortex_m/exceptions.rs",
-        "arch/arm_cortex_m/features.rs",
-        "arch/arm_cortex_m/protection.rs",
-        "arch/arm_cortex_m/regs.rs",
-        "arch/arm_cortex_m/regs/mpu.rs",
-        "arch/arm_cortex_m/regs/msr.rs",
-        "arch/arm_cortex_m/regs/nvic.rs",
-        "arch/arm_cortex_m/regs/scb.rs",
-        "arch/arm_cortex_m/regs/systick.rs",
-        "arch/arm_cortex_m/spinlock.rs",
-        "arch/arm_cortex_m/syscall.rs",
-        "arch/arm_cortex_m/threads.rs",
-        "arch/arm_cortex_m/timer.rs",
-        "arch/host.rs",
-        "arch/host/spinlock.rs",
-        "arch/riscv.rs",
-        "arch/riscv/exceptions.rs",
-        "arch/riscv/protection.rs",
-        "arch/riscv/regs.rs",
-        "arch/riscv/regs/pmp.rs",
-        "arch/riscv/spinlock.rs",
-        "arch/riscv/threads.rs",
-        "arch/riscv/timer.rs",
         "lib.rs",
+        "memory.rs",
         "panic.rs",
         "scheduler.rs",
         "scheduler/locks.rs",
@@ -83,7 +58,6 @@ rust_library(
         "//pw_kernel/macros:arm_cortex_m_macro",
         "@rust_crates//:paste",
     ],
-    rustc_flags = KERNEL_TEST_RUSTC_FLAGS,
     tags = ["kernel"],
     deps = [
         "//pw_kernel/config:kernel_config",
@@ -103,7 +77,7 @@ rust_library(
         "@pigweed//pw_build/constraints/arm:cortex-m33": CORTEX_M_DEPS,
         "@platforms//cpu:riscv32": RISCV_DEPS,
         "//conditions:default": [],
-    }) + KERNEL_TEST_DEPS,
+    }),
 )
 
 rust_doc(
