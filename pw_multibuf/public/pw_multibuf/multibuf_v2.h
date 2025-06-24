@@ -104,15 +104,17 @@ using TrackedFlatConstMultiBufInstance = Instance<TrackedFlatConstMultiBuf>;
 
 /// Basic MultiBuf interface with mutable data that notifies its observer, if
 /// set, on change. It has the option of adding layered data views.
-using TrackedMultiBuf = BasicMultiBuf<Property::kObservable>;
+using TrackedMultiBuf =
+    BasicMultiBuf<Property::kLayerable, Property::kObservable>;
 
 /// Instantiatable type corresponding to the ``TrackedMultiBuf`` interface type.
 using TrackedMultiBufInstance = Instance<TrackedMultiBuf>;
 
 /// Basic MultiBuf interface with read-only data that notifies its observer, if
 /// set, on change. It has the option of adding layered data views.
-using TrackedConstMultiBuf =
-    BasicMultiBuf<Property::kConst, Property::kObservable>;
+using TrackedConstMultiBuf = BasicMultiBuf<Property::kConst,
+                                           Property::kLayerable,
+                                           Property::kObservable>;
 
 /// Instantiatable type corresponding to the ``TrackedConstMultiBuf`` interface
 /// type.
@@ -271,17 +273,15 @@ class BasicMultiBuf {
 
   // Conversions
 
-  template <
-      typename OtherMultiBuf,
-      typename = internal::EnableIfConvertible<BasicMultiBuf, OtherMultiBuf>>
+  template <typename OtherMultiBuf>
   OtherMultiBuf& as() {
+    internal::AssertIsConvertible<BasicMultiBuf, OtherMultiBuf>();
     return generic().template as<OtherMultiBuf>();
   }
 
-  template <
-      typename OtherMultiBuf,
-      typename = internal::EnableIfConvertible<BasicMultiBuf, OtherMultiBuf>>
+  template <typename OtherMultiBuf>
   const OtherMultiBuf& as() const {
+    internal::AssertIsConvertible<BasicMultiBuf, OtherMultiBuf>();
     return generic().template as<OtherMultiBuf>();
   }
 
@@ -299,6 +299,8 @@ class BasicMultiBuf {
     return as<OtherMultiBuf>();
   }
 
+  // Accessors
+
   /// Returns whether the MultiBuf is empty, i.e. whether it has no chunks or
   /// fragments.
   constexpr bool empty() const { return generic().empty(); }
@@ -307,6 +309,16 @@ class BasicMultiBuf {
   /// of the views that make up its topmost layer.
   constexpr size_t size() const { return generic().size(); }
 
+  /// Returns whether a control block has been set by adding a UniquePtr or a
+  /// SharedPtr.
+  constexpr bool has_deallocator() const { return generic().has_deallocator(); }
+
+  /// Returns whether a control block has been set by adding a SharedPtr.
+  constexpr bool has_control_block() const {
+    return generic().has_control_block();
+  }
+
+  /// @name at
   /// Returns a reference to the byte at specified index.
   ///
   /// @warning Do not use addresses of returned references for ranges! The
@@ -332,6 +344,7 @@ class BasicMultiBuf {
   const_reference operator[](size_t index) const { return at(index); }
   /// @}
 
+  /// @name Chunks
   /// Returns a chunk-iterable view of the MultiBuf.
   ///
   /// This can be used in a range-based for-loop, e.g.
@@ -352,6 +365,7 @@ class BasicMultiBuf {
 
   // Iterators.
 
+  /// @name begin
   /// Returns an iterator to the start of the MultiBuf's bytes.
   ///
   /// @warning Iterator-based algorithms such as `std::copy` may perform worse
@@ -369,6 +383,7 @@ class BasicMultiBuf {
   constexpr const_iterator cbegin() const { return generic().cbegin(); }
   /// @}
 
+  /// @name end
   /// Returns an iterator past the end of the MultiBuf's bytes.
   ///
   /// @warning Iterator-based algorithms such as `std::copy` may perform worse
@@ -388,23 +403,44 @@ class BasicMultiBuf {
 
   // Other methods
 
-  /// Returns whether chunks associated the given argument could be added to
-  /// this object.
+  /// Returns whether the MultiBuf can be added to this object.
   ///
-  /// To be compatible, the memory for chunks must be one of the following:
+  /// To be compatible, the memory for each of incoming MultiBuf's chunks must
+  /// be one of the following:
   ///   * Externally managed, i.e. "unowned".
   ///   * Deallocatable by the same deallocator as other chunks, if any.
   ///   * Part of the same shared memory allocation as any other shared chunks.
-  /// @{
-  bool IsCompatible(const GenericMultiBuf& other) const {
-    return generic().IsCompatible(other);
+  ///
+  /// @param    mb      MultiBuf to check for compatibility.
+  bool IsCompatible(const BasicMultiBuf& mb) const {
+    return generic().IsCompatible(mb.generic());
   }
-  bool IsCompatible(const UniquePtr<std::byte[]> bytes) const {
+
+  /// @name IsCompatible
+  /// Returns whether the owned memory can be added to this object.
+  ///
+  /// To be compatible, the unique pointer must be the first owned or shared
+  /// memory added to the object, or have the same deallocator as all previously
+  /// owned or shared memory added to the object.
+  ///
+  /// @param    bytes   Owned memory to check for compatibility.
+  /// @{
+  bool IsCompatible(const UniquePtr<std::byte[]>& bytes) const {
     return generic().IsCompatible(bytes.deallocator());
   }
   bool IsCompatible(const UniquePtr<const std::byte[]>& bytes) const {
     return generic().IsCompatible(bytes.deallocator());
   }
+  /// @}
+
+  /// @name IsCompatible
+  /// Returns whether the shared memory can be added to this object.
+  ///
+  /// To be compatible, the shared pointer must be the first shared pointer
+  /// added to the object, or match the shared pointer previously added.
+  ///
+  /// @param    bytes   Shared memory to check for compatibility.
+  /// @{
   bool IsCompatible(const SharedPtr<std::byte[]>& bytes) const {
     return generic().IsCompatible(bytes.control_block());
   }
@@ -425,13 +461,13 @@ class BasicMultiBuf {
   ///    RESOURCE_EXHAUSTED:  Out of memory; cannot add the chunks.
   ///
   /// @endrst
-  Status TryReserveChunks(size_type num_chunks) {
+  [[nodiscard]] bool TryReserveChunks(size_type num_chunks) {
     return generic().TryReserveChunks(num_chunks);
   }
 
   // Mutators
 
-  /// Attempts to modify this object to be able to accept the given argument,
+  /// Attempts to modify this object to be able to insert the given MultiBuf,
   /// and returns whether successful.
   ///
   /// It is an error to call this method with an invalid iterator or
@@ -439,11 +475,24 @@ class BasicMultiBuf {
   ///
   /// If unable to allocate space for the metadata, returns false and leaves the
   /// object unchanged. Otherwise, returns true.
-  /// @{
+  ///
+  /// @param    pos     Location to insert memory within the MultiBuf.
+  /// @param    mb      MultiBuf to be inserted.
   template <Property... kOtherProperties>
   [[nodiscard]] bool TryReserveForInsert(
       const_iterator pos, const BasicMultiBuf<kOtherProperties...>& mb);
 
+  /// Attempts to modify this object to be able to accept the given unowned
+  /// memory, and returns whether successful.
+  ///
+  /// It is an error to call this method with an invalid iterator or
+  /// incompatible MultiBuf, if applicable.
+  ///
+  /// If unable to allocate space for the metadata, returns false and leaves the
+  /// object unchanged. Otherwise, returns true.
+  ///
+  /// @param    pos     Location to insert memory within the MultiBuf.
+  /// @param    bytes   Unowned memory to be inserted.
   template <
       int&... kExplicitGuard,
       typename T,
@@ -451,10 +500,38 @@ class BasicMultiBuf {
           std::enable_if_t<std::is_constructible_v<ConstByteSpan, T>, int>>
   [[nodiscard]] bool TryReserveForInsert(const_iterator pos, const T& bytes);
 
+  /// @name TryReserveForInsert
+  /// Attempts to modify this object to be able to accept the given owned
+  /// memory, and returns whether successful.
+  ///
+  /// It is an error to call this method with an invalid iterator or
+  /// incompatible MultiBuf, if applicable.
+  ///
+  /// If unable to allocate space for the metadata, returns false and leaves the
+  /// object unchanged. Otherwise, returns true.
+  ///
+  /// @param    pos     Location to insert memory within the MultiBuf.
+  /// @param    bytes   Owned memory to be inserted.
+  /// @{
   [[nodiscard]] bool TryReserveForInsert(const_iterator pos,
                                          const UniquePtr<std::byte[]>& bytes);
   [[nodiscard]] bool TryReserveForInsert(
       const_iterator pos, const UniquePtr<const std::byte[]>& bytes);
+  /// @}
+
+  /// @name TryReserveForInsert
+  /// Attempts to modify this object to be able to accept the given shared
+  /// memory, and returns whether successful.
+  ///
+  /// It is an error to call this method with an invalid iterator or
+  /// incompatible MultiBuf, if applicable.
+  ///
+  /// If unable to allocate space for the metadata, returns false and leaves the
+  /// object unchanged. Otherwise, returns true.
+  ///
+  /// @param    pos     Location to insert memory within the MultiBuf.
+  /// @param    bytes   Shared memory to be inserted.
+  /// @{
   [[nodiscard]] bool TryReserveForInsert(const_iterator pos,
                                          const SharedPtr<std::byte[]>& bytes);
   [[nodiscard]] bool TryReserveForInsert(
@@ -466,10 +543,20 @@ class BasicMultiBuf {
   /// It is a fatal error if this method cannot allocate space for necessary
   /// metadata. See also `TryReserveForInsert`, which can be used to try to
   /// pre-allocate the needed space without crashing.
-  /// @{
+  ///
+  /// @param    pos     Location to insert memory within the MultiBuf.
+  /// @param    mb      MultiBuf to be inserted.
   template <Property... kOtherProperties>
   void Insert(const_iterator pos, BasicMultiBuf<kOtherProperties...>&& mb);
 
+  /// Insert memory before the given iterator.
+  ///
+  /// It is a fatal error if this method cannot allocate space for necessary
+  /// metadata. See also `TryReserveForInsert`, which can be used to try to
+  /// pre-allocate the needed space without crashing.
+  ///
+  /// @param    pos     Location to insert memory within the MultiBuf.
+  /// @param    bytes   Unowned memory to be inserted.
   template <
       int&... kExplicitGuard,
       typename T,
@@ -477,22 +564,104 @@ class BasicMultiBuf {
           std::enable_if_t<std::is_constructible_v<ConstByteSpan, T>, int>>
   void Insert(const_iterator pos, const T& bytes);
 
-  void Insert(const_iterator pos, UniquePtr<std::byte[]>&& bytes);
-  void Insert(const_iterator pos, UniquePtr<const std::byte[]>&& bytes);
-  void Insert(const_iterator pos, const SharedPtr<std::byte[]>& bytes);
-  void Insert(const_iterator pos, const SharedPtr<const std::byte[]>& bytes);
+  /// @name Insert
+  /// Insert memory before the given iterator.
+  ///
+  /// It is a fatal error if this method cannot allocate space for necessary
+  /// metadata. See also `TryReserveForInsert`, which can be used to try to
+  /// pre-allocate the needed space without crashing.
+  ///
+  /// @param    pos     Location to insert memory within the MultiBuf.
+  /// @param    bytes   Owned memory to be inserted.
+  /// @{
+  void Insert(const_iterator pos, UniquePtr<std::byte[]>&& bytes) {
+    Insert(pos, std::move(bytes), 0);
+  }
+  void Insert(const_iterator pos, UniquePtr<const std::byte[]>&& bytes) {
+    Insert(pos, std::move(bytes), 0);
+  }
   /// @}
 
-  /// Attempts to modify this object to be able to move bytes to the end of this
-  /// object.
+  /// @name Insert
+  /// Insert memory before the given iterator.
+  ///
+  /// It is a fatal error if this method cannot allocate space for necessary
+  /// metadata. See also `TryReserveForInsert`, which can be used to try to
+  /// pre-allocate the needed space without crashing.
+  ///
+  /// @param    pos     Location to insert memory within the MultiBuf.
+  /// @param    bytes   Owned memory to be inserted.
+  /// @param    offset  Used to denote a subspan of `bytes`.
+  /// @param    length  Used to denote a subspan of `bytes`.
+  /// @{
+  void Insert(const_iterator pos,
+              UniquePtr<std::byte[]>&& bytes,
+              size_t offset,
+              size_t length = dynamic_extent);
+  void Insert(const_iterator pos,
+              UniquePtr<const std::byte[]>&& bytes,
+              size_t offset,
+              size_t length = dynamic_extent);
+  /// @}
+
+  /// @name Insert
+  /// Insert memory before the given iterator.
+  ///
+  /// It is a fatal error if this method cannot allocate space for necessary
+  /// metadata. See also `TryReserveForInsert`, which can be used to try to
+  /// pre-allocate the needed space without crashing.
+  ///
+  /// @param    pos     Location to insert memory within the MultiBuf.
+  /// @param    bytes   Shared memory to be inserted.
+  /// @{
+  void Insert(const_iterator pos, const SharedPtr<std::byte[]>& bytes) {
+    Insert(pos, bytes, 0);
+  }
+  void Insert(const_iterator pos, const SharedPtr<const std::byte[]>& bytes) {
+    Insert(pos, bytes, 0);
+  }
+  /// @}
+
+  /// @name Insert
+  /// Insert memory before the given iterator.
+  ///
+  /// It is a fatal error if this method cannot allocate space for necessary
+  /// metadata. See also `TryReserveForInsert`, which can be used to try to
+  /// pre-allocate the needed space without crashing.
+  ///
+  /// @param    pos     Location to insert memory within the MultiBuf.
+  /// @param    bytes   Shared memory to be inserted.
+  /// @param    offset  Used to denote a subspan of `bytes`.
+  /// @param    length  Used to denote a subspan of `bytes`.
+  /// @{
+  void Insert(const_iterator pos,
+              const SharedPtr<std::byte[]>& bytes,
+              size_t offset,
+              size_t length = dynamic_extent);
+  void Insert(const_iterator pos,
+              const SharedPtr<const std::byte[]>& bytes,
+              size_t offset,
+              size_t length = dynamic_extent);
+  /// @}
+
+  /// Attempts to modify this object to be able to move the given MultiBuf to
+  /// the end of this object.
   ///
   /// If unable to allocate space for the metadata, returns false and leaves the
   /// object unchanged. Otherwise, returns true.
-  /// @{
+  ///
+  /// @param    mb      MultiBuf to be inserted.
   template <Property... kOtherProperties>
   [[nodiscard]] bool TryReserveForPushBack(
       const BasicMultiBuf<kOtherProperties...>& mb);
 
+  /// Attempts to modify this object to be able to move the given unowned memory
+  /// to the end of this object.
+  ///
+  /// If unable to allocate space for the metadata, returns false and leaves the
+  /// object unchanged. Otherwise, returns true.
+  ///
+  /// @param    bytes   Unowned memory to be inserted.
   template <
       int&... kExplicitGuard,
       typename T,
@@ -500,9 +669,29 @@ class BasicMultiBuf {
           std::enable_if_t<std::is_constructible_v<ConstByteSpan, T>, int>>
   [[nodiscard]] bool TryReserveForPushBack(const T& bytes);
 
+  /// @name TryReserveForPushBack
+  /// Attempts to modify this object to be able to move the given owned memory
+  /// to the end of this object.
+  ///
+  /// If unable to allocate space for the metadata, returns false and leaves the
+  /// object unchanged. Otherwise, returns true.
+  ///
+  /// @param    bytes   Owned memory to be inserted.
+  /// @{
   [[nodiscard]] bool TryReserveForPushBack(const UniquePtr<std::byte[]>& bytes);
   [[nodiscard]] bool TryReserveForPushBack(
       const UniquePtr<const std::byte[]>& bytes);
+  /// @}
+
+  /// @name TryReserveForPushBack
+  /// Attempts to modify this object to be able to move the given shared memory
+  /// to the end of this object.
+  ///
+  /// If unable to allocate space for the metadata, returns false and leaves the
+  /// object unchanged. Otherwise, returns true.
+  ///
+  /// @param    bytes   Shared memory to be inserted.
+  /// @{
   [[nodiscard]] bool TryReserveForPushBack(const SharedPtr<std::byte[]>& bytes);
   [[nodiscard]] bool TryReserveForPushBack(
       const SharedPtr<const std::byte[]>& bytes);
@@ -513,10 +702,18 @@ class BasicMultiBuf {
   /// It is a fatal error if this method cannot allocate space for necessary
   /// metadata. See also `TryReserveForPushBack`, which can be used to try to
   /// pre-allocate the needed space without crashing.
-  /// @{
+  ///
+  /// @param    mb      MultiBuf to be inserted.
   template <Property... kOtherProperties>
   void PushBack(BasicMultiBuf<kOtherProperties...>&& mb);
 
+  /// Moves memory to the end of this object.
+  ///
+  /// It is a fatal error if this method cannot allocate space for necessary
+  /// metadata. See also `TryReserveForPushBack`, which can be used to try to
+  /// pre-allocate the needed space without crashing.
+  ///
+  /// @param    bytes   Unowned memory to be inserted.
   template <
       int&... kExplicitGuard,
       typename T,
@@ -524,34 +721,111 @@ class BasicMultiBuf {
           std::enable_if_t<std::is_constructible_v<ConstByteSpan, T>, int>>
   void PushBack(const T& bytes);
 
-  void PushBack(UniquePtr<std::byte[]>&& bytes);
-  void PushBack(UniquePtr<const std::byte[]>&& bytes);
-  void PushBack(SharedPtr<std::byte[]>&& bytes);
-  void PushBack(SharedPtr<const std::byte[]>&& bytes);
+  /// @name PushBack
+  /// Moves memory to the end of this object.
+  ///
+  /// It is a fatal error if this method cannot allocate space for necessary
+  /// metadata. See also `TryReserveForPushBack`, which can be used to try to
+  /// pre-allocate the needed space without crashing.
+  ///
+  /// @param    bytes   Owned memory to be inserted.
+  /// @{
+  void PushBack(UniquePtr<std::byte[]>&& bytes) {
+    PushBack(std::move(bytes), 0);
+  }
+  void PushBack(UniquePtr<const std::byte[]>&& bytes) {
+    PushBack(std::move(bytes), 0);
+  }
   /// @}
 
+  /// @name PushBack
+  /// Moves memory to the end of this object.
+  ///
+  /// It is a fatal error if this method cannot allocate space for necessary
+  /// metadata. See also `TryReserveForPushBack`, which can be used to try to
+  /// pre-allocate the needed space without crashing.
+  ///
+  /// @param    bytes   Owned memory to be inserted.
+  /// @param    offset  Used to denote a subspan of `bytes`.
+  /// @param    length  Used to denote a subspan of `bytes`.
+  /// @{
+  void PushBack(UniquePtr<std::byte[]>&& bytes,
+                size_t offset,
+                size_t length = dynamic_extent);
+
+  void PushBack(UniquePtr<const std::byte[]>&& bytes,
+                size_t offset,
+                size_t length = dynamic_extent);
+  /// @}
+
+  /// @name PushBack
+  /// Moves memory to the end of this object.
+  ///
+  /// It is a fatal error if this method cannot allocate space for necessary
+  /// metadata. See also `TryReserveForPushBack`, which can be used to try to
+  /// pre-allocate the needed space without crashing.
+  ///
+  /// @param    bytes   Shared memory to be inserted.
+  /// @{
+  void PushBack(const SharedPtr<std::byte[]>& bytes) { PushBack(bytes, 0); }
+  void PushBack(const SharedPtr<const std::byte[]>& bytes) {
+    PushBack(bytes, 0);
+  }
+  /// @}
+
+  /// @name PushBack
+  /// Moves memory to the end of this object.
+  ///
+  /// It is a fatal error if this method cannot allocate space for necessary
+  /// metadata. See also `TryReserveForPushBack`, which can be used to try to
+  /// pre-allocate the needed space without crashing.
+  ///
+  /// @param    bytes   Shared memory to be inserted.
+  /// @param    offset  Used to denote a subspan of `bytes`.
+  /// @param    length  Used to denote a subspan of `bytes`.
+  /// @{
+  void PushBack(const SharedPtr<std::byte[]>& bytes,
+                size_t offset,
+                size_t length = dynamic_extent);
+  void PushBack(const SharedPtr<const std::byte[]>& bytes,
+                size_t offset,
+                size_t length = dynamic_extent);
+  /// @}
+
+  /// Returns whether the given range can be removed.
+  ///
+  /// A range may not be valid to `Remove` if it does not fall within the
+  /// MultiBuf, or if it splits "owned" chunks. Owned chunks are those added
+  /// using a `UniquePtr`. Splitting them between different MultiBufs would
+  /// result in conflicting ownership, and is therefore disallowed.
+  ///
+  /// @param    pos     Location from which to remove memory from the MultiBuf.
+  /// @param    size    Amount of memory to remove.
+  [[nodiscard]] bool IsRemovable(const_iterator pos, size_t size) const {
+    return generic().IsRemovable(pos, size);
+  }
+
   /// Removes if a range of bytes from this object.
+  ///
+  /// The range given by `pos` and `size` MUST be removable, as described by
+  /// `IsRemovable`: It MUST fall within this MultiBuf, and not split "owned"
+  /// chunks.
+  ///
+  /// This method may fail if unable to allocate metadata for a new MultiBuf.
   ///
   /// On successful completion, this method will return a MultiBuf populated
   /// with entries corresponding to the removed memory range.
   ///
-  /// Note that "owned" chunks, i.e. those added using a `UniquePtr`, cannot be
-  /// split between different MultiBufs. If the given range begins or ends in
-  /// middle of owned chunk, the call will fail.
-  ///
   /// On failure, the original MultiBuf is unmodified.
   ///
-  /// The range given by `pos` and `size` MUST fall within this MultiBuf.
+  /// @param    pos     Location from which to remove memory from the MultiBuf.
+  /// @param    size    Amount of memory to remove.
   ///
   /// @returns @rst
   ///
   /// .. pw-status-codes::
   ///
   ///    OK:                  The returned MultiBuf contains the removed chunks.
-  ///
-  ///    INVALID_ARGUMENT:    The given range requires splitting either or both
-  ///                         of the leading and trailing chunks, at least one
-  ///                         of which is owned.
   ///
   ///    RESOURCE_EXHAUSTED:  Failed to allocate memory for the new MultiBuf's
   ///                         metadata.
@@ -579,15 +853,21 @@ class BasicMultiBuf {
 
   /// Removes if a range of bytes from this object.
   ///
+  /// The range given by `pos` and `size` MUST fall within this MultiBuf.
+  ///
+  /// This method may fail if space for additional metadata is needed but cannot
+  /// be allocated.
+  ///
   /// On successful completion, this method will return a valid iterator
   /// pointing to the memory following that which was discarded.
+  ///
+  /// On failure, the original MultiBuf is unmodified.
   ///
   /// "Owned" chunks, i.e. those added using a `UniquePtr`, which are fully
   /// discarded as a result of this call will be deallocated.
   ///
-  /// On failure, the original MultiBuf is unmodified.
-  ///
-  /// The range given by `pos` and `size` MUST fall within this MultiBuf.
+  /// @param    pos     Location from which to discard memory from the MultiBuf.
+  /// @param    size    Amount of memory to discard.
   ///
   /// @returns @rst
   ///
@@ -598,41 +878,76 @@ class BasicMultiBuf {
   ///    RESOURCE_EXHAUSTED:  Failed to allocate memory for the new MultiBuf's
   ///                         metadata.
   /// @endrst
-  Result<iterator> Discard(const_iterator pos, size_t size) {
+  Result<const_iterator> Discard(const_iterator pos, size_t size) {
     return generic().Discard(pos, size);
   }
 
   /// Returns whether the given iterator refers to a location within an "owned"
   /// chunk, that is, memory that was added as a `UniquePtr`.
+  ///
+  /// @param    pos     Location within the MultiBuf of the memory to release.
   [[nodiscard]] bool IsReleasable(const_iterator pos) const {
     return generic().IsReleasable(pos);
   }
 
   /// Removes a memory allocation from this object and releases ownership of it.
   ///
-  /// On successful completion, this method will return a `UniquePtr` which now
-  /// owns the memory following that was removed.
+  /// The location given by `pos` and MUST be releasable, as described by
+  /// `IsReleasable`: It MUST fall within an "owned" chunk.
   ///
-  /// It is an error for memory location given by the iterator to not correspond
-  /// to an "owned" chunk. That is, the memory in question must have been added
-  /// using a `UniquePtr`. See also `IsReleasable`.
+  /// This method returns a `UniquePtr` which owns the removed memory.
   ///
   /// The entire owned chunk containing the location indicated by the iterator
-  /// will be removed and returned, thus an iterator to the middle of an owned
-  /// chunk will result in some bytes before the iterator being removed.
+  /// will be removed and returned. An iterator to the middle of an owned chunk
+  /// will result in some bytes before the iterator being removed.
+  ///
+  /// @param    pos     Location within the MultiBuf of the memory to release.
   UniquePtr<value_type[]> Release(const_iterator pos);
+
+  /// Returns whether the given iterator refers to a location within a "shared"
+  /// chunk, that is, memory that was added as a `SharedPtr`.
+  ///
+  /// @param    pos     Location within the MultiBuf of the memory to share.
+  [[nodiscard]] bool IsShareable(const_iterator pos) const {
+    return generic().IsShareable(pos);
+  }
+
+  /// Returns the shared memory at the given location.
+  ///
+  /// The location given by `pos` and MUST be shareable, as described by
+  /// `IsShareable`: It MUST fall within a "shared" chunk.
+  ///
+  /// This method returns a `SharedPtr` which shares ownership of the indicated
+  /// memory. the memory will not be freed until all shared pointers to it go
+  /// out of scope.
+  ///
+  /// The returned pointer will reference the entire shared chunk containing the
+  /// location indicated by the iterator. The shared pointer for an iterator to
+  /// the middle of a shared chunk will include some bytes before the iterator.
+  ///
+  /// @param    pos     Location within the MultiBuf of the memory to share.
+  SharedPtr<value_type[]> Share(const_iterator pos);
 
   /// Writes data from the MultiBuf at the given `offset` to `dst`.
   ///
-  /// The length of the data is determined by the length of the destination
-  /// span.
+  /// @param    dst     Span to copy data to. Its length determines the
+  ///                   maximum number of bytes that may be copied.
+  /// @param    offset  Offset from the start of the MultiBuf to start copying
+  ///                   from.
+  ///
+  /// @returns          The number of bytes copied.
   size_t CopyTo(ByteSpan dst, size_t offset = 0) const {
     return generic().CopyTo(dst, offset);
   }
 
   /// Writes data from `src` to the MultiBuf at the given `offset`.
   ///
-  /// The length of the data is determined by the length of the source span.
+  /// @param    src     Span to copy data from. Its length determines the
+  ///                   maximum number of bytes that may be copied.
+  /// @param    offset  Offset from the start of the MultiBuf to start copying
+  ///                   to.
+  ///
+  /// @returns          The number of bytes copied.
   size_t CopyFrom(ConstByteSpan src, size_t offset = 0) {
     static_assert(!is_const(),
                   "`CopyFrom` may only be called on mutable MultiBufs");
@@ -641,23 +956,39 @@ class BasicMultiBuf {
 
   /// Returns a byte span containing data at the given `offset`.
   ///
-  /// The length of the data is determined by the length of the given span.
   /// If the data is contiguous, a view to it is returned directly. Otherwise,
-  /// it will be copied from the non-contiguous buffers into the provided span,
-  /// which will then be returned.
+  /// it is copied from the non-contiguous buffers into the provided span, which
+  /// is then returned.
   ///
   /// As a result, this method should only be used on small regions of data,
   /// e.g. packet headers.
+  ///
+  /// @param    copy    A buffer that may be used to hold data if the requested
+  ///                   region is non-contiguous. Its length determines the
+  ///                   maximum number of bytes that may be copied.
+  /// @param    offset  Offset from the start of the MultiBuf to start copying
+  ///                   from.
+  ///
+  /// @returns          A span of bytes for the requested range.
   ConstByteSpan Get(ByteSpan copy, size_t offset = 0) const {
     return generic().Get(copy, offset);
   }
 
   /// Passes a byte span containing data at the given `offset` to a `visitor`.
   ///
-  /// The length of the data is determined by the length of the given span.
-  /// This method copies data only as necessary as described for `Get`.
-  /// The provided visitor must take a `ConstByteSpan` as an argument, and can
-  /// return anything.
+  /// If the data is contiguous, the `visitor` is called on it directly.
+  /// Otherwise, data is copied from the non-contiguous buffers into the
+  /// provided span, which is then passed to `visitor`.
+  ///
+  /// @param    visitor A callable object, such as a function pointer or lambda,
+  ///                   that can be called on a `ConstByteSpan`.
+  /// @param    copy    A buffer that may be used to hold data if the requested
+  ///                   region is non-contiguous. Its length determines the
+  ///                   maximum number of bytes that may be copied.
+  /// @param    offset  Offset from the start of the MultiBuf to start copying
+  ///                   from.
+  ///
+  /// @returns          The result of calling `visitor` on the requested range.
   template <int&... kExplicitGuard, typename Visitor>
   auto Visit(Visitor visitor, ByteSpan copy, size_t offset) {
     return visitor(Get(copy, offset));
@@ -763,10 +1094,14 @@ class BasicMultiBuf {
   /// The range given by `offset` and `length` MUST fall within this MultiBuf.
   /// It is an error to call this method when `NumLayers()` < 2.
   ///
+  /// Returns false and leaves the object unmodified if the top layer is sealed;
+  /// otherwise returns true.
+  ///
   /// @param[in]  offset  New offset from the start of layer beneath the top
   ///                     layer.
   /// @param[in]  length  New length of the top layer.
-  void ResizeTopLayer(size_t offset, size_t length = dynamic_extent) {
+  [[nodiscard]] bool ResizeTopLayer(size_t offset,
+                                    size_t length = dynamic_extent) {
     static_assert(is_layerable(),
                   "`ResizeTopLayer` may only be called on layerable MultiBufs");
     return generic().ResizeTopLayer(offset, length);
@@ -778,7 +1113,10 @@ class BasicMultiBuf {
   /// layer.
   ///
   /// It is an error to call this method when `NumLayers()` < 2.
-  void PopLayer() {
+  ///
+  /// Returns false and leaves the object unmodified if the top layer is sealed;
+  /// otherwise returns true.
+  [[nodiscard]] bool PopLayer() {
     static_assert(is_layerable(),
                   "`PopLayer` may only be called on layerable MultiBufs");
     return generic().PopLayer();
@@ -881,6 +1219,16 @@ class GenericMultiBuf final
     return static_cast<size_t>(cend() - cbegin());
   }
 
+  /// @copydoc BasicMultiBuf<>::has_deallocator
+  constexpr bool has_deallocator() const {
+    return memory_tag_ == MemoryTag::kDeallocator || has_control_block();
+  }
+
+  /// @copydoc BasicMultiBuf<>::has_control_block
+  constexpr bool has_control_block() const {
+    return memory_tag_ == MemoryTag::kControlBlock;
+  }
+
   // Iterators.
 
   constexpr ChunksType Chunks() { return ChunksType(deque_, depth_); }
@@ -926,14 +1274,19 @@ class GenericMultiBuf final
   void Insert(const_iterator pos, GenericMultiBuf&& mb);
   void Insert(const_iterator pos, ConstByteSpan bytes);
   void Insert(const_iterator pos,
-              const std::byte* data,
-              size_t size,
+              ConstByteSpan bytes,
+              size_t offset,
+              size_t length,
               Deallocator* deallocator);
   void Insert(const_iterator pos,
-              const std::byte* data,
-              size_t size,
+              ConstByteSpan bytes,
+              size_t offset,
+              size_t length,
               ControlBlock* control_block);
   /// @}
+
+  /// @copydoc BasicMultiBuf<>::IsRemovable
+  [[nodiscard]] bool IsRemovable(const_iterator pos, size_t size) const;
 
   /// @copydoc BasicMultiBuf<>::Remove
   Result<GenericMultiBuf> Remove(const_iterator pos, size_t size);
@@ -949,6 +1302,12 @@ class GenericMultiBuf final
 
   /// @copydoc BasicMultiBuf<>::Release
   UniquePtr<std::byte[]> Release(const_iterator pos);
+
+  /// @copydoc BasicMultiBuf<>::IsShareable
+  [[nodiscard]] bool IsShareable(const_iterator pos) const;
+
+  /// @copydoc BasicMultiBuf<>::Share
+  std::byte* Share(const_iterator pos);
 
   /// @copydoc BasicMultiBuf<>::CopyTo
   size_t CopyTo(ByteSpan dst, size_t offset) const;
@@ -980,15 +1339,21 @@ class GenericMultiBuf final
   void UnsealTopLayer();
 
   /// @copydoc BasicMultiBuf<>::ResizeTopLayer
-  void ResizeTopLayer(size_t offset, size_t length);
+  [[nodiscard]] bool ResizeTopLayer(size_t offset, size_t length);
 
   /// @copydoc BasicMultiBuf<>::PopLayer
-  void PopLayer();
+  [[nodiscard]] bool PopLayer();
 
   // Implementation methods.
   //
   // These methods are used to implement the methods above, and should not be
   // called directly by BasicMultiBuf<>.
+
+  /// Asserts that [`offset`, `offset + range`) falls within [0, `size`)].
+  ///
+  /// Returns `size` - `offset` if `length` is `dynamic_extent`; otherwise
+  /// returns `length`.
+  static size_t CheckRange(size_t offset, size_t length, size_t size);
 
   /// Returns the memory backing the chunk at the given index.
   constexpr std::byte* GetData(size_type index) const {
@@ -1030,14 +1395,6 @@ class GenericMultiBuf final
                        : deque_[index + depth_ - 1].view.length;
   }
 
-  constexpr bool has_deallocator() const {
-    return memory_tag_ == MemoryTag::kDeallocator || has_control_block();
-  }
-
-  constexpr bool has_control_block() const {
-    return memory_tag_ == MemoryTag::kControlBlock;
-  }
-
   /// Returns the deallocator from the memory context, if set.
   Deallocator* GetDeallocator() const;
 
@@ -1076,7 +1433,10 @@ class GenericMultiBuf final
 
   /// Inserts entries representing the given data into the deque at the given
   /// position, and returns the deque index to the start of the entries.
-  size_type Insert(const_iterator pos, const std::byte* data, size_t size);
+  size_type Insert(const_iterator pos,
+                   ConstByteSpan bytes,
+                   size_t offset,
+                   size_t length);
 
   /// Sets the base entries of the chunk given by `out_index` in the `out_deque`
   /// to match the chunk given by `index`.
@@ -1156,8 +1516,8 @@ class GenericMultiBuf final
   /// hint, `start`.
   size_t CopyToImpl(ByteSpan dst, size_t offset, size_type start) const;
 
-  /// Asserts that [`offset`, `offset + range`) falls within this MultiBuf.
-  void CheckRange(size_t offset, size_t length);
+  /// Returns whether the top layer is sealed.
+  [[nodiscard]] bool IsTopLayerSealed() const;
 
   /// Modifies the top layer to represent the range [`offset`, `offset + range`)
   /// of the second-from-top layer.
@@ -1184,6 +1544,7 @@ class GenericMultiBuf final
   // Number of entries per chunk in this MultiBuf.
   size_type depth_ = 2;
 
+  /// @name MemoryContext
   /// Encapsulates details about the ownership of the memory buffers stored in
   /// this object.
   ///
@@ -1332,32 +1693,45 @@ void BasicMultiBuf<kProperties...>::Insert(const_iterator pos, const T& bytes) {
 
 template <Property... kProperties>
 void BasicMultiBuf<kProperties...>::Insert(const_iterator pos,
-                                           UniquePtr<std::byte[]>&& bytes) {
-  generic().Insert(pos, bytes.get(), bytes.size(), bytes.deallocator());
+                                           UniquePtr<std::byte[]>&& bytes,
+                                           size_t offset,
+                                           size_t length) {
+  ConstByteSpan chunk(bytes.get(), bytes.size());
+  generic().Insert(pos, chunk, offset, length, bytes.deallocator());
   bytes.Release();
 }
 
 template <Property... kProperties>
-void BasicMultiBuf<kProperties...>::Insert(
-    const_iterator pos, UniquePtr<const std::byte[]>&& bytes) {
+void BasicMultiBuf<kProperties...>::Insert(const_iterator pos,
+                                           UniquePtr<const std::byte[]>&& bytes,
+                                           size_t offset,
+                                           size_t length) {
   static_assert(is_const(),
                 "Cannot `Insert` read-only bytes into mutable MultiBuf");
-  generic().Insert(pos, bytes.get(), bytes.size(), bytes.deallocator());
+  ConstByteSpan chunk(bytes.get(), bytes.size());
+  generic().Insert(pos, chunk, offset, length, bytes.deallocator());
   bytes.Release();
 }
 
 template <Property... kProperties>
-void BasicMultiBuf<kProperties...>::Insert(
-    const_iterator pos, const SharedPtr<std::byte[]>& bytes) {
-  generic().Insert(pos, bytes.get(), bytes.size(), bytes.control_block());
+void BasicMultiBuf<kProperties...>::Insert(const_iterator pos,
+                                           const SharedPtr<std::byte[]>& bytes,
+                                           size_t offset,
+                                           size_t length) {
+  ConstByteSpan chunk(bytes.get(), bytes.size());
+  generic().Insert(pos, chunk, offset, length, bytes.control_block());
 }
 
 template <Property... kProperties>
 void BasicMultiBuf<kProperties...>::Insert(
-    const_iterator pos, const SharedPtr<const std::byte[]>& bytes) {
+    const_iterator pos,
+    const SharedPtr<const std::byte[]>& bytes,
+    size_t offset,
+    size_t length) {
   static_assert(is_const(),
                 "Cannot `Insert` read-only bytes into mutable MultiBuf");
-  generic().Insert(pos, bytes.get(), bytes.size(), bytes.control_block());
+  ConstByteSpan chunk(bytes.get(), bytes.size());
+  generic().Insert(pos, chunk, offset, length, bytes.control_block());
 }
 
 template <Property... kProperties>
@@ -1421,29 +1795,32 @@ void BasicMultiBuf<kProperties...>::PushBack(const T& bytes) {
 }
 
 template <Property... kProperties>
-void BasicMultiBuf<kProperties...>::PushBack(UniquePtr<std::byte[]>&& bytes) {
-  Insert(end(), std::move(bytes));
+void BasicMultiBuf<kProperties...>::PushBack(UniquePtr<std::byte[]>&& bytes,
+                                             size_t offset,
+                                             size_t length) {
+  Insert(end(), std::move(bytes), offset, length);
 }
 
 template <Property... kProperties>
 void BasicMultiBuf<kProperties...>::PushBack(
-    UniquePtr<const std::byte[]>&& bytes) {
+    UniquePtr<const std::byte[]>&& bytes, size_t offset, size_t length) {
   static_assert(is_const(),
                 "Cannot `PushBack` read-only bytes into mutable MultiBuf");
-  Insert(end(), std::move(bytes));
-}
-
-template <Property... kProperties>
-void BasicMultiBuf<kProperties...>::PushBack(SharedPtr<std::byte[]>&& bytes) {
-  Insert(end(), bytes);
+  Insert(end(), std::move(bytes), offset, length);
 }
 
 template <Property... kProperties>
 void BasicMultiBuf<kProperties...>::PushBack(
-    SharedPtr<const std::byte[]>&& bytes) {
+    const SharedPtr<std::byte[]>& bytes, size_t offset, size_t length) {
+  Insert(end(), bytes, offset, length);
+}
+
+template <Property... kProperties>
+void BasicMultiBuf<kProperties...>::PushBack(
+    const SharedPtr<const std::byte[]>& bytes, size_t offset, size_t length) {
   static_assert(is_const(),
                 "Cannot `PushBack` read-only bytes into mutable MultiBuf");
-  Insert(end(), bytes);
+  Insert(end(), bytes, offset, length);
 }
 
 template <Property... kProperties>
@@ -1478,6 +1855,13 @@ BasicMultiBuf<kProperties...>::Release(const_iterator pos) {
   } else {
     return bytes;
   }
+}
+
+template <Property... kProperties>
+SharedPtr<typename BasicMultiBuf<kProperties...>::value_type[]>
+BasicMultiBuf<kProperties...>::Share(const_iterator pos) {
+  return SharedPtr<value_type[]>(generic().Share(pos),
+                                 generic().GetControlBlock());
 }
 
 }  // namespace pw::multibuf
