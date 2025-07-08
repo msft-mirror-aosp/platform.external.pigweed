@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <deque>
 #include <random>
+#include <vector>
 
 #include "pw_allocator/fault_injecting_allocator.h"
 #include "pw_allocator/null_allocator.h"
@@ -53,11 +54,9 @@ class CommonTest
 
 using DynamicDequeCommonTestUint8 = CommonTest<uint8_t>;
 using DynamicDequeCommonTestUint16 = CommonTest<uint16_t>;
-using DynamicDequeCommonTestUint32 = CommonTest<uint32_t>;
 
 PW_CONTAINERS_COMMON_DEQUE_TESTS(DynamicDequeCommonTestUint8);
 PW_CONTAINERS_COMMON_DEQUE_TESTS(DynamicDequeCommonTestUint16);
-PW_CONTAINERS_COMMON_DEQUE_TESTS(DynamicDequeCommonTestUint32);
 
 PW_CONSTINIT pw::allocator::NullAllocator null_allocator;
 PW_CONSTINIT const pw::DynamicDeque<int> kEmpty(null_allocator);
@@ -137,21 +136,23 @@ TEST_F(DynamicDequeTest, Capacity_ResizesWhenPossible) {
     ASSERT_TRUE(deque.try_push_back(i));
   }
 
-  ASSERT_FALSE(deque.try_reserve(deque.capacity() + 1)) << "Wrapped";
+  ASSERT_FALSE(deque.try_reserve_exact(deque.capacity() + 1)) << "Wrapped";
 
   deque.pop_back();  // remove wrapped element
 
-  ASSERT_TRUE(deque.try_reserve(deque.capacity() + 1)) << "No longer wrapped";
+  ASSERT_TRUE(deque.try_reserve_exact(deque.capacity() + 1))
+      << "No longer wrapped";
 
   // Wrap from the front to the back
   ASSERT_TRUE(deque.try_push_front(123));
   ASSERT_TRUE(deque.try_push_front(1234));
 
-  ASSERT_FALSE(deque.try_reserve(deque.capacity() + 1)) << "Wrapped";
+  ASSERT_FALSE(deque.try_reserve_exact(deque.capacity() + 1)) << "Wrapped";
 
   deque.pop_front();  // remove wrapped element
 
-  ASSERT_TRUE(deque.try_reserve(deque.capacity() + 1)) << "No longer wrapped";
+  ASSERT_TRUE(deque.try_reserve_exact(deque.capacity() + 1))
+      << "No longer wrapped";
 
   // Fill to capacity and wrap to the back
   ASSERT_TRUE(deque.try_push_front(123));
@@ -181,10 +182,10 @@ TEST_F(DynamicDequeTest, Move_MovesBufferWithoutAllocation) {
   EXPECT_EQ(deque_2_first, &deque_1.front());
 }
 
-TEST_F(DynamicDequeTest, Capacity_ReserveBeforeBufferIsAllocated) {
+TEST_F(DynamicDequeTest, Capacity_ReserveExactBeforeBufferIsAllocated) {
   pw::DynamicDeque<int> deque(allocator_);
 
-  ASSERT_TRUE(deque.try_reserve(3));
+  ASSERT_TRUE(deque.try_reserve_exact(3));
   allocator_.DisableAll();
 
   deque.push_front(1);
@@ -194,10 +195,49 @@ TEST_F(DynamicDequeTest, Capacity_ReserveBeforeBufferIsAllocated) {
   EXPECT_FALSE(deque.try_push_back(0));
 }
 
+TEST_F(DynamicDequeTest, Capacity_ReserveExactRetriesIfAllocationFails) {
+  pw::DynamicDeque<int> deque(allocator_);
+
+  ASSERT_TRUE(deque.try_reserve_exact(3));
+  allocator_.DisableAll();
+
+  deque.push_front(1);
+  deque.push_front(2);
+  deque.push_front(3);
+
+  EXPECT_FALSE(deque.try_push_back(0));
+}
+
+TEST_F(DynamicDequeTest, Capacity_ReserveIncreasesByMoreThanOne) {
+  pw::DynamicDeque<int> deque(allocator_);
+
+  ASSERT_TRUE(deque.try_reserve_exact(50));
+
+  deque.reserve(51);
+
+  EXPECT_GT(deque.capacity(), 51);
+
+  const auto original_capacity = deque.capacity();
+  deque.reserve(52);
+  EXPECT_EQ(original_capacity, deque.capacity());
+}
+
+TEST_F(DynamicDequeTest, Capacity_ReserveSucceedsWhenCannotDouble) {
+  pw::DynamicDeque<int> deque(allocator_);
+
+  ASSERT_TRUE(deque.try_reserve_exact(200));
+  ASSERT_EQ(deque.capacity(), 200u);
+  ASSERT_FALSE(deque.try_reserve_exact(400));
+
+  EXPECT_TRUE(deque.try_reserve(201));
+  EXPECT_LT(deque.capacity(), 400);
+  EXPECT_GE(deque.capacity(), 201);
+}
+
 TEST_F(DynamicDequeTest, Capacity_ShrinkToFitNopWhenFull) {
   pw::DynamicDeque<int> deque(allocator_);
 
-  deque.reserve(3);
+  deque.reserve_exact(3);
   deque.assign({1, 2, 3});
   ASSERT_EQ(deque.capacity(), 3u);
   ASSERT_EQ(deque.size(), 3u);
@@ -209,7 +249,7 @@ TEST_F(DynamicDequeTest, Capacity_ShrinkToFitNopWhenFull) {
 TEST_F(DynamicDequeTest, Capacity_ShrinkToFitResizesWhenPossible) {
   pw::DynamicDeque<int> deque(allocator_);
 
-  deque.reserve(10);
+  deque.reserve_exact(10);
   deque.push_back(1);
   ASSERT_EQ(deque.capacity(), 10u);
 
@@ -223,7 +263,7 @@ TEST_F(DynamicDequeTest, Capacity_ShrinkToFitOnlyResizesIfHeadIs0) {
   pw::DynamicDeque<int> deque(allocator_);
 
   // Empty slot is in front, so resize is not possible.
-  deque.reserve(4);
+  deque.reserve_exact(4);
   deque.assign({1, 2, 3, 4});
   deque.pop_front();
   ASSERT_TRUE(Equal(deque, std::array{2, 3, 4}));
@@ -245,7 +285,7 @@ TEST_F(DynamicDequeTest, Capacity_ShrinkToFitOnlyResizesIfHeadIs0) {
 TEST_F(DynamicDequeTest, Capacity_ShrinkToFitEmptyFreesBuffer) {
   pw::DynamicDeque<int> deque(allocator_);
 
-  deque.reserve(4);
+  deque.reserve_exact(4);
   ASSERT_EQ(deque.capacity(), 4u);
   deque.clear();
   ASSERT_EQ(deque.capacity(), 4u);
@@ -257,7 +297,7 @@ TEST_F(DynamicDequeTest, Capacity_ShrinkToFitEmptyFreesBuffer) {
 
 TEST_F(DynamicDequeTest, Capacity_ShrinkToFailsSilentlyIfCannotShrink) {
   pw::DynamicDeque<int> deque(allocator_);
-  deque.reserve(8);
+  deque.reserve_exact(8);
   deque.assign(3u, 123);
   ASSERT_TRUE(Equal(deque, std::array{123, 123, 123}));
 
@@ -314,7 +354,7 @@ TEST_F(DynamicDequeTest, TryAssign_NoPartialAssignments) {
   std::array<FailOnCopy, 5> array{};
 
   pw::DynamicDeque<FailOnCopy> deque(allocator_);
-  deque.reserve(4);
+  deque.reserve_exact(4);
   allocator_.DisableAll();
 
   EXPECT_FALSE(deque.try_assign(array.begin(), array.end()));
@@ -347,6 +387,8 @@ TEST_F(DynamicDequeTest, MaxSize_CannotExceed) {
 
   EXPECT_FALSE(deque.try_push_back(false));
   EXPECT_FALSE(deque.try_push_front(true));
+  EXPECT_EQ(deque.try_insert(deque.begin(), {true, false, true, false}),
+            std::nullopt);
 }
 
 TEST_F(DynamicDequeTest, MaxSize_CapacityClamps) {
@@ -360,7 +402,7 @@ TEST_F(DynamicDequeTest, MaxSize_CapacityClamps) {
 
 TEST_F(DynamicDequeTest, Erase_Wrapped) {
   pw::DynamicDeque<int> deque(allocator_);
-  deque.reserve(5);
+  deque.reserve_exact(5);
   deque.assign({1, 2, 3, 4, 5});
   deque.pop_front();
   deque.pop_front();
@@ -388,7 +430,7 @@ TEST_F(DynamicDequeTest, Erase_Wrapped) {
 
 TEST_F(DynamicDequeTest, Erase_Wrapped_RangeAcrossWrap) {
   pw::DynamicDeque<int> deque(allocator_);
-  deque.reserve(5);
+  deque.reserve_exact(5);
   deque.assign({1, 2, 3, 4, 5});
   deque.pop_front();
   deque.pop_front();
@@ -408,7 +450,7 @@ TEST_F(DynamicDequeTest, Erase_Wrapped_RangeAcrossWrap) {
 
 TEST_F(DynamicDequeTest, Erase_Wrapped_All) {
   pw::DynamicDeque<int> deque(allocator_);
-  deque.reserve(5);
+  deque.reserve_exact(5);
   deque.assign({1, 2, 3, 4, 5});
   deque.pop_front();
   deque.pop_front();
@@ -424,6 +466,138 @@ TEST_F(DynamicDequeTest, Erase_Wrapped_All) {
   pw::DynamicDeque<int>::iterator it = deque.erase(deque.begin(), deque.end());
   EXPECT_EQ(it, deque.end());
   ASSERT_TRUE(deque.empty());
+}
+
+class DynamicDequeWrappedTest : public DynamicDequeTest {
+ protected:
+  DynamicDequeWrappedTest() : deque_(allocator_) {
+    deque_.reserve_exact(10);
+    for (int i = 0; i < 10; ++i) {
+      deque_.push_back(i);
+    }
+    for (int i = 0; i < 5; ++i) {
+      deque_.pop_front();
+      deque_.push_back(i + 10);
+    }
+    EXPECT_TRUE(Equal(deque_, std::array{5, 6, 7, 8, 9, 10, 11, 12, 13, 14}));
+    EXPECT_LT(&deque_.back(), &deque_.front()) << "Deque must be wrapped";
+  }
+
+  pw::DynamicDeque<int> deque_;
+};
+
+TEST_F(DynamicDequeWrappedTest, Insert_NearBegin_FewerThanBefore) {
+  std::array<int, 1> to_insert = {99};
+  auto it =
+      deque_.insert(deque_.begin() + 2, to_insert.begin(), to_insert.end());
+  EXPECT_EQ(*it, 99);
+  ASSERT_TRUE(Equal(deque_, std::array{5, 6, 99, 7, 8, 9, 10, 11, 12, 13, 14}));
+}
+
+TEST_F(DynamicDequeWrappedTest, Insert_NearBegin_SameAsBefore) {
+  std::array<int, 2> to_insert = {98, 99};
+  auto it =
+      deque_.insert(deque_.begin() + 2, to_insert.begin(), to_insert.end());
+  EXPECT_EQ(*it, 98);
+  ASSERT_TRUE(
+      Equal(deque_, std::array{5, 6, 98, 99, 7, 8, 9, 10, 11, 12, 13, 14}));
+}
+
+TEST_F(DynamicDequeWrappedTest, Insert_NearBegin_MoreThanBefore) {
+  std::array<int, 3> to_insert = {97, 98, 99};
+  auto it =
+      deque_.insert(deque_.begin() + 2, to_insert.begin(), to_insert.end());
+  EXPECT_EQ(*it, 97);
+  ASSERT_TRUE(
+      Equal(deque_, std::array{5, 6, 97, 98, 99, 7, 8, 9, 10, 11, 12, 13, 14}));
+}
+
+TEST_F(DynamicDequeWrappedTest, Insert_NearEnd_FewerThanAfter) {
+  std::array<int, 1> to_insert = {99};
+  auto it = deque_.insert(deque_.end() - 2, to_insert.begin(), to_insert.end());
+  EXPECT_EQ(*it, 99);
+  ASSERT_TRUE(Equal(deque_, std::array{5, 6, 7, 8, 9, 10, 11, 12, 99, 13, 14}));
+}
+
+TEST_F(DynamicDequeWrappedTest, Insert_NearEnd_SameAsAfter) {
+  std::array<int, 2> to_insert = {98, 99};
+  auto it = deque_.insert(deque_.end() - 2, to_insert.begin(), to_insert.end());
+  EXPECT_EQ(*it, 98);
+  ASSERT_TRUE(
+      Equal(deque_, std::array{5, 6, 7, 8, 9, 10, 11, 12, 98, 99, 13, 14}));
+}
+
+TEST_F(DynamicDequeWrappedTest, Insert_NearEnd_MoreThanAfter) {
+  std::array<int, 3> to_insert = {97, 98, 99};
+  auto it = deque_.insert(deque_.end() - 2, to_insert.begin(), to_insert.end());
+  EXPECT_EQ(*it, 97);
+  ASSERT_TRUE(
+      Equal(deque_, std::array{5, 6, 7, 8, 9, 10, 11, 12, 97, 98, 99, 13, 14}));
+}
+
+TEST_F(DynamicDequeWrappedTest, Insert_CopiesNearBegin_FewerThanBefore) {
+  auto it = deque_.insert(deque_.begin() + 2, 1, 99);
+  EXPECT_EQ(*it, 99);
+  ASSERT_TRUE(Equal(deque_, std::array{5, 6, 99, 7, 8, 9, 10, 11, 12, 13, 14}));
+}
+
+TEST_F(DynamicDequeWrappedTest, Insert_CopiesNearBegin_SameAsBefore) {
+  auto it = deque_.insert(deque_.begin() + 2, 2, 99);
+  EXPECT_EQ(*it, 99);
+  ASSERT_TRUE(
+      Equal(deque_, std::array{5, 6, 99, 99, 7, 8, 9, 10, 11, 12, 13, 14}));
+}
+
+TEST_F(DynamicDequeWrappedTest, Insert_CopiesNearBegin_MoreThanBefore) {
+  auto it = deque_.insert(deque_.begin() + 2, 3, 99);
+  EXPECT_EQ(*it, 99);
+  ASSERT_TRUE(
+      Equal(deque_, std::array{5, 6, 99, 99, 99, 7, 8, 9, 10, 11, 12, 13, 14}));
+}
+
+TEST_F(DynamicDequeWrappedTest, Insert_CopiesNearEnd_FewerThanAfter) {
+  auto it = deque_.insert(deque_.end() - 2, 1, 99);
+  EXPECT_EQ(*it, 99);
+  ASSERT_TRUE(Equal(deque_, std::array{5, 6, 7, 8, 9, 10, 11, 12, 99, 13, 14}));
+}
+
+TEST_F(DynamicDequeWrappedTest, Insert_CopiesNearEnd_SameAsAfter) {
+  auto it = deque_.insert(deque_.end() - 2, 2, 99);
+  EXPECT_EQ(*it, 99);
+  ASSERT_TRUE(
+      Equal(deque_, std::array{5, 6, 7, 8, 9, 10, 11, 12, 99, 99, 13, 14}));
+}
+
+TEST_F(DynamicDequeWrappedTest, Insert_CopiesNearEnd_MoreThanAfter) {
+  auto it = deque_.insert(deque_.end() - 2, 3, 99);
+  EXPECT_EQ(*it, 99);
+  ASSERT_TRUE(
+      Equal(deque_, std::array{5, 6, 7, 8, 9, 10, 11, 12, 99, 99, 99, 13, 14}));
+}
+
+TEST_F(DynamicDequeWrappedTest, Insert_InputIterator_NearBegin) {
+  using pw::containers::test::InputIt;
+  auto it = deque_.insert(deque_.begin() + 2, InputIt(97), InputIt(100));
+  EXPECT_EQ(*it, 97);
+  ASSERT_TRUE(
+      Equal(deque_, std::array{5, 6, 97, 98, 99, 7, 8, 9, 10, 11, 12, 13, 14}));
+}
+
+TEST_F(DynamicDequeWrappedTest, Insert_InputIterator_NearEnd) {
+  using pw::containers::test::InputIt;
+  auto it = deque_.insert(deque_.end() - 2, InputIt(97), InputIt(100));
+  EXPECT_EQ(*it, 97);
+  ASSERT_TRUE(
+      Equal(deque_, std::array{5, 6, 7, 8, 9, 10, 11, 12, 97, 98, 99, 13, 14}));
+}
+
+TEST_F(DynamicDequeWrappedTest, Insert_InputIterator_MoreThanSize) {
+  using pw::containers::test::InputIt;
+  deque_.assign({1, 2});
+  auto it = deque_.insert(deque_.begin() + 1, InputIt(3), InputIt(15));
+  EXPECT_EQ(*it, 3);
+  ASSERT_TRUE(
+      Equal(deque_, std::array{1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 2}));
 }
 
 TEST_F(DynamicDequeTest, Swap_BothEmpty) {
@@ -483,6 +657,223 @@ TEST_F(DynamicDequeTest, Swap_BothNonEmpty) {
   EXPECT_TRUE(Equal(container_2, std::array{1, 2}));
 }
 
+TEST_F(DynamicDequeTest, Modify_TryEmplace_Empty) {
+  pw::DynamicDeque<Counter> container(allocator_);
+  Counter::Reset();
+
+  auto it = container.try_emplace(container.cbegin(), 1);
+  ASSERT_TRUE(it.has_value());
+  EXPECT_EQ(**it, 1);
+  EXPECT_TRUE(Equal(container, std::array{1}));
+  EXPECT_EQ(Counter::created, 1);
+}
+
+TEST_F(DynamicDequeTest, Modify_TryEmplace_Front) {
+  pw::DynamicDeque<Counter> container(allocator_);
+  container.assign({1, 2, 3});
+  Counter::Reset();
+
+  auto it = container.try_emplace(container.cbegin(), 0);
+  ASSERT_TRUE(it.has_value());
+  EXPECT_EQ(**it, 0);
+  EXPECT_TRUE(Equal(container, std::array{0, 1, 2, 3}));
+  EXPECT_EQ(Counter::created, 1);
+}
+
+TEST_F(DynamicDequeTest, Modify_TryEmplace_Back) {
+  pw::DynamicDeque<Counter> container(allocator_);
+  container.assign({1, 2, 3});
+  Counter::Reset();
+
+  auto it = container.try_emplace(container.cend(), 4);
+  ASSERT_TRUE(it.has_value());
+  EXPECT_EQ(**it, 4);
+  EXPECT_TRUE(Equal(container, std::array{1, 2, 3, 4}));
+  EXPECT_EQ(Counter::created, 1);
+}
+
+TEST_F(DynamicDequeTest, Modify_TryEmplace_Middle) {
+  pw::DynamicDeque<Counter> container(allocator_);
+  container.assign({1, 2, 4});
+
+  auto it = container.try_emplace(container.cbegin() + 2, 3);
+  ASSERT_TRUE(it.has_value());
+  EXPECT_EQ(**it, 3);
+  EXPECT_TRUE(Equal(container, std::array{1, 2, 3, 4}));
+}
+
+TEST_F(DynamicDequeTest, Modify_TryInsertCopy) {
+  pw::DynamicDeque<Counter> container(allocator_);
+  container.assign({1, 2, 4});
+  Counter value(3);
+
+  auto it = container.try_insert(container.cbegin() + 2, value);
+  ASSERT_TRUE(it.has_value());
+  EXPECT_EQ(*it, container.begin() + 2);
+  EXPECT_EQ(**it, 3);
+  EXPECT_TRUE(Equal(container, std::array{1, 2, 3, 4}));
+}
+
+TEST_F(DynamicDequeTest, Modify_TryInsertMove) {
+  pw::DynamicDeque<Counter> container(allocator_);
+  container.assign({1, 2, 4});
+  Counter value(3);
+
+  auto it = container.try_insert(container.cbegin() + 2, std::move(value));
+  ASSERT_TRUE(it.has_value());
+  EXPECT_EQ(*it, container.begin() + 2);
+  EXPECT_EQ(**it, 3);
+  EXPECT_TRUE(Equal(container, std::array{1, 2, 3, 4}));
+}
+
+TEST_F(DynamicDequeTest, Modify_TryInsertMultiple) {
+  pw::DynamicDeque<Counter> container(allocator_);
+  container.assign({1, 2, 5});
+  Counter value(3);
+
+  auto it = container.try_insert(container.cbegin() + 2, 2, value);
+  ASSERT_TRUE(it.has_value());
+  EXPECT_EQ(*it, container.begin() + 2);
+  EXPECT_EQ(**it, 3);
+  EXPECT_TRUE(Equal(container, std::array{1, 2, 3, 3, 5}));
+}
+
+TEST_F(DynamicDequeTest, Modify_TryEmplace_Fails) {
+  pw::DynamicDeque<Counter> container(allocator_);
+  container.assign({1, 2, 4});
+  Counter::Reset();
+
+  allocator_.DisableAll();
+  auto it = container.try_emplace(container.cbegin() + 2, 3);
+
+  ASSERT_FALSE(it.has_value());
+  EXPECT_TRUE(Equal(container, std::array{1, 2, 4}));
+  EXPECT_EQ(Counter::created, 0);
+
+  allocator_.EnableAll();
+  it = container.try_emplace(container.cbegin() + 2, 3);
+  ASSERT_TRUE(it.has_value());
+  EXPECT_TRUE(Equal(container, std::array{1, 2, 3, 4}));
+}
+
+TEST_F(DynamicDequeTest, Modify_TryInsertCopy_Fails) {
+  pw::DynamicDeque<Counter> container(allocator_);
+  container.assign({1, 2, 4});
+  Counter value(3);
+  Counter::Reset();
+
+  allocator_.DisableAll();
+  auto it = container.try_insert(container.cbegin() + 2, value);
+
+  ASSERT_FALSE(it.has_value());
+  EXPECT_TRUE(Equal(container, std::array{1, 2, 4}));
+  EXPECT_EQ(Counter::created, 0);
+
+  allocator_.EnableAll();
+  it = container.try_insert(container.cbegin() + 2, value);
+  ASSERT_TRUE(it.has_value());
+  EXPECT_TRUE(Equal(container, std::array{1, 2, 3, 4}));
+}
+
+TEST_F(DynamicDequeTest, Modify_TryInsertMove_Fails) {
+  pw::DynamicDeque<Counter> container(allocator_);
+  container.assign({1, 2, 4});
+  Counter value(3);
+  Counter::Reset();
+
+  allocator_.DisableAll();
+  auto it = container.try_insert(container.cbegin() + 2, std::move(value));
+
+  ASSERT_FALSE(it.has_value());
+  EXPECT_TRUE(Equal(container, std::array{1, 2, 4}));
+  EXPECT_EQ(Counter::created, 0);
+  EXPECT_EQ(Counter::moved, 0);
+
+  allocator_.EnableAll();
+  // NOLINTNEXTLINE(bugprone-use-after-move)
+  it = container.try_insert(container.cbegin() + 2, std::move(value));
+  ASSERT_TRUE(it.has_value());
+  EXPECT_TRUE(Equal(container, std::array{1, 2, 3, 4}));
+}
+
+TEST_F(DynamicDequeTest, Modify_TryInsertMultiple_Fails) {
+  pw::DynamicDeque<Counter> container(allocator_);
+  container.assign({1, 2, 5});
+  Counter value(3);
+  Counter::Reset();
+
+  allocator_.DisableAll();
+  auto it = container.try_insert(container.cbegin() + 2, 2, value);
+
+  ASSERT_FALSE(it.has_value());
+  EXPECT_TRUE(Equal(container, std::array{1, 2, 5}));
+  EXPECT_EQ(Counter::created, 0);
+
+  allocator_.EnableAll();
+  it = container.try_insert(container.cbegin() + 2, 2, value);
+  ASSERT_TRUE(it.has_value());
+  EXPECT_TRUE(Equal(container, std::array{1, 2, 3, 3, 5}));
+}
+
+TEST_F(DynamicDequeTest, Modify_TryInsert_Begin) {
+  pw::DynamicDeque<int> deque(allocator_);
+  deque.assign({1, 2, 3});
+  auto it = deque.try_insert(deque.begin(), 0);
+  ASSERT_TRUE(it.has_value());
+  EXPECT_EQ(**it, 0);
+  ASSERT_TRUE(Equal(deque, std::array{0, 1, 2, 3}));
+}
+
+TEST_F(DynamicDequeTest, Modify_TryInsert_Begin_Fails) {
+  pw::DynamicDeque<int> deque(allocator_);
+  deque.reserve_exact(3);
+  deque.assign({1, 2, 3});
+  allocator_.DisableAll();
+  ASSERT_FALSE(deque.try_insert(deque.begin(), 0).has_value());
+  ASSERT_TRUE(Equal(deque, std::array{1, 2, 3}));
+}
+
+TEST_F(DynamicDequeTest, Modify_TryInsert_End) {
+  pw::DynamicDeque<int> deque(allocator_);
+  deque.assign({1, 2, 3});
+  auto it = deque.try_insert(deque.end(), 4);
+  ASSERT_TRUE(it.has_value());
+  EXPECT_EQ(**it, 4);
+  ASSERT_TRUE(Equal(deque, std::array{1, 2, 3, 4}));
+}
+
+TEST_F(DynamicDequeTest, Modify_TryInsert_End_Fails) {
+  pw::DynamicDeque<int> deque(allocator_);
+  deque.reserve_exact(3);
+  deque.assign({1, 2, 3});
+  allocator_.DisableAll();
+  ASSERT_FALSE(deque.try_insert(deque.end(), 4).has_value());
+  ASSERT_TRUE(Equal(deque, std::array{1, 2, 3}));
+}
+
+TEST_F(DynamicDequeTest, Modify_TryInsertIterators) {
+  pw::DynamicDeque<Counter> container(allocator_);
+  container.assign({1, 5});
+  std::array<Counter, 3> values = {Counter(2), Counter(3), Counter(4)};
+
+  auto it = container.try_insert(container.cbegin() + 1,
+                                 std::make_move_iterator(values.begin()),
+                                 std::make_move_iterator(values.end()));
+  ASSERT_TRUE(it.has_value());
+  EXPECT_EQ(*it, container.begin() + 1);
+  EXPECT_TRUE(Equal(container, std::array{1, 2, 3, 4, 5}));
+}
+
+TEST_F(DynamicDequeTest, Modify_TryInsertInitializerList) {
+  pw::DynamicDeque<Counter> container(allocator_);
+  container.assign({1, 5});
+
+  auto it = container.try_insert(container.cbegin() + 1, {2, 3, 4});
+  ASSERT_TRUE(it.has_value());
+  EXPECT_EQ(*it, container.begin() + 1);
+  EXPECT_TRUE(Equal(container, std::array{1, 2, 3, 4, 5}));
+}
+
 void PerformRandomOperations(int iterations, uint_fast32_t seed) {
   static std::byte buffer[2048];
   std::memset(buffer, 0, sizeof(buffer));
@@ -501,11 +892,17 @@ void PerformRandomOperations(int iterations, uint_fast32_t seed) {
     kPushFront,
     kPopBack,
     kPopFront,
+    kErase,
     kReserve,
     kShrinkToFit,
+    kTryEmplace,
+    kTryInsertCopy,
+    kTryInsertCount,
+    kTryInsertIterators,
     kTotalOperations,
   };
 
+  using diff_t = pw::DynamicDeque<Counter>::difference_type;
   bool tend_to_grow = true;
 
   for (int i = 0; i < iterations; ++i) {
@@ -550,18 +947,76 @@ void PerformRandomOperations(int iterations, uint_fast32_t seed) {
           oracle.pop_front();
         }
         break;
-      case kReserve:
-        if (random_uint() % 2 == 0) {  // Reduce frequency by 1/2
+      case kErase:
+        if (tend_to_grow && (random_uint() % 2) == 0u) {
           continue;
         }
-        std::ignore = deque.try_reserve(deque.size() + random_uint() % 100);
+        if (deque.empty()) {
+          tend_to_grow = true;
+        } else {
+          diff_t pos = static_cast<diff_t>(random_uint() % oracle.size());
+          const auto count = static_cast<diff_t>(
+              random_uint() % (static_cast<diff_t>(oracle.size()) - pos) + 1);
+          deque.erase(deque.begin() + pos, deque.begin() + pos + count);
+          oracle.erase(oracle.begin() + pos, oracle.begin() + pos + count);
+        }
+        break;
+      case kReserve:
+        std::ignore =
+            deque.try_reserve_exact(deque.size() + random_uint() % 100);
         break;
       case kShrinkToFit:
-        if (random_uint() % 2 == 0) {  // Reduce frequency by 1/2
-          continue;
-        }
         deque.shrink_to_fit();
         break;
+      case kTryEmplace: {
+        diff_t pos = static_cast<diff_t>(random_uint() % (oracle.size() + 1));
+        const int value = static_cast<int>(random_uint());
+        if (deque.try_emplace(deque.begin() + pos, value).has_value()) {
+          oracle.emplace(oracle.begin() + pos, value);
+        } else {
+          tend_to_grow = false;
+        }
+        break;
+      }
+      case kTryInsertCopy: {
+        diff_t pos = static_cast<diff_t>(random_uint() % (oracle.size() + 1));
+        const int value = static_cast<int>(random_uint());
+        if (deque.try_insert(deque.begin() + pos, value).has_value()) {
+          oracle.insert(oracle.begin() + pos, value);
+        } else {
+          tend_to_grow = false;
+        }
+        break;
+      }
+      case kTryInsertCount: {
+        diff_t pos = static_cast<diff_t>(random_uint() % (oracle.size() + 1));
+        const auto count = static_cast<pw::DynamicDeque<Counter>::size_type>(
+            random_uint() % 100);
+        const int value = static_cast<int>(random_uint());
+        if (deque.try_insert(deque.begin() + pos, count, value).has_value()) {
+          oracle.insert(oracle.begin() + pos, count, value);
+        } else {
+          tend_to_grow = false;
+        }
+        break;
+      }
+      case kTryInsertIterators: {
+        diff_t pos = static_cast<diff_t>(random_uint() % (oracle.size() + 1));
+        const size_t count = random_uint() % 5;
+        std::vector<int> source;
+        source.reserve(count);
+        for (size_t k = 0; k < count; ++k) {
+          source.push_back(static_cast<int>(random_uint()));
+        }
+
+        if (deque.try_insert(deque.begin() + pos, source.begin(), source.end())
+                .has_value()) {
+          oracle.insert(oracle.begin() + pos, source.begin(), source.end());
+        } else {
+          tend_to_grow = false;
+        }
+        break;
+      }
       case kTotalOperations:
       default:
         FAIL();

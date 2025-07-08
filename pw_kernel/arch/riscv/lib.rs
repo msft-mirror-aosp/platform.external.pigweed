@@ -16,8 +16,8 @@
 
 use core::arch::asm;
 
-use kernel::KernelState;
 use kernel::scheduler::SchedulerContext as _;
+use kernel::KernelState;
 
 mod exceptions;
 mod protection;
@@ -40,6 +40,8 @@ impl kernel::KernelContext for Arch {
     fn early_init(self) {
         // Make sure interrupts are disabled
         Arch.disable_interrupts();
+
+        exceptions::early_init();
 
         timer::early_init();
     }

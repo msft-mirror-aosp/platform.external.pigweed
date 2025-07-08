@@ -33,14 +33,10 @@ namespace pw {
 template <typename T>
 class WeakPtr;
 
-namespace multibuf {
+enum class MultiBufProperty : uint8_t;
 
-enum class Property : uint8_t;
-
-template <Property...>
+template <MultiBufProperty...>
 class BasicMultiBuf;
-
-}  // namespace multibuf
 
 /// A `std::shared_ptr<T>`-like type that integrates with `pw::Allocator`.
 ///
@@ -188,8 +184,8 @@ class SharedPtr final : public ::pw::allocator::internal::ManagedPtr<T> {
   friend class WeakPtr;
 
   // Allow MultiBufs to decompose SharedPtr<T>.
-  template <multibuf::Property...>
-  friend class multibuf::BasicMultiBuf;
+  template <MultiBufProperty...>
+  friend class BasicMultiBuf;
 
   /// Constructs and object of type `T` from the given `args`, and wraps it in a
   /// `SharedPtr`

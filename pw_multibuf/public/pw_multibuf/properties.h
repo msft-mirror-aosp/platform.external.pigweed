@@ -16,10 +16,10 @@
 #include <cstdint>
 #include <type_traits>
 
-namespace pw::multibuf {
+namespace pw {
 
 /// Basic properties of a MultiBuf.
-enum class Property : uint8_t {
+enum class MultiBufProperty : uint8_t {
   /// Indicates the data contained within the MultiBuf is read-only. Note the
   /// difference from the MultiBuf itself being `const`, which restricts changes
   /// to its structure, e.g. adding or removing layers.
@@ -37,15 +37,22 @@ enum class Property : uint8_t {
   kObservable = 1 << 2,
 };
 
-namespace internal {
+template <MultiBufProperty...>
+class BasicMultiBuf;
+
+namespace multibuf_impl {
+
+class GenericMultiBuf;
 
 /// Verifies the template parameters of a MultiBuf are in canonical order.
 /// @{
-template <Property>
+template <MultiBufProperty>
 constexpr bool PropertiesAreInOrderWithoutDuplicates() {
   return true;
 }
-template <Property kLhs, Property kRhs, Property... kOthers>
+template <MultiBufProperty kLhs,
+          MultiBufProperty kRhs,
+          MultiBufProperty... kOthers>
 constexpr bool PropertiesAreInOrderWithoutDuplicates() {
   return (kLhs < kRhs) &&
          PropertiesAreInOrderWithoutDuplicates<kRhs, kOthers...>();
@@ -53,7 +60,7 @@ constexpr bool PropertiesAreInOrderWithoutDuplicates() {
 /// @}
 
 /// Verifies the template parameters of a MultiBuf are valid.
-template <Property... kProperties>
+template <MultiBufProperty... kProperties>
 constexpr bool PropertiesAreValid() {
   if constexpr (sizeof...(kProperties) != 0) {
     static_assert(PropertiesAreInOrderWithoutDuplicates<kProperties...>(),
@@ -63,21 +70,11 @@ constexpr bool PropertiesAreValid() {
   return true;
 }
 
-}  // namespace internal
-
-// Forward declarations.
-template <Property...>
-class BasicMultiBuf;
-
-namespace internal {
-
-class GenericMultiBuf;
-
 /// Type trait to identify MultiBuf types.
 template <typename>
 struct IsBasicMultiBuf : public std::false_type {};
 
-template <Property... kProperties>
+template <MultiBufProperty... kProperties>
 struct IsBasicMultiBuf<BasicMultiBuf<kProperties...>> : public std::true_type {
 };
 
@@ -85,7 +82,7 @@ struct IsBasicMultiBuf<BasicMultiBuf<kProperties...>> : public std::true_type {
 /// can be converted to another MultiBuf type.
 template <typename From, typename To>
 using EnableIfConvertible =
-    std::enable_if_t<std::is_same_v<To, internal::GenericMultiBuf> ||
+    std::enable_if_t<std::is_same_v<To, GenericMultiBuf> ||
                      // Only conversion to other MultiBuf types are supported.
                      (IsBasicMultiBuf<To>::value &&
                       // Read-only data cannot be converted to mutable data.
@@ -100,7 +97,7 @@ using EnableIfConvertible =
 /// static_assert with a helpful message if any condition is not met.
 template <typename From, typename To>
 static constexpr void AssertIsConvertible() {
-  if constexpr (!std::is_same_v<To, internal::GenericMultiBuf>) {
+  if constexpr (!std::is_same_v<To, GenericMultiBuf>) {
     static_assert(IsBasicMultiBuf<To>::value,
                   "Only conversion to other MultiBuf types are supported.");
     static_assert(!From::is_const() || To::is_const(),
@@ -112,5 +109,5 @@ static constexpr void AssertIsConvertible() {
   }
 }
 
-}  // namespace internal
-}  // namespace pw::multibuf
+}  // namespace multibuf_impl
+}  // namespace pw

@@ -32,6 +32,9 @@ using pw::async2::Pending;
 using pw::async2::Poll;
 using pw::async2::Ready;
 
+static_assert(!std::is_constructible_v<pw::InlineAsyncDeque<int>>,
+              "Cannot construct generic capacity container");
+
 // Instantiate shared deque tests.
 template <size_t kCapacity>
 class CommonTest
@@ -44,10 +47,10 @@ class CommonTest
   };
 };
 
-using InlineAsyncDequeCommonTest5 = CommonTest<5>;
+using InlineAsyncDequeCommonTest9 = CommonTest<9>;
 using InlineAsyncDequeCommonTest16 = CommonTest<16>;
 
-PW_CONTAINERS_COMMON_DEQUE_TESTS(InlineAsyncDequeCommonTest5);
+PW_CONTAINERS_COMMON_DEQUE_TESTS(InlineAsyncDequeCommonTest9);
 PW_CONTAINERS_COMMON_DEQUE_TESTS(InlineAsyncDequeCommonTest16);
 
 TEST(InlineAsyncDequeTest, PendHasZeroSpaceReturnsSuccessImmediately) {

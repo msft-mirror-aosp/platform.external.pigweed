@@ -23,6 +23,7 @@
 
 namespace pw {
 
+using std::add_sat;
 using std::mul_sat;
 
 }  // namespace pw
@@ -38,6 +39,28 @@ using std::mul_sat;
 
 namespace pw {
 
+/// Polyfill of C++26's `std::add_sat`. Returns the sum of two integers, giving
+/// the integer's maximum or minimum value if the sum would otherwise have
+/// overflowed.
+///
+/// For example, `add_sat<uint8_t>(250, 6)` returns `255` instead of the
+/// overflowed value (`0`).
+template <typename T>
+constexpr T add_sat(T lhs, T rhs) noexcept {
+  static_assert(std::is_integral_v<T>);
+  if (T sum = 0; !PW_ADD_OVERFLOW(lhs, rhs, &sum)) {
+    return sum;
+  }
+  if constexpr (std::is_unsigned_v<T>) {
+    return std::numeric_limits<T>::max();
+  } else {  // since it overflowed, the operands had the same sign
+    if (lhs < 0) {
+      return std::numeric_limits<T>::min();
+    }
+    return std::numeric_limits<T>::max();
+  }
+}
+
 /// Polyfill of C++26's `std::mul_sat`. Returns the product of two integers,
 /// giving the integer's maximum or minimum value if the product would otherwise
 /// have overflowed.
@@ -45,9 +68,9 @@ namespace pw {
 /// For example, for `100 * 10 = 1000`, `mul_sat<uint8_t>(100, 10)` returns
 /// `255` instead of the overflowed value (`232`).
 template <typename T>
-T mul_sat(T lhs, T rhs) noexcept {
+constexpr T mul_sat(T lhs, T rhs) noexcept {
   static_assert(std::is_integral_v<T>);
-  if (T product; !PW_MUL_OVERFLOW(lhs, rhs, &product)) {
+  if (T product = 0; !PW_MUL_OVERFLOW(lhs, rhs, &product)) {
     return product;
   }
   if constexpr (std::is_unsigned_v<T>) {
