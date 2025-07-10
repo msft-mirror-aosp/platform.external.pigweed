@@ -51,7 +51,7 @@ bazel_dep(name = "rules_nodejs", version = "6.3.0")
 bazel_dep(name = "rules_platform", version = "0.1.0")
 bazel_dep(name = "rules_probe_rs", version = "0.0.6")
 bazel_dep(name = "rules_python", version = "0.40.0")
-bazel_dep(name = "rules_rust", version = "0.59.2")
+bazel_dep(name = "rules_rust", version = "0.62.0")
 bazel_dep(name = "rules_shell", version = "0.4.0")
 
 # LINT.IfChange(emboss)
@@ -76,24 +76,9 @@ single_version_override(
     module_name = "rules_rust",
     patch_strip = 1,
     patches = [
-        # Adds prototype functionality for documenting multiple crates in one
-        # HTML output directory.  While the approach in this patch may have
-        # issues scaling to giant mono-repos, it is appropriate for embedded
-        # projects and minimally invasive and should be easy to maintain.  Once
-        # the `rules_rust` community decides on a way to propperly support this,
-        # we will migrate to that solution.
-        # https://github.com/konkers/rules_rust/tree/wip/rustdoc
-        "//pw_rust/bazel_patches:0002-PROTOTYPE-Add-ability-to-document-multiple-crates-at.patch",
-
         # Adds more thumbv6m, thumbv8m, and thumbv8m triples
         # TODO: https://pwbug.dev/392707726 - Upstream below patch
         "//pw_rust/bazel_patches:0003-Add-thumbv6m-and-more-thumbv7m-and-thumbv8m-triples.patch",
-
-        # Adds ability to specify a subdirectory, relative to the target's BUILD
-        # file, where the rust sources live.  Without this `gen_rust_project`
-        # gets the path to those files wrong.
-        # TODO: https://pwbug.dev/3392708481 - Upstream below patch
-        "//pw_rust/bazel_patches:0004-Add-rust_srcs_subdir-to-rust_analyzer_toolchain.patch",
     ],
 )
 
