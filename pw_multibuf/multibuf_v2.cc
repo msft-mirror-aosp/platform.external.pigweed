@@ -17,12 +17,12 @@
 #include <cstring>
 #include <utility>
 
-#include "public/pw_multibuf/byte_iterator.h"
 #include "public/pw_multibuf/multibuf_v2.h"
 #include "pw_assert/check.h"
+#include "pw_multibuf/internal/byte_iterator.h"
 #include "pw_status/try.h"
 
-namespace pw::multibuf::internal {
+namespace pw::multibuf_impl {
 
 GenericMultiBuf& GenericMultiBuf::operator=(GenericMultiBuf&& other) {
   deque_ = std::move(other.deque_);
@@ -115,10 +115,10 @@ void GenericMultiBuf::Insert(const_iterator pos, GenericMultiBuf&& mb) {
     index += depth_;
   }
   if (mb.observer_ != nullptr) {
-    mb.observer_->Notify(Observer::Event::kBytesRemoved, size);
+    mb.observer_->Notify(MultiBufObserver::Event::kBytesRemoved, size);
   }
   if (observer_ != nullptr) {
-    observer_->Notify(Observer::Event::kBytesAdded, size);
+    observer_->Notify(MultiBufObserver::Event::kBytesAdded, size);
   }
 }
 
@@ -175,7 +175,7 @@ Result<GenericMultiBuf> GenericMultiBuf::Remove(const_iterator pos,
   CopyRange(pos, size, out);
   EraseRange(pos, size);
   if (observer_ != nullptr) {
-    observer_->Notify(Observer::Event::kBytesRemoved, size);
+    observer_->Notify(MultiBufObserver::Event::kBytesRemoved, size);
   }
   return Result<GenericMultiBuf>(std::move(out));
 }
@@ -206,7 +206,7 @@ Result<GenericMultiBuf::const_iterator> GenericMultiBuf::Discard(
   ClearRange(pos, size);
   EraseRange(pos, size);
   if (observer_ != nullptr) {
-    observer_->Notify(Observer::Event::kBytesRemoved, size);
+    observer_->Notify(MultiBufObserver::Event::kBytesRemoved, size);
   }
   return cbegin() + out_offset;
 }
@@ -225,7 +225,7 @@ UniquePtr<std::byte[]> GenericMultiBuf::Release(const_iterator pos) {
   auto* deallocator = GetDeallocator();
   EraseRange(pos - offset, size_t{GetLength(index)});
   if (observer_ != nullptr) {
-    observer_->Notify(Observer::Event::kBytesRemoved, bytes.size());
+    observer_->Notify(MultiBufObserver::Event::kBytesRemoved, bytes.size());
   }
   return UniquePtr<std::byte[]>(bytes.data(), bytes.size(), *deallocator);
 }
@@ -253,15 +253,15 @@ size_t GenericMultiBuf::CopyFrom(ConstByteSpan src, size_t offset) {
     if (src.empty()) {
       break;
     }
-    size_t length{GetLength(index)};
-    if (offset < length) {
-      length = std::min(length - offset, src.size());
-      std::memcpy(GetData(index) + offset, src.data(), length);
-      src = src.subspan(length);
+    ByteSpan view = GetView(index);
+    if (offset < view.size()) {
+      size_t size = std::min(view.size() - offset, src.size());
+      std::memcpy(view.data() + offset, src.data(), size);
+      src = src.subspan(size);
       offset = 0;
-      total += length;
+      total += size;
     } else {
-      offset -= length;
+      offset -= view.size();
     }
   }
   return total;
@@ -271,28 +271,25 @@ ConstByteSpan GenericMultiBuf::Get(ByteSpan copy, size_t offset) const {
   ByteSpan buffer;
   std::optional<size_type> start;
   for (size_type index = 0; index < deque_.size(); index += depth_) {
-    if (start.has_value()) {
-      // Found the start of the desired range in a previous entry; span is
-      // discontiguous and needs to be copied.
-      size_t copied = CopyToImpl(copy, offset, start.value());
-      buffer = copy.subspan(0, copied);
-      break;
-    }
-    size_t length{GetLength(index)};
-    if (offset >= length) {
+    ByteSpan view = GetView(index);
+    if (buffer.empty() && offset >= view.size()) {
       // Still looking for start of data.
-      offset -= length;
-    } else if (length - offset < copy.size()) {
-      // Span is contiguous only if this is this last entry.
-      buffer = ByteSpan(GetData(index) + offset, length - offset);
+      offset -= view.size();
+    } else if (buffer.empty()) {
+      // Found the start of data.
+      buffer = view.subspan(offset);
       start = index;
+    } else if (buffer.data() + buffer.size() == view.data()) {
+      // Current view is contiguous with previous; append.
+      buffer = ByteSpan(buffer.data(), buffer.size() + view.size());
     } else {
-      // Requested span is contiguous and can be directly passed to the visitor.
-      buffer = ByteSpan(GetData(index) + offset, copy.size());
-      break;
+      // Span is discontiguous and needs to be copied.
+      size_t copied = CopyToImpl(copy, offset, start.value());
+      return copy.subspan(0, copied);
     }
   }
-  return buffer;
+  // Requested span is contiguous and can be directly passed to the visitor.
+  return buffer.size() <= copy.size() ? buffer : buffer.subspan(0, copy.size());
 }
 
 void GenericMultiBuf::Clear() {
@@ -323,7 +320,7 @@ void GenericMultiBuf::Clear() {
   deque_.clear();
   ClearMemoryContext();
   if (observer_ != nullptr) {
-    observer_->Notify(Observer::Event::kBytesRemoved, num_bytes);
+    observer_->Notify(MultiBufObserver::Event::kBytesRemoved, num_bytes);
     observer_ = nullptr;
   }
 }
@@ -370,7 +367,7 @@ bool GenericMultiBuf::AddLayer(size_t offset, size_t length) {
     deque_.back().view.boundary = true;
   }
   if (observer_ != nullptr) {
-    observer_->Notify(Observer::Event::kLayerAdded, num_fragments);
+    observer_->Notify(MultiBufObserver::Event::kLayerAdded, num_fragments);
   }
   return true;
 }
@@ -436,7 +433,7 @@ bool GenericMultiBuf::PopLayer() {
     deque_.pop_front();
   }
   if (observer_ != nullptr) {
-    observer_->Notify(Observer::Event::kLayerRemoved, num_fragments);
+    observer_->Notify(MultiBufObserver::Event::kLayerRemoved, num_fragments);
   }
   return true;
 }
@@ -552,7 +549,7 @@ bool GenericMultiBuf::TryReserveEntries(size_type num_entries, bool split) {
     PW_CHECK_ADD(num_entries, depth_, &num_entries);
   }
   PW_CHECK_ADD(num_entries, deque_.size(), &num_entries);
-  return deque_.try_reserve(num_entries);
+  return deque_.try_reserve_exact(num_entries);
 }
 
 GenericMultiBuf::size_type GenericMultiBuf::InsertEntries(
@@ -604,7 +601,7 @@ GenericMultiBuf::size_type GenericMultiBuf::Insert(const_iterator pos,
     };
   }
   if (observer_ != nullptr) {
-    observer_->Notify(Observer::Event::kBytesAdded, length);
+    observer_->Notify(MultiBufObserver::Event::kBytesAdded, length);
   }
   return index;
 }
@@ -838,15 +835,15 @@ size_t GenericMultiBuf::CopyToImpl(ByteSpan dst,
     if (dst.empty()) {
       break;
     }
-    size_t length{GetLength(index)};
-    if (offset < length) {
-      length = std::min(length - offset, dst.size());
-      std::memcpy(dst.data(), GetData(index) + offset, length);
-      dst = dst.subspan(length);
+    ConstByteSpan view = GetView(index);
+    if (offset < view.size()) {
+      size_t size = std::min(view.size() - offset, dst.size());
+      std::memcpy(dst.data(), view.data() + offset, size);
+      dst = dst.subspan(size);
       offset = 0;
-      total += length;
+      total += size;
     } else {
-      offset -= length;
+      offset -= view.size();
     }
   }
   return total;
@@ -895,4 +892,4 @@ void GenericMultiBuf::SetLayer(size_t offset, size_t length) {
   }
 }
 
-}  // namespace pw::multibuf::internal
+}  // namespace pw::multibuf_impl

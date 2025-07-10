@@ -12,7 +12,7 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_multibuf/byte_iterator.h"
+#include "pw_multibuf/internal/byte_iterator.h"
 
 #include "pw_multibuf/internal/iterator_testing.h"
 #include "pw_unit_test/framework.h"
@@ -20,10 +20,10 @@
 namespace {
 
 using ByteIterator =
-    ::pw::multibuf::internal::ByteIterator<uint16_t, /*kIsConst=*/false>;
+    ::pw::multibuf_impl::ByteIterator<uint16_t, /*kIsConst=*/false>;
 using ConstByteIterator =
-    ::pw::multibuf::internal::ByteIterator<uint16_t, /*kIsConst=*/true>;
-using ::pw::multibuf::internal::IteratorTest;
+    ::pw::multibuf_impl::ByteIterator<uint16_t, /*kIsConst=*/true>;
+using ::pw::multibuf_impl::IteratorTest;
 
 // Test fixture.
 template <typename IteratorType>

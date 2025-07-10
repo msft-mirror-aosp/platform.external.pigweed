@@ -27,7 +27,7 @@ platform(
         "//pw_build/constraints/arm:cortex-m33",
         "@platforms//cpu:armv8-m",
         "@platforms//os:none",
-        "@rust_crates//:no_std",
+        "//pw_build/constraints/rust:no_std",
     ],
     flags = flags_from_dict(
         KERNEL_DEVICE_COMMON_FLAGS | {
@@ -54,12 +54,16 @@ system_image(
     kernel = ":target",
     platform = ":mps2_an505",
     tags = ["kernel"],
+    visibility = ["//visibility:public"],
 )
 
 rust_binary_no_panics_test(
     name = "kernel_only_demo_no_panics_test",
     binary = ":kernel_only_demo",
-    tags = ["kernel"],
+    tags = [
+        "kernel",
+        "kernel_panic_test",
+    ],
 )
 
 system_image(
@@ -72,6 +76,7 @@ system_image(
     platform = ":mps2_an505",
     system_config = ":userspace_demo_config",
     tags = ["kernel"],
+    visibility = ["//visibility:public"],
 )
 
 rust_binary_no_panics_test(
@@ -123,7 +128,6 @@ rust_binary(
     edition = "2021",
     tags = ["kernel"],
     target_compatible_with = TARGET_COMPATIBLE_WITH,
-    visibility = ["//visibility:public"],
     deps = [
         "//pw_kernel/userspace",
         "//pw_log/rust:pw_log",

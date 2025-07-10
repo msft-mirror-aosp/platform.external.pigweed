@@ -49,28 +49,38 @@ class PendingWrite {
   PendingWrite& operator=(const PendingWrite&) = delete;
 
   constexpr PendingWrite(PendingWrite&& other)
-      : channel_(cpp20::exchange(other.channel_, nullptr)) {}
+      : channel_(other.channel_),
+        num_packets_(cpp20::exchange(other.num_packets_, 0u)) {}
   constexpr PendingWrite& operator=(PendingWrite&& other) {
-    channel_ = cpp20::exchange(other.channel_, nullptr);
+    channel_ = other.channel_;
+    num_packets_ = cpp20::exchange(other.num_packets_, 0u);
   }
 
-  ~PendingWrite() { PW_ASSERT(channel_ == nullptr); }
+  ~PendingWrite() {
+    // TODO: b/421961717 - Consider allowing staged writes to be discarded
+    PW_ASSERT(num_packets_ == 0u);
+  }
 
   /// Enqueues a packet to be written. Must be called before the `PendingWrite`
   /// goes out of scope.
+  ///
+  /// `Stage` may be called up to `num_packets()` times.
   void Stage(Packet&& packet) {
-    PW_ASSERT(channel_ != nullptr);
+    PW_ASSERT(num_packets_ > 0u);
     channel_->DoStageWrite(std::move(packet));
-    channel_ = nullptr;
+    num_packets_ -= 1;
   }
+
+  size_t num_packets() const { return num_packets_; }
 
  private:
   friend class AnyPacketChannel<Packet>;
 
-  constexpr explicit PendingWrite(AnyPacketChannel<Packet>& channel)
-      : channel_(&channel) {}
+  constexpr PendingWrite(AnyPacketChannel<Packet>& channel, size_t num_packets)
+      : channel_(&channel), num_packets_(num_packets) {}
 
   AnyPacketChannel<Packet>* channel_;
+  size_t num_packets_;
 };
 
 /// @defgroup pw_channel_packets
@@ -185,6 +195,14 @@ class PacketChannel {
  protected:
   // @copydoc AnyPacketChannel::GetAvailableWrites
   uint16_t GetAvailableWrites() const;
+
+ private:
+  static_assert(internal::PacketChannelPropertiesAreValid<kProperties...>());
+
+  template <typename>
+  friend class AnyPacketChannel;
+
+  explicit constexpr PacketChannel() = default;
 };
 
 /// `PacketChannel` that optionally supports reading and writing. Generally,
@@ -348,6 +366,9 @@ class AnyPacketChannel : private PacketChannel<T, kReadable>,
   /// Ready(), regardless of the status.
   void set_read_write_closed() { read_write_open_ = 0; }
 
+  /// Allows implementations to access the write waker.
+  async2::Waker& write_waker() { return write_waker_; }
+
  private:
   template <typename, Property...>
   friend class PacketChannel;  // Allow static_casts to AnyPacketChannel
@@ -417,6 +438,8 @@ class Implement<PacketChannel<Packet, kProperties...>>
 template <typename Packet>
 async2::Poll<Result<PendingWrite<Packet>>>
 AnyPacketChannel<Packet>::PendReadyToWrite(async2::Context& cx, size_t num) {
+  PW_DASSERT(num > 0u);
+
   if (!is_write_open()) {
     return Status::FailedPrecondition();
   }
@@ -429,7 +452,7 @@ AnyPacketChannel<Packet>::PendReadyToWrite(async2::Context& cx, size_t num) {
   if (!ready.ok()) {
     return ready;
   }
-  return Result(PendingWrite<Packet>(*this));
+  return Result(PendingWrite<Packet>(*this, num));
 }
 
 template <typename Packet>
@@ -492,20 +515,20 @@ async2::Poll<Status> AnyPacketChannel<Packet>::PendClose(async2::Context& cx) {
 template <typename Packet, Property... kProperties>
 constexpr bool PacketChannel<Packet, kProperties...>::is_read_open() const {
   return readable() &&
-         static_cast<const AnyPacketChannel<Packet>&>(*this).is_read_open();
+         static_cast<const AnyPacketChannel<Packet>*>(this)->is_read_open();
 }
 
 template <typename Packet, Property... kProperties>
 constexpr bool PacketChannel<Packet, kProperties...>::is_write_open() const {
   return writable() &&
-         static_cast<const AnyPacketChannel<Packet>&>(*this).is_write_open();
+         static_cast<const AnyPacketChannel<Packet>*>(this)->is_write_open();
 }
 
 template <typename Packet, Property... kProperties>
 async2::Poll<Result<Packet>> PacketChannel<Packet, kProperties...>::PendRead(
     async2::Context& cx) {
   static_assert(readable(), "PendRead may only be called on readable channels");
-  return static_cast<AnyPacketChannel<Packet>&>(*this).PendRead(cx);
+  return static_cast<AnyPacketChannel<Packet>*>(this)->PendRead(cx);
 }
 
 template <typename Packet, Property... kProperties>
@@ -514,7 +537,7 @@ PacketChannel<Packet, kProperties...>::PendReadyToWrite(async2::Context& cx,
                                                         size_t num) {
   static_assert(writable(),
                 "PendReadyToWrite may only be called on writable channels");
-  return static_cast<AnyPacketChannel<Packet>&>(*this).PendReadyToWrite(cx,
+  return static_cast<AnyPacketChannel<Packet>*>(this)->PendReadyToWrite(cx,
                                                                         num);
 }
 template <typename Packet, Property... kProperties>
@@ -522,7 +545,7 @@ async2::Poll<> PacketChannel<Packet, kProperties...>::PendWrite(
     async2::Context& cx) {
   static_assert(writable(),
                 "PendWrite may only be called on writable channels");
-  return static_cast<AnyPacketChannel<Packet>&>(*this).PendWrite(cx);
+  return static_cast<AnyPacketChannel<Packet>*>(this)->PendWrite(cx);
 }
 template <typename Packet, Property... kProperties>
 uint16_t PacketChannel<Packet, kProperties...>::GetAvailableWrites() const {
@@ -536,7 +559,7 @@ void PacketChannel<Packet, kProperties...>::SetAvailableWrites(
     uint16_t available_writes) {
   static_assert(writable(),
                 "SetAvailableWrites may only be called on writable channels");
-  return static_cast<AnyPacketChannel<Packet>&>(*this).SetAvailableWrites(
+  return static_cast<AnyPacketChannel<Packet>*>(this)->SetAvailableWrites(
       available_writes);
 }
 template <typename Packet, Property... kProperties>
@@ -544,14 +567,14 @@ void PacketChannel<Packet, kProperties...>::AcknowledgeWrites(
     uint16_t num_completed) {
   static_assert(writable(),
                 "AcknowledgeWrites may only be called on writable channels");
-  return static_cast<AnyPacketChannel<Packet>&>(*this).AcknowledgeWrites(
+  return static_cast<AnyPacketChannel<Packet>*>(this)->AcknowledgeWrites(
       num_completed);
 }
 
 template <typename Packet, Property... kProperties>
 async2::Poll<Status> PacketChannel<Packet, kProperties...>::PendClose(
     async2::Context& cx) {
-  return static_cast<AnyPacketChannel<Packet>&>(*this).PendClose(cx);
+  return static_cast<AnyPacketChannel<Packet>*>(this)->PendClose(cx);
 }
 
 namespace internal {
@@ -585,6 +608,11 @@ class BasePacketChannelImpl : public AnyPacketChannel<Packet> {
 
   constexpr BasePacketChannelImpl()
       : AnyPacketChannel<Packet>((static_cast<uint8_t>(kProperties) | ...)) {}
+};
+
+template <typename Packet, Property... kProperties>
+class PacketChannelImpl {
+  static_assert(PacketChannelPropertiesAreValid<kProperties...>());
 };
 
 // PacketChannelImpl specialization with no write support.

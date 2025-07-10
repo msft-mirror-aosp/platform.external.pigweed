@@ -54,7 +54,12 @@ pw_cc_test(
 
 pw_facade(
     name = "dispatcher",
-    srcs = ["dispatcher_base.cc"],
+    srcs = [
+        "context.cc",
+        "dispatcher_base.cc",
+        "task.cc",
+        "waker.cc",
+    ],
     hdrs = [
         "public/pw_async2/context.h",
         "public/pw_async2/dispatcher.h",
@@ -540,12 +545,15 @@ sphinx_docs_library(
     srcs = [
         "backends.rst",
         "code_size.rst",
+        "design.rst",
         "docs.rst",
         "guides.rst",
         "public/pw_async2/coro.h",
         "reference.rst",
         "//pw_async2/examples:docs",
         "//pw_async2/size_report:full_size_report",
+        "//pw_async2/size_report:once_sender_size_report",
+        "//pw_async2/size_report:utilities_size_report",
     ],
     prefix = "pw_async2/",
     target_compatible_with = incompatible_with_mcu(),

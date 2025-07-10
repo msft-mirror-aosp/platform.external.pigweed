@@ -68,6 +68,41 @@ py_library(
     deps = [
         "//pw_cli/py:pw_cli",
         "//pw_config_loader/py:pw_config_loader",
+    ],
+)
+
+py_library(
+    name = "workflows",
+    srcs = [
+        "pw_build/workflows/bazel_driver.py",
+        "pw_build/workflows/build_driver.py",
+        "pw_build/workflows/launcher.py",
+        "pw_build/workflows/manager.py",
+        "pw_build/workflows/private/validator.py",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":pw_build",
+        ":pw_project_builder",
+        "//pw_build:build_driver_proto_py_pb2",
+        "//pw_build:workflows_proto_py_pb2",
+        "//pw_cli/py:pw_cli",
+        "//pw_config_loader/py:pw_config_loader",
+    ],
+)
+
+# This is separate to isolate pw_presubmit-related dependencies, which tend to
+# rely on pw_env_setup, which tends to be leaky when used from Bazel.
+py_library(
+    name = "presubmit_runner",
+    srcs = [
+        "pw_build/project_builder_presubmit_runner.py",
+    ],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":pw_build",
+        "//pw_cli/py:pw_cli",
         "//pw_presubmit/py:pw_presubmit",
     ],
 )
@@ -79,7 +114,6 @@ py_library(
         "pw_build/project_builder_argparse.py",
         "pw_build/project_builder_context.py",
         "pw_build/project_builder_prefs.py",
-        "pw_build/project_builder_presubmit_runner.py",
     ],
     imports = ["."],
     deps = [
@@ -101,15 +135,41 @@ pw_py_binary(
 )
 
 pw_py_binary(
+    name = "bazel_build_driver",
+    srcs = [
+        "pw_build/workflows/bazel_driver.py",
+    ],
+    main = "pw_build/workflows/bazel_driver.py",
+    deps = [
+        ":pw_build",
+        "//pw_build:build_driver_proto_py_pb2",
+        "//pw_build:workflows_proto_py_pb2",
+    ],
+)
+
+pw_py_binary(
+    name = "workflows_launcher",
+    srcs = [
+        "pw_build/workflows/launcher.py",
+    ],
+    main = "pw_build/workflows/launcher.py",
+    deps = [
+        ":workflows",
+    ],
+)
+
+pw_py_binary(
     name = "copy_and_patch",
     srcs = ["pw_build/copy_and_patch.py"],
     deps = ["@pigweed_python_packages//patch"],
 )
 
 pw_py_binary(
-    name = "pigweed_upstream_build",
-    srcs = ["pw_build/pigweed_upstream_build.py"],
+    name = "pigweed_build",
+    srcs = ["pigweed_upstream_build/main.py"],
+    main = "pigweed_upstream_build/main.py",
     deps = [
+        ":presubmit_runner",
         ":pw_project_builder",
         "//pw_watch/py:pw_watch",
     ],
@@ -295,11 +355,60 @@ pw_py_test(
     ],
 )
 
+pw_py_test(
+    name = "workflows_launcher_test",
+    size = "small",
+    srcs = [
+        "workflows_launcher_test.py",
+    ],
+    deps = [
+        ":workflows",
+        "//pw_build:workflows_proto_py_pb2",
+    ],
+)
+
+pw_py_test(
+    name = "bazel_driver_test",
+    size = "small",
+    srcs = [
+        "bazel_driver_test.py",
+    ],
+    deps = [
+        ":workflows",
+        "//pw_build:build_driver_proto_py_pb2",
+    ],
+)
+
+pw_py_test(
+    name = "workflows_validator_test",
+    size = "small",
+    srcs = [
+        "workflows_validator_test.py",
+    ],
+    deps = [
+        ":workflows",
+        "//pw_build:build_driver_proto_py_pb2",
+    ],
+)
+
+pw_py_test(
+    name = "workflows_manager_test",
+    size = "small",
+    srcs = [
+        "workflows_manager_test.py",
+    ],
+    deps = [
+        ":workflows",
+        "//pw_build:build_driver_proto_py_pb2",
+    ],
+)
+
 sphinx_docs_library(
     name = "docs",
     srcs = [
         "gn_tests/BUILD.gn",
         "pw_build/generate_python_wheel_cache.py",
+        "workflows_launcher_test.py",
     ],
     target_compatible_with = incompatible_with_mcu(),
 )

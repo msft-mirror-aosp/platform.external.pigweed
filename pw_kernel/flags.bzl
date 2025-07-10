@@ -1,4 +1,4 @@
-# Copyright 2024 The Pigweed Authors
+# Copyright 2025 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -19,9 +19,8 @@ load("@bazel_skylib//lib:dicts.bzl", "dicts")
 KERNEL_COMMON_FLAGS = {
     "@pigweed//pw_kernel/lib/pw_assert:debug_assertions": True,
     # Default to using the tokenized backend.  Platforms can overwrite this value
-    "@pigweed//pw_log/rust:pw_log_backend": "//pw_kernel/subsys/console:pw_log_backend_tokenized",
+    "@pigweed//pw_log/rust:pw_log_backend": "@pigweed//pw_kernel/subsys/console:pw_log_backend_tokenized",
     "@pigweed//pw_toolchain:cortex-m_toolchain_kind": "clang",
-    "@rules_rust//rust/toolchain/channel": "nightly",
 }
 
 KERNEL_DEVICE_COMMON_FLAGS = dicts.add(KERNEL_COMMON_FLAGS, {
@@ -34,11 +33,11 @@ KERNEL_DEVICE_COMMON_FLAGS = dicts.add(KERNEL_COMMON_FLAGS, {
 })
 
 KERNEL_TEST_RUSTC_FLAGS = select({
-    "//pw_kernel:tests_enabled_setting": ["--cfg=test"],
+    "@pigweed//pw_kernel:tests_enabled_setting": ["--cfg=test"],
     "//conditions:default": [],
 })
 
 KERNEL_TEST_DEPS = select({
-    "//pw_kernel:tests_enabled_setting": ["//pw_kernel/lib/unittest"],
+    "@pigweed//pw_kernel:tests_enabled_setting": ["@pigweed//pw_kernel/lib/unittest"],
     "//conditions:default": [],
 })

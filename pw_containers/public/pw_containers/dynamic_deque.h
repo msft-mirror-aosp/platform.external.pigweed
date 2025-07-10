@@ -37,12 +37,13 @@ namespace pw {
 /// - Provides the `std::deque` API, but adds `try_*` versions of
 ///   operations that crash on allocation failure.
 ///   - `assign()` & `try_assign()`.
-///   - `push_front()` & `try_push_front`, `push_back()` & `try_push_back`
-///   - `emplace_front()` & `try_emplace_front`, `emplace_back()` &
-///   `try_emplace_back`
+///   - `push_front()` & `try_push_front()`, `push_back()` & `try_push_back()`
+///   - `emplace_front()` & `try_emplace_front()`, `emplace_back()` &
+///   `try_emplace_back()`
 ///   - `resize()` & `try_resize()`.
-/// - Offers `reserve()`/`try_reserve()` and `shrink_to_fit()` to manage memory
-///   usage.
+/// - Offers `reserve()`/`try_reserve()`,
+///   `reserve_exact()`/`try_reserve_exact()``, and `shrink_to_fit()` to manage
+///   memory usage.
 /// - Never allocates in the constructor. `constexpr` constructible.
 /// - Compact representation when used with a `size_type` of `uint8_t` or
 ///   `uint16_t`.
@@ -96,19 +97,71 @@ class DynamicDeque : public containers::internal::GenericDeque<
 
   // Provide try_* versions of functions that return false if allocation fails.
   using Base::try_assign;
+  using Base::try_emplace;
   using Base::try_emplace_back;
   using Base::try_emplace_front;
+  using Base::try_insert;
   using Base::try_push_back;
   using Base::try_push_front;
   using Base::try_resize;
 
-  /// Attempts to change `capacity()` to `new_capacity`. If `new_capacity` is
-  /// larger than `capacity()`, attempts to allocate memory and returns whether
-  /// it succeeded. Otherwise, does nothing and returns `true`.
+  // The GenericDeque's input iterator insert implementation emplaces items one
+  // at a time, which is inefficient. For DynamicDeque, use a more efficient
+  // implementation that inserts all items into a temporary DynamicDeque first.
+  template <typename InputIt,
+            typename = containers::internal::EnableIfInputIterator<InputIt>>
+  iterator insert(const_iterator pos, InputIt first, InputIt last);
+
+  iterator insert(const_iterator pos, const value_type& value) {
+    return Base::insert(pos, value);
+  }
+
+  iterator insert(const_iterator pos, value_type&& value) {
+    return Base::insert(pos, std::move(value));
+  }
+
+  iterator insert(const_iterator pos,
+                  size_type count,
+                  const value_type& value) {
+    return Base::insert(pos, count, value);
+  }
+
+  iterator insert(const_iterator pos, std::initializer_list<value_type> ilist) {
+    return Base::insert(pos, ilist);
+  }
+
+  /// Attempts to increase `capacity()` to at least `new_capacity`, allocating
+  /// memory if needed. Does nothing if `new_capacity` is less than or equal to
+  /// `capacity()`. Iterators are invalidated if allocation occurs.
+  ///
+  /// `try_reserve` may increase the capacity to be larger than `new_capacity`,
+  /// with the same behavior as if the size were increased to `new_capacity`.
+  /// To increase the capacity to a precise value, use `try_reserve_exact()`.
+  ///
+  /// @returns true if allocation succeeded or `capacity()` was already large
+  /// enough; false if allocation failed
   [[nodiscard]] bool try_reserve(size_type new_capacity);
 
-  /// Changes `capacity()` to `new_capacity`. Crashes on failure.
+  /// Increases `capacity()` to at least `new_capacity`. Crashes on failure.
   void reserve(size_type new_capacity) { PW_ASSERT(try_reserve(new_capacity)); }
+
+  /// Attempts to increase `capacity()` to `new_capacity`, allocating memory if
+  /// needed. Does nothing if `new_capacity` is less than or equal to
+  /// `capacity()`.
+  ///
+  /// This differs from `try_reserve()`, which may reserve space for more than
+  /// `new_capacity`.
+  ///
+  /// @returns true if allocation succeeded or `capacity()` was already large
+  /// enough; false if allocation failed
+  [[nodiscard]] bool try_reserve_exact(size_type new_capacity) {
+    return new_capacity <= Base::capacity() || IncreaseCapacity(new_capacity);
+  }
+
+  /// Increases `capacity()` to exactly `new_capacity`. Crashes on failure.
+  void reserve_exact(size_type new_capacity) {
+    PW_ASSERT(try_reserve_exact(new_capacity));
+  }
 
   /// Attempts to reduce `capacity()` to `size()`. Not guaranteed to succeed.
   void shrink_to_fit();
@@ -140,6 +193,8 @@ class DynamicDeque : public containers::internal::GenericDeque<
     return std::launder(reinterpret_cast<const_pointer>(buffer_));
   }
 
+  [[nodiscard]] bool IncreaseCapacity(size_type new_capacity);
+
   size_type GetNewCapacity(const size_type new_size) {
     // For the initial allocation, allocate at least 4 words worth of items.
     if (Base::capacity() == 0) {
@@ -147,12 +202,7 @@ class DynamicDeque : public containers::internal::GenericDeque<
                       new_size);
     }
     // Double the capacity. May introduce other allocation policies later.
-    return mul_sat(Base::capacity(), size_type{2});
-  }
-
-  // Called by the base when the capacity must increase to accommodate the size.
-  bool GrowCapacityToFit(const size_type new_size) {
-    return try_reserve(GetNewCapacity(new_size));
+    return std::max(mul_sat(Base::capacity(), size_type{2}), new_size);
   }
 
   bool ReallocateBuffer(size_type new_capacity);
@@ -183,10 +233,14 @@ DynamicDeque<ValueType, SizeType>::~DynamicDeque() {
 
 template <typename ValueType, typename SizeType>
 bool DynamicDeque<ValueType, SizeType>::try_reserve(size_type new_capacity) {
-  if (new_capacity <= Base::capacity()) {
-    return true;  // Cannot shrink the container with reserve.
-  }
+  return new_capacity <= Base::capacity() ||
+         IncreaseCapacity(GetNewCapacity(new_capacity)) ||
+         IncreaseCapacity(new_capacity);
+}
 
+template <typename ValueType, typename SizeType>
+bool DynamicDeque<ValueType, SizeType>::IncreaseCapacity(
+    size_type new_capacity) {
   // Try resizing the existing array. Only works if inserting at the end.
   if (buffer_ != nullptr && Base::CanExtendBuffer() &&
       allocator_->Resize(buffer_, new_capacity * sizeof(value_type))) {
@@ -251,6 +305,29 @@ bool DynamicDeque<ValueType, SizeType>::ReallocateBuffer(
 
   Base::HandleNewBuffer(new_capacity);
   return true;
+}
+
+template <typename ValueType, typename SizeType>
+template <typename InputIt, typename>
+typename DynamicDeque<ValueType, SizeType>::iterator
+DynamicDeque<ValueType, SizeType>::insert(const_iterator pos,
+                                          InputIt first,
+                                          InputIt last) {
+  // Can't safely check std::distance for InputIterator. Use a workaround.
+  if constexpr (std::is_same_v<std::input_iterator_tag,
+                               typename std::iterator_traits<
+                                   InputIt>::iterator_category>) {
+    // Read into a temporary deque so the items can be counted. Then, move into
+    // this deque in one operation. This way, existing items are shifted once to
+    // their final positions, instead of shifting N times for repeated inserts.
+    DynamicDeque temp(*allocator_);
+    temp.assign(first, last);
+    return Base::insert(pos,
+                        std::make_move_iterator(temp.data()),
+                        std::make_move_iterator(temp.data() + temp.size()));
+  } else {  // Use the efficient base implementation for forward iterators.
+    return Base::insert(pos, first, last);
+  }
 }
 
 }  // namespace pw

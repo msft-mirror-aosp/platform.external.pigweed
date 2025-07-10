@@ -61,6 +61,7 @@ pw_facade(
     tags = ["noclangtidy"],
     deps = [
         ":config",
+        "//pw_numeric:checked_arithmetic",
         "//pw_preprocessor",
     ],
 )
@@ -232,13 +233,25 @@ pw_cc_test(
     ],
 )
 
+# DOCSTAG: [contributing-docs-examples]
+pw_cc_test(
+    name = "examples",
+    srcs = ["examples.cc"],
+    deps = [":check"],
+)
+
 sphinx_docs_library(
     name = "docs",
     srcs = [
+        "BUILD.bazel",
+        "BUILD.gn",
+        "CMakeLists.txt",
         "assert_test.cc",
         "backends.rst",
         "docs.rst",
+        "examples.cc",
     ],
     prefix = "pw_assert/",
     target_compatible_with = incompatible_with_mcu(),
 )
+# DOCSTAG: [contributing-docs-examples]

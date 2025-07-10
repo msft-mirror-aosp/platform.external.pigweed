@@ -80,11 +80,9 @@ pw_add_test(pw_rpc_transport.packet_buffer_queue_test
     pw_rpc_transport
 )
 
-pw_add_library(pw_rpc_transport.local_rpc_egress STATIC
+pw_add_library(pw_rpc_transport.local_rpc_egress INTERFACE
   HEADERS
     public/pw_rpc_transport/local_rpc_egress.h
-  SOURCES
-    local_rpc_egress.cc
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
@@ -96,6 +94,18 @@ pw_add_library(pw_rpc_transport.local_rpc_egress STATIC
     pw_status
     pw_sync.thread_notification
     pw_thread.thread_core
+)
+
+pw_add_library(pw_rpc_transport.local_rpc_egress_logging_metric_tracker STATIC
+  HEADERS
+    public/pw_rpc_transport/local_rpc_egress_logging_metric_tracker.h
+  SOURCES
+    local_rpc_egress_logging_metric_tracker.cc
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_metric
+    pw_rpc_transport.local_rpc_egress
   PRIVATE_DEPS
     pw_log
 )
@@ -105,6 +115,7 @@ pw_add_test(pw_rpc_transport.local_rpc_egress_test
     local_rpc_egress_test.cc
   PRIVATE_DEPS
     pw_rpc_transport.local_rpc_egress
+    pw_rpc_transport.local_rpc_egress_logging_metric_tracker
     pw_rpc_transport.rpc_transport
     pw_rpc_transport.service_registry
     pw_rpc_transport.test_protos.pwpb_rpc
@@ -178,19 +189,26 @@ pw_add_test(pw_rpc_transport.simple_framing_test
     pw_rpc_transport
 )
 
-pw_add_library(pw_rpc_transport.egress_ingress STATIC
+pw_add_library(pw_rpc_transport.egress_ingress INTERFACE
   HEADERS
     public/pw_rpc_transport/egress_ingress.h
-  SOURCES
-    egress_ingress.cc
   PUBLIC_DEPS
     pw_rpc_transport.hdlc_framing
     pw_rpc_transport.simple_framing
     pw_bytes
-    pw_metric
     pw_rpc.client
     pw_status
     pw_sync.mutex
+)
+
+pw_add_library(pw_rpc_transport.egress_ingress_logging_metric_tracker STATIC
+  HEADERS
+    public/pw_rpc_transport/egress_ingress_logging_metric_tracker.h
+  SOURCES
+    egress_ingress_logging_metric_tracker.cc
+  PUBLIC_DEPS
+    pw_rpc_transport.egress_ingress
+    pw_metric
   PRIVATE_DEPS
     pw_log
 )
@@ -200,6 +218,7 @@ pw_add_test(pw_rpc_transport.egress_ingress_test
     egress_ingress_test.cc
   PRIVATE_DEPS
     pw_rpc_transport.egress_ingress
+    pw_rpc_transport.egress_ingress_logging_metric_tracker
     pw_rpc_transport.service_registry
     pw_rpc_transport.test_protos.pwpb_rpc
     pw_bytes

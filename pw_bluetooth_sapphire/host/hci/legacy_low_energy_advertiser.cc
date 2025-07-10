@@ -180,13 +180,30 @@ void LegacyLowEnergyAdvertiser::StartAdvertising(
   if (!hci_cmd_runner().IsReady()) {
     bt_log(DEBUG,
            "hci-le",
-           "canceling advertising start/stop sequence due to new advertising "
-           "request");
-    // Abort any remaining commands from the current stop sequence. If we got
-    // here then the controller MUST receive our request to disable advertising,
-    // so the commands that we send next will overwrite the current advertising
-    // settings and re-enable it.
-    hci_cmd_runner().Cancel();
+           "hci cmd runner not ready, queing advertisement commands for now");
+
+    AdvertisingData copied_data;
+    data.Copy(&copied_data);
+
+    AdvertisingData copied_scan_rsp;
+    scan_rsp.Copy(&copied_scan_rsp);
+
+    op_queue_.push([this,
+                    address_copy = address,
+                    data_copy = std::move(copied_data),
+                    scan_rsp_copy = std::move(copied_scan_rsp),
+                    options_copy = options,
+                    conn_cb = std::move(connect_callback),
+                    result_cb = std::move(result_callback)]() mutable {
+      StartAdvertising(address_copy,
+                       data_copy,
+                       scan_rsp_copy,
+                       options_copy,
+                       std::move(conn_cb),
+                       std::move(result_cb));
+    });
+
+    return;
   }
 
   starting_ = true;
@@ -273,15 +290,19 @@ void LegacyLowEnergyAdvertiser::StartAdvertising(
                            std::move(result_cb_wrapper));
 }
 
-void LegacyLowEnergyAdvertiser::StopAdvertising() {
-  LowEnergyAdvertiser::StopAdvertising();
+void LegacyLowEnergyAdvertiser::StopAdvertising(
+    fit::function<void(Result<>)> result_cb) {
+  StopAdvertisingInternal(std::move(result_cb));
   ResetAdvertisingState();
 }
 
 void LegacyLowEnergyAdvertiser::StopAdvertising(
-    AdvertisementId advertisement_id) {
+    AdvertisementId advertisement_id, fit::function<void(Result<>)> result_cb) {
   if (!active_advertisement_id_ ||
       active_advertisement_id_.value() != advertisement_id) {
+    if (result_cb) {
+      result_cb(ToResult(HostError::kInvalidParameters));
+    }
     return;
   }
 
@@ -289,7 +310,7 @@ void LegacyLowEnergyAdvertiser::StopAdvertising(
     hci_cmd_runner().Cancel();
   }
 
-  LowEnergyAdvertiser::StopAdvertisingInternal(advertisement_id);
+  StopAdvertisingInternal(advertisement_id, std::move(result_cb));
   ResetAdvertisingState();
 }
 
@@ -321,6 +342,16 @@ void LegacyLowEnergyAdvertiser::ResetAdvertisingState() {
   starting_ = false;
   local_address_ = DeviceAddress();
   active_advertisement_id_.reset();
+}
+
+void LegacyLowEnergyAdvertiser::OnCurrentOperationComplete() {
+  if (op_queue_.empty()) {
+    return;  // no more queued operations so nothing to do
+  }
+
+  fit::closure closure = std::move(op_queue_.front());
+  op_queue_.pop();
+  closure();
 }
 
 }  // namespace bt::hci

@@ -67,6 +67,7 @@ pw_python_package("py") {
   tests = [
     "bazel_checks_test.py",
     "bazel_parser_test.py",
+    "block_submission_test.py",
     "context_test.py",
     "cpp_checks_test.py",
     "format_core_test.py",
@@ -81,6 +82,7 @@ pw_python_package("py") {
   ]
 
   python_deps = [
+    "$dir_pw_build/py",
     "$dir_pw_cli/py",
     "$dir_pw_env_setup/py",
     "$dir_pw_package/py",

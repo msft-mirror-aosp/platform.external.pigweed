@@ -31,6 +31,9 @@ using test::CopyOnly;
 using test::Counter;
 using test::MoveOnly;
 
+static_assert(!std::is_constructible_v<pw::InlineDeque<int>>,
+              "Cannot construct generic capacity container");
+
 // Instantiate shared deque tests.
 template <size_t kCapacity>
 class CommonTest
@@ -43,10 +46,10 @@ class CommonTest
   };
 };
 
-using InlineDequeCommonTest5 = CommonTest<5>;
+using InlineDequeCommonTest9 = CommonTest<9>;
 using InlineDequeCommonTest16 = CommonTest<16>;
 
-PW_CONTAINERS_COMMON_DEQUE_TESTS(InlineDequeCommonTest5);
+PW_CONTAINERS_COMMON_DEQUE_TESTS(InlineDequeCommonTest9);
 PW_CONTAINERS_COMMON_DEQUE_TESTS(InlineDequeCommonTest16);
 
 TEST(InlineDeque, ZeroCapacity) {
