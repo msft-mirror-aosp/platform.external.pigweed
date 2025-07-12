@@ -12,18 +12,12 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_async2/context.h"
+#include "pw_bluetooth_proxy/comms2/proxy.h"
 
-#include <mutex>
+#include "pw_status/try.h"
 
-namespace pw::async2 {
+namespace pw::bluetooth::proxy {
 
-void Context::ReEnqueue() {
-  Waker waker;
-  // The new waker will be immediately woken and removed, so its wait reason
-  // does not matter.
-  std::ignore = internal::CloneWaker(*waker_, waker);
-  std::move(waker).Wake();
-}
+// TODO: b/430175134 - Implement L2CAP connection handling.
 
-}  // namespace pw::async2
+}  // namespace pw::bluetooth::proxy
