@@ -12,14 +12,14 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-alias(
-    name = "docs",
-    actual = "//docs/sphinx:docs",
-    tags = ["manual"],
-)
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
-alias(
-    name = "serve",
-    actual = "//docs/sphinx:docs.serve",
-    tags = ["manual"],
+package(default_visibility = ["//pw_multibuf:__subpackages__"])
+
+licenses(["notice"])
+
+cc_library(
+    name = "protocol",
+    hdrs = ["public/pw_multibuf/examples/protocol.h"],
+    strip_include_prefix = "public",
 )

@@ -548,15 +548,14 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
         build_recipes: List of build recipes.
         jobs: The number of jobs bazel, make, and ninja should use by passing
             ``-j`` to each.
+        banners: Print the project banner at the start of each build.
         keep_going: If True keep going flags are passed to bazel and ninja with
             the ``-k`` option.
-        banners: Print the project banner at the start of each build.
-        allow_progress_bars: If False progress bar output will be disabled.
-        log_build_steps: If True all build step lines will be logged to the
-            screen and logfiles. Default: False.
-        colors: Print ANSI colors to stdout and logfiles
-        log_level: Optional log_level, defaults to logging.INFO.
-        root_logfile: Optional root logfile.
+        abort_callback: A callback that is called if a build is aborted.
+        execute_command: The underlying command to use to execute build steps.
+        charset: A ProjectBuilderCharset that controls visual elements of the
+            terminal output.
+        colors: Forcibly enables/disables ANSI colors in stdout and logfiles.
         separate_build_file_logging: If True separate logfiles will be created
             per build recipe. The location of each file depends on if a
             ``root_logfile`` is provided. If a root logfile is used each build
@@ -566,8 +565,15 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
         send_recipe_logs_to_root: If True will send all build recipie output to
             the root logger. This only makes sense to use if the builds are run
             in serial.
+        root_logger: The logging.Logger that will be parent to all build recipe
+            logging.
+        root_logfile: Optional root logfile.
+        log_level: Optional log_level, defaults to logging.INFO.
+        allow_progress_bars: If False progress bar output will be disabled.
         use_verbatim_error_log_formatting: Use a blank log format when printing
             errors from sub builds to the root logger.
+        log_build_steps: If True all build step lines will be logged to the
+            screen and logfiles. Default: False.
         source_path: Path to the root of the source files. Defaults to the
             current working directory. If running under bazel this will be set
             to the $BUILD_WORKSPACE_DIRECTORY environment variable. Otherwise
@@ -921,8 +927,10 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
     def print_pass_fail_banner(
         self,
         cancelled: bool = False,
-        logger: logging.Logger = _LOG,
+        logger: logging.Logger | None = None,
     ) -> None:
+        if logger is None:
+            logger = self.root_logger
         # Check conditions where banners should not be shown:
         # Banner flag disabled.
         if not self.banners:
@@ -930,7 +938,7 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
         # If restarting or interrupted.
         if BUILDER_CONTEXT.interrupted():
             if BUILDER_CONTEXT.ctrl_c_pressed:
-                _LOG.info(
+                logger.info(
                     self.color.yellow('Exited due to keyboard interrupt.')
                 )
             return
@@ -949,9 +957,11 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
     def print_build_summary(
         self,
         cancelled: bool = False,
-        logger: logging.Logger = _LOG,
+        logger: logging.Logger | None = None,
     ) -> None:
         """Print build status summary table."""
+        if logger is None:
+            logger = self.root_logger
 
         build_descriptions = []
         build_status = []
@@ -986,106 +996,79 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
             logger.info(' ║')
             logger.info(" ╚════════════════════════════════════")
 
+    def run_recipe(self, index: int, cfg: BuildRecipe, env) -> bool:
+        if BUILDER_CONTEXT.interrupted():
+            return False
+        if not cfg.enabled:
+            return False
 
-def run_recipe(
-    index: int, project_builder: ProjectBuilder, cfg: BuildRecipe, env
-) -> bool:
-    if BUILDER_CONTEXT.interrupted():
-        return False
-    if not cfg.enabled:
-        return False
+        num_builds = len(self.build_recipes)
+        index_message = f'[{index}/{num_builds}]'
 
-    num_builds = len(project_builder)
-    index_message = f'[{index}/{num_builds}]'
+        result = False
 
-    result = False
+        log_build_recipe_start(index_message, self, cfg, self.root_logger)
 
-    log_build_recipe_start(index_message, project_builder, cfg)
+        result = self.run_build(cfg, env, index_message=index_message)
 
-    result = project_builder.run_build(cfg, env, index_message=index_message)
+        log_build_recipe_finish(index_message, self, cfg, self.root_logger)
 
-    log_build_recipe_finish(index_message, project_builder, cfg)
+        return result
 
-    return result
+    def run_builds(self, workers: int = 1) -> int:
+        """Execute all build recipe steps.
 
+        Args:
+            workers: The number of build recipes that should be run in
+                parallel. Defaults to 1 or no parallel execution.
 
-def run_builds(project_builder: ProjectBuilder, workers: int = 1) -> int:
-    """Execute all build recipe steps.
-
-    Args:
-      project_builder: A ProjectBuilder instance
-      workers: The number of build recipes that should be run in
-        parallel. Defaults to 1 or no parallel execution.
-
-    Returns:
-      1 for a failed build, 0 for success.
-    """
-    num_builds = len(project_builder)
-    _LOG.info('Starting build with %d directories', num_builds)
-    if project_builder.default_logfile:
-        _LOG.info(
-            '%s %s',
-            project_builder.color.blue('Root logfile:'),
-            project_builder.default_logfile.resolve(),
-        )
-
-    env = os.environ.copy()
-
-    # Print status before starting
-    if not project_builder.should_use_progress_bars():
-        project_builder.print_build_summary()
-    project_builder.print_pass_fail_banner()
-
-    if workers > 1 and not project_builder.separate_build_file_logging:
-        _LOG.warning(
-            project_builder.color.yellow(
-                'Running in parallel without --separate-logfiles; All build '
-                'output will be interleaved.'
+        Returns:
+        1 for a failed build, 0 for success.
+        """
+        num_builds = len(self.build_recipes)
+        self.root_logger.info('Starting build with %d directories', num_builds)
+        if self.default_logfile:
+            self.root_logger.info(
+                '%s %s',
+                self.color.blue('Root logfile:'),
+                self.default_logfile.resolve(),
             )
-        )
 
-    BUILDER_CONTEXT.set_project_builder(project_builder)
-    BUILDER_CONTEXT.set_building()
+        env = os.environ.copy()
 
-    def _cleanup() -> None:
-        if not project_builder.should_use_progress_bars():
-            project_builder.print_build_summary()
-        project_builder.print_pass_fail_banner()
-        project_builder.flush_log_handlers()
-        BUILDER_CONTEXT.set_idle()
-        BUILDER_CONTEXT.exit_progress()
+        # Print status before starting
+        if not self.should_use_progress_bars():
+            self.print_build_summary()
+        self.print_pass_fail_banner()
 
-    if workers == 1:
-        # TODO(tonymd): Try to remove this special case. Using
-        # ThreadPoolExecutor when running in serial (workers==1) currently
-        # breaks Ctrl-C handling. Build processes keep running.
-        try:
-            if project_builder.should_use_progress_bars():
-                BUILDER_CONTEXT.add_progress_bars()
-            for i, cfg in enumerate(project_builder, start=1):
-                run_recipe(i, project_builder, cfg, env)
-        # Ctrl-C on Unix generates KeyboardInterrupt
-        # Ctrl-Z on Windows generates EOFError
-        except (KeyboardInterrupt, EOFError):
-            _exit_due_to_interrupt()
-        finally:
-            _cleanup()
-
-    else:
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=workers
-        ) as executor:
-            futures = []
-            for i, cfg in enumerate(project_builder, start=1):
-                futures.append(
-                    executor.submit(run_recipe, i, project_builder, cfg, env)
+        if workers > 1 and not self.separate_build_file_logging:
+            self.root_logger.warning(
+                self.color.yellow(
+                    'Running in parallel without --separate-logfiles; All '
+                    'build output will be interleaved.'
                 )
+            )
 
+        BUILDER_CONTEXT.set_project_builder(self)
+        BUILDER_CONTEXT.set_building()
+
+        def _cleanup() -> None:
+            if not self.should_use_progress_bars():
+                self.print_build_summary()
+            self.print_pass_fail_banner()
+            self.flush_log_handlers()
+            BUILDER_CONTEXT.set_idle()
+            BUILDER_CONTEXT.exit_progress()
+
+        if workers == 1:
+            # TODO(tonymd): Try to remove this special case. Using
+            # ThreadPoolExecutor when running in serial (workers==1) currently
+            # breaks Ctrl-C handling. Build processes keep running.
             try:
-                if project_builder.should_use_progress_bars():
+                if self.should_use_progress_bars():
                     BUILDER_CONTEXT.add_progress_bars()
-                for future in concurrent.futures.as_completed(futures):
-                    future.result()
+                for i, cfg in enumerate(self.build_recipes, start=1):
+                    self.run_recipe(i, cfg, env)
             # Ctrl-C on Unix generates KeyboardInterrupt
             # Ctrl-Z on Windows generates EOFError
             except (KeyboardInterrupt, EOFError):
@@ -1093,8 +1076,40 @@ def run_builds(project_builder: ProjectBuilder, workers: int = 1) -> int:
             finally:
                 _cleanup()
 
-    project_builder.flush_log_handlers()
-    return BUILDER_CONTEXT.exit_code()
+        else:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=workers
+            ) as executor:
+                futures = []
+                for i, cfg in enumerate(self.build_recipes, start=1):
+                    futures.append(
+                        executor.submit(self.run_recipe, i, cfg, env)
+                    )
+
+                try:
+                    if self.should_use_progress_bars():
+                        BUILDER_CONTEXT.add_progress_bars()
+                    for future in concurrent.futures.as_completed(futures):
+                        future.result()
+                # Ctrl-C on Unix generates KeyboardInterrupt
+                # Ctrl-Z on Windows generates EOFError
+                except (KeyboardInterrupt, EOFError):
+                    _exit_due_to_interrupt()
+                finally:
+                    _cleanup()
+
+        self.flush_log_handlers()
+        return BUILDER_CONTEXT.exit_code()
+
+
+def run_recipe(
+    index: int, project_builder: ProjectBuilder, cfg: BuildRecipe, env
+) -> bool:
+    return project_builder.run_recipe(index, cfg, env)
+
+
+def run_builds(project_builder: ProjectBuilder, workers: int = 1) -> int:
+    return project_builder.run_builds(workers)
 
 
 def main() -> int:
