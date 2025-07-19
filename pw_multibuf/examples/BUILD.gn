@@ -12,14 +12,17 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-alias(
-    name = "docs",
-    actual = "//docs/sphinx:docs",
-    tags = ["manual"],
-)
+import("//build_overrides/pigweed.gni")
 
-alias(
-    name = "serve",
-    actual = "//docs/sphinx:docs.serve",
-    tags = ["manual"],
-)
+import("$dir_pw_build/target_types.gni")
+
+config("public_include_path") {
+  include_dirs = [ "public" ]
+  visibility = [ ":*" ]
+}
+
+pw_source_set("protocol") {
+  public = [ "public/pw_multibuf/examples/protocol.h" ]
+  public_configs = [ ":public_include_path" ]
+  visibility = [ "//pw_multibuf:*" ]
+}
