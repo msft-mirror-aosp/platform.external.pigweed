@@ -41,6 +41,11 @@ PROTO_CC_EXTENSION = '.pwpb.cc'
 
 PROTOBUF_NAMESPACE = '::pw::protobuf'
 _INTERNAL_NAMESPACE = '::pw::protobuf::internal'
+_STREAM_ENCODER = f'{PROTOBUF_NAMESPACE}::StreamEncoder'
+
+
+def _encoder_cast(to_type: str) -> str:
+    return f'{PROTOBUF_NAMESPACE}::StreamEncoderCast<{to_type}>'
 
 
 @dataclass
@@ -220,6 +225,10 @@ class ProtoMethod(ProtoMember):
         super().__init__(codegen_options, field, scope, root)
         self._base_class: str = base_class
 
+    def template_id(self) -> str | None:  # pylint: disable=no-self-use
+        """A full template identifier, or None if not a template."""
+        return None
+
     @abc.abstractmethod
     def params(self) -> list[tuple[str, str]]:
         """Returns the parameters of the method as a list of (type, name) pairs.
@@ -266,6 +275,11 @@ class ProtoMethod(ProtoMember):
 
     def param_string(self) -> str:
         return ', '.join([f'{type} {name}' for type, name in self.params()])
+
+    def _encoder_type(self, from_root: bool = False) -> str:
+        return '{}::StreamEncoder'.format(
+            self._relative_type_namespace(from_root)
+        )
 
 
 class WriteMethod(ProtoMethod):
@@ -717,18 +731,48 @@ class SubMessageEncoderMethod(ProtoMethod):
         return 'Get{}Encoder'.format(self._field.name())
 
     def return_type(self, from_root: bool = False) -> str:
-        return '{}::StreamEncoder'.format(
-            self._relative_type_namespace(from_root)
-        )
+        return self._encoder_type(from_root)
 
     def params(self) -> list[tuple[str, str]]:
         return []
 
     def body(self) -> list[str]:
-        line = 'return {}::StreamEncoder({}::GetNestedEncoder({}));'.format(
-            self._relative_type_namespace(), self._base_class, self.field_cast()
+        line = 'return {}({}::GetNestedEncoder({}));'.format(
+            self._encoder_type(), self._base_class, self.field_cast()
         )
         return [line]
+
+    # Submessage methods are not defined within the class itself because the
+    # submessage class may not yet have been defined.
+    def in_class_definition(self) -> bool:
+        return False
+
+
+class WriteNestedMessageMethod(ProtoMethod):
+    """Method which writes a sub-message via a two-pass sub-message encode."""
+
+    def name(self) -> str:
+        return 'Write{}Message'.format(self._field.name())
+
+    def template_id(self) -> str | None:
+        return 'template <typename WriteFunc>'
+
+    def return_type(self, from_root: bool = False) -> str:
+        return '::pw::Status'
+
+    def params(self) -> list[tuple[str, str]]:
+        return [('WriteFunc', 'write_message')]
+
+    def body(self) -> list[str]:
+        encoder_cast_func = _encoder_cast(self._encoder_type())
+        return [
+            f'return {self._base_class}::WriteNestedMessage(',
+            f'    {self.field_cast()},',
+            f'    [&write_message]({_STREAM_ENCODER}& encoder) {{',
+            f'      return write_message({encoder_cast_func}(encoder));',
+            '    }',
+            ');',
+        ]
 
     # Submessage methods are not defined within the class itself because the
     # submessage class may not yet have been defined.
@@ -2706,7 +2750,10 @@ PROTO_FIELD_WRITE_METHODS: dict[int, list] = {
         StringLenWriteMethod,
         StringWriteMethod,
     ],
-    descriptor_pb2.FieldDescriptorProto.TYPE_MESSAGE: [SubMessageEncoderMethod],
+    descriptor_pb2.FieldDescriptorProto.TYPE_MESSAGE: [
+        SubMessageEncoderMethod,
+        WriteNestedMessageMethod,
+    ],
     descriptor_pb2.FieldDescriptorProto.TYPE_ENUM: [
         EnumWriteMethod,
         PackedEnumWriteMethod,
@@ -2964,7 +3011,7 @@ def generate_class_for_message(
             output.write_line(
                 f'operator {stream_type}&() '
                 f' {{ return static_cast<{stream_type}&>('
-                f'*static_cast<{PROTOBUF_NAMESPACE}::StreamEncoder*>(this));}}'
+                f'*static_cast<{_STREAM_ENCODER}*>(this));}}'
             )
 
         # Add a typed Field() member to StreamDecoder
@@ -3021,6 +3068,9 @@ def generate_class_for_message(
                     f'{method.name()}({method.param_string()})'
                 )
 
+                if template_id := method.template_id():
+                    output.write_line(template_id)
+
                 if not method.in_class_definition():
                     # Method will be defined outside of the class at the end of
                     # the file.
@@ -3070,6 +3120,8 @@ def define_not_in_class_methods(
                 f'inline {method.return_type(from_root=True)} '
                 f'{class_name}::{method.name()}({method.param_string()})'
             )
+            if template_id := method.template_id():
+                output.write_line(template_id)
             output.write_line(f'{method_signature} {{')
             with output.indent():
                 for line in method.body():
