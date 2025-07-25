@@ -12,7 +12,9 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@bazel_skylib//rules:native_binary.bzl", "native_binary")
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("@rules_python//python:defs.bzl", "py_library")
 load("@rules_python//python/entry_points:py_console_script_binary.bzl", "py_console_script_binary")
 load("//pw_build:pw_py_importable_runfile.bzl", "pw_py_importable_runfile")
@@ -32,18 +34,6 @@ py_library(
         "pw_presubmit/build.py",
         "pw_presubmit/cli.py",
         "pw_presubmit/cpp_checks.py",
-        "pw_presubmit/format/__init__.py",
-        "pw_presubmit/format/bazel.py",
-        "pw_presubmit/format/core.py",
-        "pw_presubmit/format/cpp.py",
-        "pw_presubmit/format/gn.py",
-        "pw_presubmit/format/owners.py",
-        "pw_presubmit/format/private/__init__.py",
-        "pw_presubmit/format/private/cli.py",
-        "pw_presubmit/format/private/cli_support.py",
-        "pw_presubmit/format/python.py",
-        "pw_presubmit/format/rust.py",
-        "pw_presubmit/format/test_data/__init__.py",
         "pw_presubmit/format_code.py",
         "pw_presubmit/git_repo.py",
         "pw_presubmit/gitmodules.py",
@@ -70,6 +60,7 @@ py_library(
     ],
     imports = ["."],
     deps = [
+        ":format_core",
         "//pw_build/py:pw_build",
         "//pw_cli/py:pw_cli",
         "//pw_config_loader/py:pw_config_loader",
@@ -84,14 +75,21 @@ py_library(
     srcs = [
         "pw_presubmit/format/__init__.py",
         "pw_presubmit/format/bazel.py",
+        "pw_presubmit/format/cmake.py",
         "pw_presubmit/format/core.py",
         "pw_presubmit/format/cpp.py",
+        "pw_presubmit/format/css.py",
         "pw_presubmit/format/gn.py",
+        "pw_presubmit/format/java.py",
+        "pw_presubmit/format/markdown.py",
         "pw_presubmit/format/owners.py",
         "pw_presubmit/format/private/__init__.py",
         "pw_presubmit/format/private/cli.py",
         "pw_presubmit/format/private/cli_support.py",
+        "pw_presubmit/format/protobuf.py",
         "pw_presubmit/format/python.py",
+        "pw_presubmit/format/rust.py",
+        "pw_presubmit/format/whitespace.py",
     ],
     imports = ["."],
     visibility = ["//visibility:private"],
@@ -122,11 +120,57 @@ pw_py_importable_runfile(
 )
 
 pw_py_importable_runfile(
+    name = "gn_runfiles",
+    src = "@gn",
+    executable = True,
+    tags = ["manual"],
+    visibility = ["//visibility:private"],
+)
+
+pw_py_importable_runfile(
     name = "rustfmt_runfiles",
     src = "@rules_rust//tools/upstream_wrapper:rustfmt",
     executable = True,
+    tags = ["manual"],
     target_compatible_with = select({
         "@platforms//os:none": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    visibility = ["//visibility:private"],
+)
+
+bool_flag(
+    name = "enable_gn_formatter",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "gn_formatter_is_disabled",
+    flag_values = {
+        ":enable_gn_formatter": "false",
+    },
+)
+
+bool_flag(
+    name = "enable_rust_formatter",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "rust_formatter_is_disabled",
+    flag_values = {
+        ":enable_rust_formatter": "false",
+    },
+)
+
+write_file(
+    name = "disabled_formatters",
+    out = "pigweed_format/disabled_formatters.txt",
+    content = select({
+        ":gn_formatter_is_disabled": ["gn"],
+        "//conditions:default": [],
+    }) + select({
+        ":rust_formatter_is_disabled": ["rustfmt"],
         "//conditions:default": [],
     }),
     visibility = ["//visibility:private"],
@@ -135,6 +179,9 @@ pw_py_importable_runfile(
 pw_py_binary(
     name = "format",
     srcs = ["pigweed_format/__main__.py"],
+    data = [
+        ":disabled_formatters",
+    ],
     main = "pigweed_format/__main__.py",
     deps = [
         ":black_runfiles",
@@ -143,7 +190,13 @@ pw_py_binary(
         "//pw_build/py:pw_build",
         "@llvm_toolchain//:py_clang_format",
         "@rules_python//python/runfiles",
-    ],
+    ] + select({
+        ":gn_formatter_is_disabled": [],
+        "//conditions:default": [":gn_runfiles"],
+    }) + select({
+        ":rust_formatter_is_disabled": [],
+        "//conditions:default": [":rustfmt_runfiles"],
+    }),
 )
 
 pw_py_binary(
@@ -325,6 +378,14 @@ pw_py_test(
         ":pw_presubmit",
         ":rustfmt_runfiles",
         "//pw_build/py:pw_build",
+    ],
+)
+
+pw_py_test(
+    name = "whitespace_format_test",
+    srcs = ["whitespace_format_test.py"],
+    deps = [
+        ":format_core",
     ],
 )
 
