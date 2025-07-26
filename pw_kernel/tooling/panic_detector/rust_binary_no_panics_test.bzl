@@ -55,13 +55,12 @@ _rust_binary_no_panics_test = rule(
             # be checked is compiled without the tests, as test
             # code, is, well, panicky by design...
             cfg = disable_tests_transition,
-            allow_single_file = True,
             mandatory = True,
         ),
         "_panic_detector": attr.label(
             executable = True,
             cfg = "exec",
-            default = "//pw_kernel/tooling/panic_detector:panic_detector",
+            default = "//pw_kernel/tooling/panic_detector:panic_detector_tool",
         ),
     },
     doc = "Check whether the rust binary contains any panics.",
