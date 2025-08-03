@@ -59,7 +59,7 @@ impl TargetInterface for Target {
 
 declare_target!(Target);
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub extern "C" fn pw_assert_HandleFailure() -> ! {
     use kernel::Arch as _;
@@ -68,8 +68,6 @@ pub extern "C" fn pw_assert_HandleFailure() -> ! {
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    Target::console_init();
-
     kernel::static_init_state!(static mut INIT_STATE: InitKernelState<Arch>);
 
     // SAFETY: `main` is only executed once, so we never generate more than one

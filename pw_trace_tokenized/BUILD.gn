@@ -16,6 +16,7 @@ import("//build_overrides/pigweed.gni")
 
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_protobuf_compiler/proto.gni")
+import("$dir_pw_thread/backend.gni")
 import("$dir_pw_trace/backend.gni")
 import("$dir_pw_unit_test/test.gni")
 import("$pw_external_nanopb/nanopb.gni")
@@ -87,6 +88,7 @@ pw_test("trace_tokenized_test") {
   enable_if = _pw_trace_tokenized_is_selected
   deps = [
     ":core",
+    "$dir_pw_thread:sleep",
     "$dir_pw_trace",
   ]
 
@@ -148,7 +150,9 @@ pw_source_set("trace_service_pwpb") {
     ":base_trace_service",
     ":protos.pwpb_rpc",
   ]
-  deps = [ "$dir_pw_chrono:system_clock" ]
+  if (pw_trace_tokenizer_time != "") {
+    deps = [ "$pw_trace_tokenizer_time" ]
+  }
   sources = [
     "public/pw_trace_tokenized/trace_service_pwpb.h",
     "trace_service_pwpb.cc",
@@ -239,6 +243,7 @@ pw_source_set("core") {
     ":config",
     "$dir_pw_assert",
     "$dir_pw_ring_buffer",
+    "$dir_pw_sync:interrupt_spin_lock",
     "$dir_pw_trace:facade",
     "$dir_pw_varint",
   ]

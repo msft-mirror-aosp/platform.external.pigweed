@@ -79,10 +79,6 @@
         "title": "Pigweed: Refresh Compile Commands"
       },
       {
-        "command": "pigweed.refresh-compile-commands-and-set-target",
-        "title": "Pigweed: Refresh Compile Commands and Set Code Analysis Target"
-      },
-      {
         "command": "pigweed.select-target",
         "title": "Pigweed: Select Code Analysis Target"
       },
@@ -103,6 +99,34 @@
         "title": "Pigweed: Set Bazel Recommended Settings"
       }
     ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "pigweed.launch-terminal",
+          "when": "pigweed.projectType == 'bootstrap' || pigweed.projectType == 'both'"
+        },
+        {
+          "command": "pigweed.bootstrap-terminal",
+          "when": "pigweed.projectType == 'bootstrap' || pigweed.projectType == 'both'"
+        },
+        {
+          "command": "pigweed.activate-bazelisk-in-terminal",
+          "when": "pigweed.projectType == 'bazel' || pigweed.projectType == 'both'"
+        },
+        {
+          "command": "pigweed.refresh-compile-commands",
+          "when": "pigweed.projectType == 'bazel' || pigweed.projectType == 'both'"
+        },
+        {
+          "command": "pigweed.set-bazelisk-path",
+          "when": "pigweed.projectType == 'bazel' || pigweed.projectType == 'both'"
+        },
+        {
+          "command": "pigweed.set-bazel-recommended-settings",
+          "when": "pigweed.projectType == 'bazel' || pigweed.projectType == 'both'"
+        }
+      ]
+    },
     "configuration": {
       "title": "Pigweed",
       "properties": {

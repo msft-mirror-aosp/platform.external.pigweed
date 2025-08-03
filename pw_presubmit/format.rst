@@ -32,26 +32,59 @@ Language support:
 .. list-table::
 
    * - **File type**
+     - **Flag**
      - **Enabled by default**
-     - **Optional**
    * - Bazel build files
+     - ``--@pigweed//pw_presubmit/py:enable_bazel_formatter``
      - ✅
-     - ❌
    * - C/C++
+     - ``--@pigweed//pw_presubmit/py:enable_cpp_formatter``
      - ✅
-     - ❌
+   * - CMake
+     - ``--@pigweed//pw_presubmit/py:enable_cmake_formatter``
+     - ✅
+   * - CSS
+     - ``--@pigweed//pw_presubmit/py:enable_css_formatter``
+     - ✅
    * - GN build files
+     - ``--@pigweed//pw_presubmit/py:enable_gn_formatter``
      - ❌
+   * - Go
+     - ``--@pigweed//pw_presubmit/py:enable_go_formatter``
+     - ❌
+   * - Java
+     - ``--@pigweed//pw_presubmit/py:enable_java_formatter``
+     - ✅
+   * - JavaScript
+     - ``--@pigweed//pw_presubmit/py:enable_javascript_formatter``
+     - ❌
+   * - JSON
+     - ``--@pigweed//pw_presubmit/py:enable_json_formatter``
+     - ✅
+   * - Markdown
+     - ``--@pigweed//pw_presubmit/py:enable_markdown_formatter``
      - ✅
    * - OWNERS files
+     - ``--@pigweed//pw_presubmit/py:enable_owners_formatter``
      - ✅
-     - ❌
+   * - Protobuf
+     - ``--@pigweed//pw_presubmit/py:enable_protobuf_formatter``
+     - ✅
    * - Python (using ``black``)
+     - ``--@pigweed//pw_presubmit/py:enable_python_formatter``
      - ✅
-     - ❌
+   * - reStructuredText
+     - ``--@pigweed//pw_presubmit/py:enable_rst_formatter``
+     - ✅
    * - Rust
+     - ``--@pigweed//pw_presubmit/py:enable_rust_formatter``
      - ❌
+   * - Starlark
+     - ``--@pigweed//pw_presubmit/py:enable_starlark_formatter``
      - ✅
+   * - TypeScript
+     - ``--@pigweed//pw_presubmit/py:enable_typescript_formatter``
+     - ❌
 
 -----------
 Get started

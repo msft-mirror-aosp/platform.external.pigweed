@@ -15,17 +15,19 @@
 #include <chrono>
 
 #include "pw_chrono/system_clock.h"
-#include "pw_sync/internal/timed_threaded_testing.h"
+#include "pw_sync/test/timed_threaded_testing.h"
 #include "pw_sync/timed_thread_notification.h"
 #include "pw_unit_test/framework.h"
 
-using pw::chrono::SystemClock;
 using namespace std::chrono_literals;
 
-namespace pw::sync {
+using pw::chrono::SystemClock;
+using pw::sync::TimedThreadNotification;
+using pw::sync::test::TimedOptionallyThreadedTest;
+
 namespace {
 
-class TimedThreadNotificationTest : public test::TimedOptionallyThreadedTest {
+class TimedThreadNotificationTest : public TimedOptionallyThreadedTest {
  protected:
   TimedThreadNotification notification_;
 
@@ -144,4 +146,3 @@ TEST_F(TimedThreadNotificationTest, TryAcquireUntilNotNotifiedPastDeadline) {
 }
 
 }  // namespace
-}  // namespace pw::sync

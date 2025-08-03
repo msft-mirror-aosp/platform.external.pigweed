@@ -77,6 +77,7 @@ cc_library(
         ":trace_time",
         "//pw_log",
         "//pw_status",
+        "//pw_sync:interrupt_spin_lock",
         "//pw_tokenizer",
         "//pw_trace:facade",
         "//pw_varint",
@@ -129,7 +130,6 @@ cc_library(
     deps = [
         ":base_trace_service",
         ":protos_pwpb_rpc",
-        "//pw_chrono:system_clock",
     ],
 )
 
@@ -291,8 +291,11 @@ pw_cc_test(
     ],
     features = ["-conversion_warnings"],
     deps = [
+        ":pw_trace_host_trace_time",
         ":pw_trace_tokenized",
+        "//pw_thread:sleep",
         "//pw_trace",
+        "//pw_varint",
     ],
 )
 
