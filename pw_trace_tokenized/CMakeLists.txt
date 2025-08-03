@@ -61,6 +61,7 @@ pw_add_library(pw_trace_tokenized.core STATIC
     pw_trace_tokenized.config
     pw_assert
     pw_ring_buffer
+    pw_sync.interrupt_spin_lock
     pw_trace.facade
     pw_varint
     ${pw_trace_tokenizer_time}
@@ -83,6 +84,7 @@ pw_add_test(pw_trace_tokenized.trace_tokenized_test
   SOURCES
     trace_test.cc
   PRIVATE_DEPS
+    pw_thread.sleep
     pw_trace_tokenized.core
     pw_trace
     ${pw_trace_tokenizer_time}
@@ -157,8 +159,6 @@ pw_add_library(pw_trace_tokenized.base_trace_service STATIC
 pw_add_library(pw_trace_tokenized.trace_service_pwpb STATIC
   SOURCES
     trace_service_pwpb.cc
-  PRIVATE_DEPS
-    pw_chrono.system_clock
   PUBLIC_DEPS
     pw_trace_tokenized.base_trace_service
     pw_trace_tokenized.protos.pwpb_rpc

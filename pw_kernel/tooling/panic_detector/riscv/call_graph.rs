@@ -14,7 +14,7 @@
 #![allow(clippy::print_stdout)]
 
 use core::ops::Bound;
-use std::collections::{btree_map, hash_map, BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, btree_map, hash_map};
 use std::rc::Rc;
 
 use anyhow::anyhow;
@@ -125,13 +125,13 @@ impl<'a> FuncRepo<'a> {
                         .or_default()
                         .push(instr.addr);
                 }
-                if let (DecodedInstr::Jalr(i), Some((const_rd, const_val))) = (instr_d, reg_const) {
-                    if i.rd() == const_rd {
-                        jumpers
-                            .entry(const_val.wrapping_add_signed(i.imm()))
-                            .or_default()
-                            .push(instr.addr);
-                    }
+                if let (DecodedInstr::Jalr(i), Some((const_rd, const_val))) = (instr_d, reg_const)
+                    && i.rd() == const_rd
+                {
+                    jumpers
+                        .entry(const_val.wrapping_add_signed(i.imm()))
+                        .or_default()
+                        .push(instr.addr);
                 }
                 reg_const = match instr_d {
                     DecodedInstr::Auipc(i) => Some((i.rd(), instr.absolute_imm())),
@@ -209,7 +209,7 @@ impl<'a> Snippet<'a> {
     }
     #[must_use]
     pub fn instructions_at_addr(&'a self, addr: u32) -> Option<InstrIterator<'a>> {
-        if addr % 2 != 0 || addr < self.addr {
+        if !addr.is_multiple_of(2) || addr < self.addr {
             return None;
         }
         let Ok(offset) = usize::try_from(addr - self.addr) else {

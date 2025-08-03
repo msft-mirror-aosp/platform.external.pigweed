@@ -22,12 +22,18 @@ from pw_presubmit.format.core import FileFormatter
 from pw_presubmit.format.bazel import BuildifierFormatter
 from pw_presubmit.format.cpp import ClangFormatFormatter
 from pw_presubmit.format.gn import GnFormatter
+from pw_presubmit.format.go import GofmtFormatter
 from pw_presubmit.format.java import JavaFormatter
+from pw_presubmit.format.json import JsonFormatter
 from pw_presubmit.format.private.cli import FormattingSuite
 from pw_presubmit.format.owners import OwnersFormatter
 from pw_presubmit.format.protobuf import ProtobufFormatter
+from pw_presubmit.format.javascript import JavaScriptFormatter
 from pw_presubmit.format.python import BlackFormatter
+from pw_presubmit.format.rst import RstFormatter
 from pw_presubmit.format.rust import RustfmtFormatter
+from pw_presubmit.format.starlark import StarlarkFormatter
+from pw_presubmit.format.typescript import TypeScriptFormatter
 from pw_presubmit.format.cmake import CmakeFormatter
 from pw_presubmit.format.css import CssFormatter
 from pw_presubmit.format.markdown import MarkdownFormatter
@@ -107,11 +113,32 @@ def _pigweed_formatting_suite() -> FormattingSuite:
             bazel_import_path='pw_presubmit.py.gn_runfiles',
         ),
         FormatterSetup(
+            formatter=GofmtFormatter(
+                tool_runner=runfiles,
+            ),
+            binary='gofmt',
+            bazel_import_path='pw_presubmit.py.gofmt_runfiles',
+        ),
+        FormatterSetup(
+            formatter=JavaScriptFormatter(
+                tool_runner=runfiles,
+            ),
+            binary='prettier',
+            bazel_import_path='pw_presubmit.py.prettier_runfiles',
+        ),
+        FormatterSetup(
             formatter=JavaFormatter(
                 tool_runner=runfiles,
             ),
             binary='clang-format',
             bazel_import_path='llvm_toolchain.clang_format',
+        ),
+        FormatterSetup(
+            formatter=JsonFormatter(
+                tool_runner=runfiles,
+            ),
+            binary=None,
+            bazel_import_path=None,
         ),
         FormatterSetup(
             formatter=MarkdownFormatter(
@@ -135,16 +162,44 @@ def _pigweed_formatting_suite() -> FormattingSuite:
             bazel_import_path='llvm_toolchain.clang_format',
         ),
         FormatterSetup(
+            formatter=RstFormatter(
+                tool_runner=runfiles,
+            ),
+            binary=None,
+            bazel_import_path=None,
+        ),
+        FormatterSetup(
             formatter=RustfmtFormatter(
                 tool_runner=runfiles,
             ),
             binary='rustfmt',
             bazel_import_path='pw_presubmit.py.rustfmt_runfiles',
         ),
+        FormatterSetup(
+            formatter=StarlarkFormatter(
+                tool_runner=runfiles,
+            ),
+            binary='buildifier',
+            bazel_import_path='pw_presubmit.py.buildifier_runfiles',
+        ),
+        FormatterSetup(
+            formatter=TypeScriptFormatter(
+                tool_runner=runfiles,
+            ),
+            binary='prettier',
+            bazel_import_path='pw_presubmit.py.prettier_runfiles',
+        ),
     ]
-    enabled_formatters = [
-        fmt for fmt in all_formatters if fmt.binary not in disabled_formatters
-    ]
+    enabled_formatters = []
+    for fmt in all_formatters:
+        if fmt.formatter.mnemonic not in disabled_formatters:
+            enabled_formatters.append(fmt)
+        else:
+            disabled_formatters.remove(fmt.formatter.mnemonic)
+
+    assert (
+        not disabled_formatters
+    ), f'Attempted to disable unknown formatters: {disabled_formatters}'
 
     # Setup runfiles.
     for formatter in enabled_formatters:
