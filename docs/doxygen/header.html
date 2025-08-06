@@ -25,7 +25,6 @@ the License.
 <link rel="icon" href="https://storage.googleapis.com/pigweed-media/pw_logo.ico"/>
 <!--BEGIN PROJECT_NAME--><title>$projectname: $title</title><!--END PROJECT_NAME-->
 <!--BEGIN !PROJECT_NAME--><title>$title</title><!--END !PROJECT_NAME-->
-<link href="$relpath^tabs.css" rel="stylesheet" type="text/css"/>
 <!--BEGIN DISABLE_INDEX-->
   <!--BEGIN FULL_SIDEBAR-->
 <script type="text/javascript">var page_layout=1;</script>
@@ -38,6 +37,13 @@ $search
 $mathjax
 $darkmode
 <link href="$relpath^$stylesheet" rel="stylesheet" type="text/css" />
+<!-- Preconnect to speed up font loading. -->
+<link href="https://fonts.googleapis.com" rel="preconnect" crossorigin>
+<link href="https://fonts.gstatic.com" rel="preconnect" crossorigin>
+<!-- Load Pigweed's fonts. -->
+<link href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,100;1,300;1,400;1,700;1,900&display=swap" rel="stylesheet" type="text/css"/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet" type="text/css"/>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,100..700;1,100..700&display=swap" rel="stylesheet" type="text/css"/>
 $extrastylesheet
 </head>
 <body>
@@ -54,9 +60,10 @@ $extrastylesheet
 <table cellspacing="0" cellpadding="0">
  <tbody>
  <tr id="projectrow">
-  <!--BEGIN PROJECT_LOGO-->
-  <td id="projectlogo"><img alt="Logo" src="$relpath^$projectlogo"/></td>
-  <!--END PROJECT_LOGO-->
+  <!-- We hardcode the logo here because setting it via Doxygen's PROJECT_LOGO
+       option does not work. PROJECT_LOGO expects the logo file to be local
+       whereas we fetch ours over a CDN. -->
+  <td id="projectlogo"><img alt="Logo" src="https://storage.googleapis.com/pigweed-media/pw_logo.svg"/></td>
   <!--BEGIN PROJECT_NAME-->
   <td id="projectalign">
    <div id="projectname">$projectname<!--BEGIN PROJECT_NUMBER--><span id="projectnumber">&#160;$projectnumber</span><!--END PROJECT_NUMBER-->

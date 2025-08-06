@@ -90,6 +90,13 @@
       "use_config": "bazel_default",
       "target": "@pigweed//:presubmit",
       "type": "ANALYZER"
+    },
+    {
+      "name": "review",
+      "description": "Review the commit at HEAD using Gemini",
+      "use_config": "bazel_default",
+      "target": "@pigweed//:review",
+      "type": "ANALYZER"
     }
   ],
   "groups": [
