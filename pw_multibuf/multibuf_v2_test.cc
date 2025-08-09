@@ -2385,8 +2385,8 @@ TEST_F(MultiBufTest, TruncateTopLayerSucceedsWithNonzeroLength) {
   AddLayers(*mbi);
   EXPECT_EQ(mbi->size(), 32u);
   mbi->TruncateTopLayer(6);
-  constexpr auto expected =  // Keeps existing start offset 0 + 2 + 4 = 6.
-      pw::bytes::Array<0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b>();
+  constexpr auto expected =  // Keeps existing top layer start offset 4.
+      pw::bytes::Array<0x04, 0x05, 0x06, 0x07, 0x08, 0x09>();
   EXPECT_TRUE(
       std::equal(mbi->begin(), mbi->end(), expected.begin(), expected.end()));
 }
@@ -2419,6 +2419,51 @@ TEST_F(MultiBufTest, PopLayerSucceedsWithLayers) {
   EXPECT_EQ(mbi->NumFragments(), 4u);
   EXPECT_EQ(mbi->NumLayers(), 1u);
   EXPECT_EQ(mbi->size(), 64u);
+}
+
+#if PW_NC_TEST(CannotCallSetTopLayerWhenUnlayered)
+PW_NC_EXPECT(
+    "`SetTopLayer` may only be called on mutable, layerable MultiBufs");
+[[maybe_unused]] void ShouldAssert(FlatMultiBuf& mb) {
+  mb.SetTopLayer(pw::ConstByteSpan());
+}
+#endif  // PW_NC_TEST
+
+TEST_F(MultiBufTest, SetTopLayerCopiesDataAndTruncates) {
+  MultiBuf::Instance mbi(allocator_);
+  auto chunk = allocator_.MakeUnique<std::byte[]>(kN);
+  std::memset(chunk.get(), 0xAA, chunk.size());
+  mbi->PushBack(std::move(chunk));
+  ASSERT_TRUE(mbi->AddLayer(0));
+
+  std::array<std::byte, kN / 2> new_data;
+  std::memset(new_data.data(), 0xBB, new_data.size());
+  mbi->SetTopLayer(new_data);
+
+  EXPECT_EQ(mbi->size(), new_data.size());
+  for (size_t i = 0; i < mbi->size(); ++i) {
+    EXPECT_EQ((*mbi)[i], static_cast<std::byte>(0xBB));
+  }
+
+  mbi->PopLayer();
+  EXPECT_EQ(mbi->size(), kN);
+  for (size_t i = 0; i < new_data.size(); ++i) {
+    EXPECT_EQ((*mbi)[i], static_cast<std::byte>(0xBB));
+  }
+  for (size_t i = new_data.size(); i < kN; ++i) {
+    EXPECT_EQ((*mbi)[i], static_cast<std::byte>(0xAA));
+  }
+}
+
+TEST_F(MultiBufTest, SetTopLayerWorksWithEmptySpan) {
+  MultiBuf::Instance mbi(allocator_);
+  auto chunk = allocator_.MakeUnique<std::byte[]>(kN);
+  std::memset(chunk.get(), 0xAA, chunk.size());
+  mbi->PushBack(std::move(chunk));
+  ASSERT_TRUE(mbi->AddLayer(0));
+
+  mbi->SetTopLayer(pw::ConstByteSpan());
+  EXPECT_EQ(mbi->size(), 0u);
 }
 
 #if PW_NC_TEST(CannotCallPopLayerWhenUnlayered)
