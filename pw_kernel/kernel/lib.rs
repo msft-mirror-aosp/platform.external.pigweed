@@ -13,10 +13,17 @@
 // the License.
 #![no_std]
 
+use core::any::Any;
+use core::ops::Deref;
+use core::ptr::NonNull;
+
+use foreign_box::{ForeignBox, ForeignRcBox};
+use pw_atomic::AtomicUsize;
 use pw_log::info;
 pub use time::{Duration, Instant};
 
 pub mod memory;
+pub mod object;
 #[cfg(not(feature = "std_panic_handler"))]
 mod panic;
 pub mod scheduler;
@@ -26,6 +33,7 @@ mod target;
 
 use kernel_config::{KernelConfig, KernelConfigInterface};
 pub use memory::{MemoryRegion, MemoryRegionType};
+pub use object::NullObjectTable;
 #[doc(hidden)]
 pub use scheduler::thread::{Process, Stack, StackStorage, StackStorageExt, Thread, ThreadState};
 use scheduler::timer::TimerQueue;
@@ -33,10 +41,15 @@ use scheduler::{SchedulerState, thread};
 pub use scheduler::{sleep_until, start_thread, yield_timeslice};
 use sync::spinlock::{BareSpinLock, SpinLock, SpinLockGuard};
 
+use crate::object::{KernelObject, TickerObject};
+use crate::scheduler::timer::TimerCallback;
+use crate::scheduler::{PreemptDisableGuard, ThreadLocalState};
+
 pub trait Arch: 'static + Copy + thread::ThreadArg {
     type ThreadState: ThreadState;
     type BareSpinLock: BareSpinLock;
     type Clock: time::Clock;
+    type AtomicUsize: AtomicUsize;
 
     /// Switches to a new thread.
     ///
@@ -49,12 +62,14 @@ pub trait Arch: 'static + Copy + thread::ThreadArg {
     #[allow(clippy::missing_safety_doc)]
     unsafe fn context_switch(
         self,
-        sched_state: SpinLockGuard<'_, Self::BareSpinLock, SchedulerState<Self>>,
+        sched_state: SpinLockGuard<'_, Self, SchedulerState<Self>>,
         old_thread_state: *mut Self::ThreadState,
         new_thread_state: *mut Self::ThreadState,
-    ) -> SpinLockGuard<'_, Self::BareSpinLock, SchedulerState<Self>>
+    ) -> SpinLockGuard<'_, Self, SchedulerState<Self>>
     where
         Self: Kernel;
+
+    fn thread_local_state(self) -> &'static ThreadLocalState<Self>;
 
     fn now(self) -> Instant<Self::Clock>;
 
@@ -79,21 +94,25 @@ pub trait Arch: 'static + Copy + thread::ThreadArg {
     }
 }
 
-pub trait Kernel: Arch {
+pub trait Kernel: Arch + Sync {
     fn get_state(self) -> &'static KernelState<Self>;
 
-    fn get_scheduler(self) -> &'static SpinLock<Self::BareSpinLock, SchedulerState<Self>> {
+    fn get_scheduler(self) -> &'static SpinLock<Self, SchedulerState<Self>> {
         &self.get_state().scheduler
     }
 
-    fn get_timer_queue(self) -> &'static SpinLock<Self::BareSpinLock, TimerQueue<Self::Clock>> {
+    fn get_timer_queue(self) -> &'static SpinLock<Self, TimerQueue<Self::Clock>> {
         &self.get_state().timer_queue
     }
 }
 
+type ObjectRef<K> = ForeignRcBox<<K as Arch>::AtomicUsize, dyn KernelObject<K>>;
 pub struct KernelState<K: Kernel> {
-    scheduler: SpinLock<K::BareSpinLock, SchedulerState<K>>,
-    timer_queue: SpinLock<K::BareSpinLock, TimerQueue<K::Clock>>,
+    scheduler: SpinLock<K, SchedulerState<K>>,
+    timer_queue: SpinLock<K, TimerQueue<K::Clock>>,
+    // HACK: A global ticker reference that is hard coded into every object
+    // table to allow testing of waiting.
+    ticker: SpinLock<K, Option<ObjectRef<K>>>,
 }
 
 impl<K: Kernel> KernelState<K> {
@@ -102,6 +121,7 @@ impl<K: Kernel> KernelState<K> {
         Self {
             scheduler: SpinLock::new(SchedulerState::new()),
             timer_queue: SpinLock::new(TimerQueue::new()),
+            ticker: SpinLock::new(None),
         }
     }
 }
@@ -151,6 +171,7 @@ macro_rules! static_init_state {
                     // which is only executed once.
                     stack: unsafe { &mut IDLE_STACK },
                 },
+                ticker: $crate::object::TickerObject::new(),
             }
         };
     };
@@ -177,18 +198,26 @@ pub struct InitKernelState<K: Kernel> {
     pub bootstrap_thread: ThreadStorage<K>,
     #[doc(hidden)]
     pub idle_thread: ThreadStorage<K>,
+    #[doc(hidden)]
+    pub ticker: TickerObject<K>,
 }
 
 // Module re-exporting modules into a scope that can be referenced by macros
 // in this crate.
 #[doc(hidden)]
 pub mod macro_exports {
-    pub use pw_assert;
+    pub use {foreign_box, pw_assert};
 }
 
 pub fn main<K: Kernel>(kernel: K, init_state: &'static mut InitKernelState<K>) -> ! {
+    let preempt_guard = PreemptDisableGuard::new(kernel);
+
     target::console_init();
     info!("Welcome to Maize on {}!", target::name() as &str);
+
+    let ticker =
+        unsafe { ForeignRcBox::new(NonNull::<dyn KernelObject<K>>::from_ref(&init_state.ticker)) };
+    *kernel.get_state().ticker.lock(kernel) = Some(ticker);
 
     kernel.early_init();
 
@@ -206,7 +235,7 @@ pub fn main<K: Kernel>(kernel: K, init_state: &'static mut InitKernelState<K>) -
     info!("created thread, bootstrapping");
 
     // special case where we bootstrap the system by half context switching to this thread
-    scheduler::bootstrap_scheduler(kernel, bootstrap_thread);
+    scheduler::bootstrap_scheduler(kernel, preempt_guard, bootstrap_thread);
 
     // never get to here
 }
@@ -221,7 +250,7 @@ fn bootstrap_thread_entry<K: Kernel>(
 
     kernel.init();
 
-    kernel.get_scheduler().lock().dump_all_threads();
+    kernel.get_scheduler().lock(kernel).dump_all_threads();
 
     let idle_thread = thread::init_thread_in(
         kernel,
@@ -232,9 +261,34 @@ fn bootstrap_thread_entry<K: Kernel>(
         0,
     );
 
-    kernel.get_scheduler().lock().dump_all_threads();
+    kernel.get_scheduler().lock(kernel).dump_all_threads();
 
     scheduler::start_thread(kernel, idle_thread);
+
+    // HACK: Setup up a timer to signal the ticker object every second.
+    let mut ticker_closure = move |mut callback: ForeignBox<TimerCallback<K::Clock>>,
+                                   now|
+          -> Option<ForeignBox<TimerCallback<K::Clock>>> {
+        let ticker = kernel.get_state().ticker.lock(kernel);
+        let Some(ticker) = ticker.as_ref() else {
+            pw_assert::panic!("no ticker object");
+        };
+        let ticker_rc = ticker.get_ref();
+        let Some(ticker) = (ticker_rc.deref() as &dyn Any).downcast_ref::<TickerObject<K>>() else {
+            pw_assert::panic!("ticker not a TickerObject");
+        };
+        ticker.tick(kernel);
+        callback.set(now + Duration::<K::Clock>::from_secs(1));
+        Some(callback)
+    };
+
+    let mut ticker_callback =
+        TimerCallback::new(kernel.now() + Duration::<K::Clock>::from_secs(1), unsafe {
+            ForeignBox::new_from_ptr(&raw mut ticker_closure)
+        });
+    scheduler::timer::schedule_timer(kernel, unsafe {
+        ForeignBox::new_from_ptr(&raw mut ticker_callback)
+    });
 
     target::main()
 }

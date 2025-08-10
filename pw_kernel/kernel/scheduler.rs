@@ -14,17 +14,20 @@
 
 use core::cell::UnsafeCell;
 use core::ptr::NonNull;
+use core::sync::atomic::Ordering;
 
 use foreign_box::ForeignBox;
 use list::*;
+use pw_atomic::{AtomicAdd, AtomicLoad, AtomicSub, AtomicZero};
 use pw_log::info;
 use pw_status::{Error, Result};
 use time::Instant;
 
-use crate::Kernel;
 use crate::memory::MemoryConfig as _;
+use crate::object::NullObjectTable;
 use crate::scheduler::timer::TimerCallback;
 use crate::sync::spinlock::SpinLockGuard;
+use crate::{Arch, Kernel};
 
 mod locks;
 pub mod thread;
@@ -40,6 +43,20 @@ macro_rules! wait_queue_debug {
   }}
 }
 
+// generic on `arch` instead of `kernel` as it appears in the `arch` interface.
+pub struct ThreadLocalState<A: Arch> {
+    pub(crate) preempt_disable_count: A::AtomicUsize,
+}
+
+impl<A: Arch> ThreadLocalState<A> {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            preempt_disable_count: A::AtomicUsize::ZERO,
+        }
+    }
+}
+
 pub fn start_thread<K: Kernel>(kernel: K, mut thread: ForeignBox<Thread<K>>) {
     info!(
         "starting thread {} {:#x}",
@@ -51,7 +68,7 @@ pub fn start_thread<K: Kernel>(kernel: K, mut thread: ForeignBox<Thread<K>>) {
 
     thread.state = State::Ready;
 
-    let mut sched_state = kernel.get_scheduler().lock();
+    let mut sched_state = kernel.get_scheduler().lock(kernel);
 
     // If there is a current thread, put it back on the top of the run queue.
     let id = if let Some(mut current_thread) = sched_state.current_thread.take() {
@@ -70,7 +87,7 @@ pub fn start_thread<K: Kernel>(kernel: K, mut thread: ForeignBox<Thread<K>>) {
 }
 
 pub fn initialize<K: Kernel>(kernel: K) {
-    let mut sched_state = kernel.get_scheduler().lock();
+    let mut sched_state = kernel.get_scheduler().lock(kernel);
 
     // The kernel process needs be to initialized before any kernel threads so
     // that they can properly be parented underneath it.
@@ -80,8 +97,12 @@ pub fn initialize<K: Kernel>(kernel: K) {
     }
 }
 
-pub fn bootstrap_scheduler<K: Kernel>(kernel: K, mut thread: ForeignBox<Thread<K>>) -> ! {
-    let mut sched_state = kernel.get_scheduler().lock();
+pub fn bootstrap_scheduler<K: Kernel>(
+    kernel: K,
+    preempt_guard: PreemptDisableGuard<K>,
+    mut thread: ForeignBox<Thread<K>>,
+) -> ! {
+    let mut sched_state = kernel.get_scheduler().lock(kernel);
 
     // TODO: assert that this is called exactly once at bootup to switch
     // to this particular thread.
@@ -96,6 +117,8 @@ pub fn bootstrap_scheduler<K: Kernel>(kernel: K, mut thread: ForeignBox<Thread<K
     let mut temp_arch_thread_state = K::ThreadState::NEW;
     sched_state.current_arch_thread_state = &raw mut temp_arch_thread_state;
 
+    drop(preempt_guard);
+
     reschedule(kernel, sched_state, Thread::<K>::null_id());
     pw_assert::panic!("should not reach here");
 }
@@ -104,13 +127,13 @@ pub struct PreemptDisableGuard<K: Kernel>(K);
 
 impl<K: Kernel> PreemptDisableGuard<K> {
     pub fn new(kernel: K) -> Self {
-        let mut sched_state = kernel.get_scheduler().lock();
-        let thread = sched_state.current_thread_mut();
+        let prev_count = kernel
+            .thread_local_state()
+            .preempt_disable_count
+            .fetch_add(1, core::sync::atomic::Ordering::SeqCst);
 
-        #[allow(clippy::needless_else)]
-        if let Some(val) = thread.preempt_disable_count.checked_add(1) {
-            thread.preempt_disable_count = val;
-        } else {
+        // atomics have wrapping semantics so overflow is explicitly checked.
+        if prev_count == usize::MAX {
             pw_assert::debug_panic!("PreemptDisableGuard preempt_disable_count overflow")
         }
 
@@ -120,19 +143,14 @@ impl<K: Kernel> PreemptDisableGuard<K> {
 
 impl<K: Kernel> Drop for PreemptDisableGuard<K> {
     fn drop(&mut self) {
-        let mut sched_state = self.0.get_scheduler().lock();
-        let thread = sched_state.current_thread_mut();
+        let prev_count = self
+            .0
+            .thread_local_state()
+            .preempt_disable_count
+            .fetch_sub(1, core::sync::atomic::Ordering::SeqCst);
 
-        if let Some(val) = thread.preempt_disable_count.checked_sub(1) {
-            thread.preempt_disable_count = val;
-        } else {
-            // use panic, not debug_panic, as it's possible a
-            // real bug could trigger this assert.
-            pw_assert::panic!("PreemptDisableGuard drop past zero")
-        }
-
-        if thread.preempt_disable_count == 0 {
-            preempt(self.0);
+        if prev_count == 0 {
+            pw_assert::debug_panic!("PreemptDisableGuard preempt_disable_count underflow")
         }
     }
 }
@@ -158,10 +176,14 @@ impl<K: Kernel> SchedulerState<K> {
     #[allow(dead_code)]
     #[allow(clippy::new_without_default)]
     pub const fn new() -> Self {
+        static KERNEL_OBJECT_TABLE: NullObjectTable = NullObjectTable::new();
         Self {
             kernel_process: UnsafeCell::new(Process::new(
                 "kernel",
                 <K::ThreadState as ThreadState>::MemoryConfig::KERNEL_THREAD_MEMORY_CONFIG,
+                // SAFETY: In the event of multiple scheduler objects, they will
+                // refer to the same, immutable, instance of a zero sized type.
+                unsafe { ForeignBox::new(NonNull::from_ref(&KERNEL_OBJECT_TABLE)) },
             )),
             current_thread: None,
             current_arch_thread_state: core::ptr::null_mut(),
@@ -287,10 +309,15 @@ impl<K: Kernel> SchedulerState<K> {
     }
 }
 
-impl<K: Kernel> SpinLockGuard<'_, K::BareSpinLock, SchedulerState<K>> {
+impl<K: Kernel> SpinLockGuard<'_, K, SchedulerState<K>> {
     /// Reschedule if preemption is enabled
     fn try_reschedule(mut self, kernel: K) -> Self {
-        if self.current_thread().preempt_disable_count == 0 {
+        if kernel
+            .thread_local_state()
+            .preempt_disable_count
+            .load(Ordering::SeqCst)
+            == 1
+        {
             let current_thread_id = self.move_current_thread_to_back();
             reschedule(kernel, self, current_thread_id)
         } else {
@@ -302,14 +329,23 @@ impl<K: Kernel> SpinLockGuard<'_, K::BareSpinLock, SchedulerState<K>> {
 #[allow(dead_code)]
 fn reschedule<K: Kernel>(
     kernel: K,
-    mut sched_state: SpinLockGuard<K::BareSpinLock, SchedulerState<K>>,
+    mut sched_state: SpinLockGuard<K, SchedulerState<K>>,
     current_thread_id: usize,
-) -> SpinLockGuard<K::BareSpinLock, SchedulerState<K>> {
+) -> SpinLockGuard<K, SchedulerState<K>> {
     // Caller to reschedule is responsible for removing current thread and
     // put it in the correct run/wait queue.
     pw_assert::assert!(sched_state.current_thread.is_none());
 
-    // info!("reschedule");
+    // Validate that the only mechanism disabling preemption is the scheduler
+    // lock which is passed in to this function.
+    pw_assert::assert!(
+        kernel
+            .thread_local_state()
+            .preempt_disable_count
+            .load(Ordering::SeqCst)
+            <= 1,
+        "Preemption count greater than 1"
+    );
 
     // Pop a new thread off the head of the run queue.
     // At the moment cannot handle an empty queue, so will panic in that case.
@@ -328,11 +364,9 @@ fn reschedule<K: Kernel>(
 
     if current_thread_id == new_thread.id() {
         sched_state.current_thread = Some(new_thread);
-        // info!("decided to continue running thread {:#x}", new_thread.id());
         return sched_state;
     }
 
-    // info!("switching to thread {:#x}", new_thread.id());
     let old_thread_state = sched_state.current_arch_thread_state;
     let new_thread_state = new_thread.arch_thread_state.get();
     sched_state.set_current_thread(new_thread);
@@ -342,18 +376,14 @@ fn reschedule<K: Kernel>(
 #[allow(dead_code)]
 pub fn yield_timeslice<K: Kernel>(kernel: K) {
     // info!("yielding thread {:#x}", current_thread.id());
-    let mut sched_state = kernel.get_scheduler().lock();
-
-    // Yielding always moves the current task to the back of the run queue
-    let current_thread_id = sched_state.move_current_thread_to_back();
-
-    reschedule(kernel, sched_state, current_thread_id);
+    let sched_state = kernel.get_scheduler().lock(kernel);
+    sched_state.try_reschedule(kernel);
 }
 
 #[allow(dead_code)]
-pub fn preempt<K: Kernel>(kernel: K) {
+fn preempt<K: Kernel>(kernel: K) {
     // info!("preempt thread {:#x}", current_thread.id());
-    let mut sched_state = kernel.get_scheduler().lock();
+    let mut sched_state = kernel.get_scheduler().lock(kernel);
 
     // For now, always move the current thread to the back of the run queue.
     // When the scheduler gets more complex, it should evaluate if it has used
@@ -368,15 +398,27 @@ pub fn preempt<K: Kernel>(kernel: K) {
 #[allow(dead_code)]
 pub fn tick<K: Kernel>(kernel: K, now: Instant<K::Clock>) {
     //info!("tick {} ms", time_ms);
+    pw_assert::assert!(
+        kernel
+            .thread_local_state()
+            .preempt_disable_count
+            .load(Ordering::SeqCst)
+            == 0,
+        "scheduler::tick() called with preemption disabled"
+    );
+
+    let guard = PreemptDisableGuard::new(kernel);
 
     // In lieu of a proper timer interface, the scheduler needs to be robust
     // to timer ticks arriving before it is initialized.
-    if kernel.get_scheduler().lock().current_thread.is_none() {
+    if kernel.get_scheduler().lock(kernel).current_thread.is_none() {
         return;
     }
 
-    let _guard = PreemptDisableGuard::new(kernel);
     timer::process_queue(kernel, now);
+    drop(guard);
+
+    kernel.get_scheduler().lock(kernel).try_reschedule(kernel);
 }
 
 // Exit the current thread.
@@ -384,7 +426,7 @@ pub fn tick<K: Kernel>(kernel: K, now: Instant<K::Clock>) {
 // is performed.
 #[allow(dead_code)]
 pub fn exit_thread<K: Kernel>(kernel: K) -> ! {
-    let mut sched_state = kernel.get_scheduler().lock();
+    let mut sched_state = kernel.get_scheduler().lock(kernel);
 
     let mut current_thread = sched_state.take_current_thread();
     let current_thread_id = current_thread.id();
@@ -534,6 +576,7 @@ impl<K: Kernel> SchedLockGuard<'_, K, WaitQueue<K>> {
             }
 
             let _ = callback.consume();
+            None // Don't re-arm
         };
 
         let mut callback = TimerCallback::new(deadline, unsafe {

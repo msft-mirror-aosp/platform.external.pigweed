@@ -30,7 +30,8 @@ ALIASES                = "rst=^^\verbatim embed:rst:leading-asterisk^^" \
                          "cpp_func{1}=@crossref{cpp,func,\1}" \
                          "cpp_type{1}=@crossref{cpp,type,\1}" \
                          "cpp_enum{1}=@crossref{cpp,type,\1}" \
-                         "pw_status{1}=@crossref{c,enumerator,\1}"
+                         "pw_status{1}=@crossref{c,enumerator,\1}" \
+                         "module{2}=\defgroup \1 \1^^@brief \2: https://pigweed.dev/\1"
 
 # https://www.doxygen.nl/manual/config.html#cfg_case_sense_names
 CASE_SENSE_NAMES       = NO
@@ -172,10 +173,18 @@ RECURSIVE              = YES
 # https://www.doxygen.nl/manual/config.html#cfg_show_headerfile
 SHOW_HEADERFILE        = NO
 
+# Alphabetically sort the modules index page.
+#
+# https://www.doxygen.nl/manual/config.html#cfg_sort_group_names
+SORT_GROUP_NAMES       = YES
+
 # https://google.github.io/styleguide/cppguide.html#Spaces_vs._Tabs
 #
 # https://www.doxygen.nl/manual/config.html#cfg_tab_size
 TAB_SIZE               = 2
+
+# https://www.doxygen.nl/manual/config.html#cfg_use_mdfile_as_mainpage
+USE_MDFILE_AS_MAINPAGE = docs/doxygen/index.md
 
 # TODO: https://pwbug.dev/393634135 - Turn this on.
 #
