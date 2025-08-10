@@ -11,16 +11,26 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-[metadata]
-name = pw_review
-version = 0.0.1
-author = Pigweed Authors
-author_email = pigweed-developers@googlegroups.com
-description = AI-based code review
 
-[options]
-packages = find:
-zip_safe = False
-install_requires =
-    prompt_toolkit
-    psutil
+import("//build_overrides/pigweed.gni")
+
+import("$dir_pw_build/python.gni")
+
+pw_python_package("py") {
+  setup = [
+    "pyproject.toml",
+    "setup.cfg",
+  ]
+  sources = [
+    "pw_change/__init__.py",
+    "pw_change/main.py",
+    "pw_change/push.py",
+    "pw_change/review.py",
+  ]
+  python_deps = [ "$dir_pw_cli/py" ]
+  inputs = []
+  tests = [ "review_test.py" ]
+  pylintrc = "$dir_pigweed/.pylintrc"
+  mypy_ini = "$dir_pigweed/.mypy.ini"
+  ruff_toml = "$dir_pigweed/.ruff.toml"
+}

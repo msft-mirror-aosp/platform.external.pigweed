@@ -30,6 +30,7 @@ rust_library(
     srcs = [
         "lib.rs",
         "memory.rs",
+        "object.rs",
         "panic.rs",
         "scheduler.rs",
         "scheduler/locks.rs",
@@ -64,12 +65,14 @@ rust_library(
         "//pw_kernel/lib/list",
         "//pw_kernel/lib/log_if",
         "//pw_kernel/lib/pw_assert",
+        "//pw_kernel/lib/pw_atomic",
         "//pw_kernel/lib/pw_cast",
         "//pw_kernel/lib/pw_status",
         "//pw_kernel/lib/regs",
         "//pw_kernel/lib/time",
         "//pw_kernel/syscall:syscall_defs",
-        "@pigweed//pw_log/rust:pw_log",
+        "//pw_log/rust:pw_log",
+        "@rust_crates//:bitflags",
     ] + select({
         "@platforms//cpu:armv8-m": CORTEX_M_DEPS,
         "@platforms//cpu:riscv32": RISCV_DEPS,

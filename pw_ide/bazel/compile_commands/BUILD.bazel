@@ -12,24 +12,6 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-import("//build_overrides/pigweed.gni")
+package(default_visibility = ["//visibility:public"])
 
-import("$dir_pw_build/python.gni")
-import("$dir_pw_build/python_action_test.gni")
-
-pw_python_package("py") {
-  setup = [
-    "pyproject.toml",
-    "setup.cfg",
-  ]
-  sources = [
-    "pw_review/__init__.py",
-    "pw_review/review.py",
-  ]
-  tests = [ "review_test.py" ]
-  python_deps = [ "$dir_pw_cli/py" ]
-  pylintrc = "$dir_pigweed/.pylintrc"
-  mypy_ini = "$dir_pigweed/.mypy.ini"
-  inputs = []
-  ruff_toml = "$dir_pigweed/.ruff.toml"
-}
+exports_files(["defs.bzl"])
