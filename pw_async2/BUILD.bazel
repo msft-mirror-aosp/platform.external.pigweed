@@ -110,7 +110,7 @@ label_flag(
 
 constraint_setting(
     name = "debug_wait_reason",
-    default_constraint_value = "debug_wait_reason_disabled",
+    default_constraint_value = "debug_wait_reason_enabled",
 )
 
 constraint_value(
@@ -545,11 +545,16 @@ sphinx_docs_library(
     srcs = [
         "backends.rst",
         "code_size.rst",
+        "codelab.rst",
         "design.rst",
         "docs.rst",
         "guides.rst",
         "public/pw_async2/coro.h",
         "reference.rst",
+        "//pw_async2/codelab:main.cc",
+        "//pw_async2/codelab:vending_machine.cc",
+        "//pw_async2/codelab:vending_machine.h",
+        "//pw_async2/codelab/solutions/step1:main.cc",
         "//pw_async2/examples:docs",
         "//pw_async2/size_report:full_size_report",
         "//pw_async2/size_report:once_sender_size_report",

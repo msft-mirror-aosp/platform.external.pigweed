@@ -158,7 +158,7 @@ pw::Status I3cMcuxpressoInitiator::SetDynamicAddressList(
     dynamic_address_num = I3C_MAX_DEVCNT;
   }
   address_list_temp.resize(dynamic_address_num, Address(0));
-  for (int i = 0; i < dynamic_address_num; ++i) {
+  for (size_t i = 0; i < dynamic_address_num; ++i) {
     address_list_temp[i] =
         Address::SevenBit(static_cast<uint16_t>(dynamic_address_list[i]));
   }
@@ -211,6 +211,7 @@ pw::Status I3cMcuxpressoInitiator::DoResetAddressing() {
                          pw::ByteSpan()));
   }
   i3c_assigned_addresses_.clear();
+  return pw::OkStatus();
 }
 
 pw::Status I3cMcuxpressoInitiator::ResetAddressing() {
@@ -268,6 +269,27 @@ pw::Result<uint16_t> I3cMcuxpressoInitiator::GetMaxReadLength(
          static_cast<uint8_t>(readmrl_buffer[1]);
 }
 
+pw::Status I3cMcuxpressoInitiator::SetMaxWriteLength(
+    pw::i2c::Address address, uint16_t max_write_length) {
+  std::lock_guard lock(mutex_);
+  std::array<std::byte, 2> writewrl_buffer = {
+      static_cast<std::byte>(max_write_length >> 8),
+      static_cast<std::byte>(max_write_length & 0xff),
+  };
+  return DoTransferCcc(
+      I3cCccAction::kWrite, I3cCcc::kSetmwlDirect, address, writewrl_buffer);
+}
+
+pw::Result<uint16_t> I3cMcuxpressoInitiator::GetMaxWriteLength(
+    pw::i2c::Address address) {
+  std::lock_guard lock(mutex_);
+  std::array<std::byte, 2> readmwl_buffer;
+  PW_TRY(DoTransferCcc(
+      I3cCccAction::kRead, I3cCcc::kGetmwlDirect, address, readmwl_buffer));
+  return static_cast<uint8_t>(readmwl_buffer[0]) << 8 |
+         static_cast<uint8_t>(readmwl_buffer[1]);
+}
+
 pw::Status I3cMcuxpressoInitiator::Initialize() {
   std::lock_guard lock(mutex_);
   i3c_master_config_t masterConfig;
@@ -283,7 +305,7 @@ pw::Status I3cMcuxpressoInitiator::Initialize() {
   masterConfig.enableOpenDrainHigh = kI3cInitEnableOpenDrainHigh;
   I3C_MasterInit(base_, &masterConfig, CLOCK_GetI3cClkFreq());
 
-  DoResetAddressing();
+  PW_TRY(DoResetAddressing());
 
   // Broadcast DISEC 0x0b
   PW_TRY(DoTransferCcc(I3cCccAction::kWrite,
@@ -294,7 +316,7 @@ pw::Status I3cMcuxpressoInitiator::Initialize() {
   // SETDASA
   if (i3c_static_address_list_.has_value()) {
     for (const Address static_addr : *i3c_static_address_list_) {
-      DoSetDasa(static_addr);
+      PW_TRY(DoSetDasa(static_addr));
     }
   }
 
@@ -303,13 +325,13 @@ pw::Status I3cMcuxpressoInitiator::Initialize() {
       !i3c_dynamic_address_list_->empty()) {
     // ENTDAA
     std::array<uint8_t, I3C_MAX_DEVCNT> address_list;
-    for (int i = 0; i < i3c_dynamic_address_list_->size(); ++i) {
+    for (size_t i = 0; i < i3c_dynamic_address_list_->size(); ++i) {
       address_list[i] = i3c_dynamic_address_list_->at(i).GetAddress();
     }
     hal_status =
         I3C_MasterProcessDAA(base_, address_list.data(), address_list.size());
     if (hal_status != kStatus_Success) {
-      PW_LOG_ERROR("Failed to initialize the I3C bus... %d", hal_status);
+      PW_LOG_ERROR("Failed to initialize the I3C bus... %ld", hal_status);
     }
 
     // Examine the found devices
@@ -318,7 +340,8 @@ pw::Status I3cMcuxpressoInitiator::Initialize() {
         I3C_MasterGetDeviceListAfterDAA(base_, &dev_count);
     for (uint8_t i = 0; i < dev_count; ++i) {
       i3c_device_info_t* info = devlist + i;
-      AddAssignedI3cAddress(pw::i2c::Address::SevenBit(info->dynamicAddr));
+      PW_TRY(
+          AddAssignedI3cAddress(pw::i2c::Address::SevenBit(info->dynamicAddr)));
       PW_LOG_INFO("Found dynamic i3c device: 0x%02x vendor=0x%04x",
                   info->dynamicAddr,
                   info->vendorID);

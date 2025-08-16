@@ -43,12 +43,6 @@ class I3cMcuxpressoInitiator final : public pw::i2c::Initiator {
                                   // for I3C messages, or 1 ODBAUD.
   };
 
-  [[deprecated("ClockTree is deprecated")]]
-  I3cMcuxpressoInitiator(const Config& config,
-                         pw::clock_tree::ClockTree& /*clock_tree*/,
-                         pw::clock_tree::Element& clock_tree_element)
-      : I3cMcuxpressoInitiator(config, clock_tree_element) {}
-
   I3cMcuxpressoInitiator(const Config& config,
                          pw::clock_tree::Element& clock_tree_element)
       : Initiator(Initiator::Feature::kStandard),
@@ -161,6 +155,17 @@ class I3cMcuxpressoInitiator final : public pw::i2c::Initiator {
   // Get the target's maximum read length by sending an i3c GETMRL message.
   // The target i3c device must have `address` assigned as its i3c address.
   pw::Result<uint16_t> GetMaxReadLength(pw::i2c::Address address)
+      PW_LOCKS_EXCLUDED(mutex_);
+
+  // Set the target's maximum write length by sending an i3c SETMWL message.
+  // The target i3c device must have `address` assigned as its i3c address.
+  pw::Status SetMaxWriteLength(pw::i2c::Address address,
+                               uint16_t max_write_length)
+      PW_LOCKS_EXCLUDED(mutex_);
+
+  // Get the target's maximum write length by sending an i3c GETMWL message.
+  // The target i3c device must have `address` assigned as its i3c address.
+  pw::Result<uint16_t> GetMaxWriteLength(pw::i2c::Address address)
       PW_LOCKS_EXCLUDED(mutex_);
 
  private:
