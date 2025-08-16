@@ -12,28 +12,30 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-arch = "riscv"
+load("//pw_build:pw_cc_binary.bzl", "pw_cc_binary")
 
-[kernel]
-flash_start_address = 0x80000000
-flash_size_bytes = 261120        # 255Kb
-ram_start_address = 0x81000000
-ram_size_bytes = 65600           # 64 Kb
+package(default_visibility = ["//visibility:public"])
 
-[apps.one]
-flash_size_bytes = 261120 # 255Kb
-ram_size_bytes = 65600    # 64 Kb
-[apps.one.process]
-name = "process one"
-[[apps.one.process.threads]]
-name = "thread one a"
-stack_size_bytes = 1024
+licenses(["notice"])
 
-[apps.two]
-flash_size_bytes = 261120 # 255Kb
-ram_size_bytes = 65600    # 64 Kb
-[apps.two.process]
-name = "process two"
-[[apps.two.process.threads]]
-name = "thread two a"
-stack_size_bytes = 1024
+exports_files(
+    [
+        "main.cc",
+        "vending_machine.cc",
+        "vending_machine.h",
+    ],
+    visibility = ["//pw_async2:__subpackages__"],
+)
+
+pw_cc_binary(
+    name = "step1",
+    srcs = [
+        "main.cc",
+        "vending_machine.cc",
+        "vending_machine.h",
+    ],
+    deps = [
+        "//pw_async2:dispatcher",
+        "//pw_log",
+    ],
+)

@@ -24,23 +24,16 @@
 namespace pw::bluetooth::proxy {
 
 pw::Status Recombiner::StartRecombination(LockedL2capChannel& channel,
-                                          size_t size) {
+                                          size_t size,
+                                          size_t extra_header_size) {
   if (IsActive()) {
     return Status::FailedPrecondition();
   }
 
-  pw::Status status = channel.channel().StartRecombinationBuf(direction_, size);
-
-  if (status.IsResourceExhausted()) {
-    PW_LOG_ERROR(
-        "Channel %#x can not store recombination buffer %s of size %zu.",
-        channel.channel().local_cid(),
-        status.str(),
-        size);
-    return status;
-  }
-  // We only expect OK or ResourceExhausted from StartRecombinationBuf.
-  PW_CHECK(status.ok());
+  // Store extra space at front of recombine buffer so callier can use it
+  // to create headers if needed.
+  PW_TRY(channel.channel().StartRecombinationBuf(
+      direction_, size, extra_header_size));
 
   is_active_ = true;
   local_cid_ = channel.channel().local_cid();

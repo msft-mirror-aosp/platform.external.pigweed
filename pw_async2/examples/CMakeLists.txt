@@ -35,6 +35,21 @@ if("cxx_std_20" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
       pw_chrono.system_clock
   )
 
+  pw_add_test(pw_async2.examples.inline_async_queue_with_coro_test
+    SOURCES
+      inline_async_queue_with_coro_test.cc
+    PRIVATE_DEPS
+      pw_allocator.libc_allocator
+      pw_async2.coro
+      pw_async2.coro_or_else_task
+      pw_async2.dispatcher
+      pw_async2.pend_func_awaitable
+      pw_containers.inline_async_queue
+      pw_containers.vector
+      pw_log
+      pw_status
+  )
+
   pw_add_test(pw_async2.examples.once_send_recv
     SOURCES
       once_send_recv.cc
@@ -44,3 +59,38 @@ if("cxx_std_20" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
       pw_async2.once_sender
   )
 endif()
+
+pw_add_test(pw_async2.examples.inline_async_queue_with_tasks_test
+  SOURCES
+    inline_async_queue_with_tasks_test.cc
+  PRIVATE_DEPS
+    pw_async2.dispatcher
+    pw_async2.pend_func_task
+    pw_containers.inline_async_queue
+    pw_containers.vector
+    pw_log
+    pw_span
+    pw_status
+)
+
+add_executable(pw_async2.interrupt EXCLUDE_FROM_ALL
+  interrupt.cc
+)
+
+target_link_libraries(pw_async2.interrupt
+  PRIVATE
+    pw_async2.dispatcher
+    pw_async2.pend_func_task
+    pw_containers.inline_queue
+    pw_log
+    pw_sync.interrupt_spin_lock
+)
+
+pw_add_test(pw_async2.examples.unit_test
+  SOURCES
+    unit_test.cc
+  PRIVATE_DEPS
+    pw_allocator.testing
+    pw_async2.dispatcher
+    pw_async2.pend_func_task
+)
