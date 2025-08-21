@@ -13,7 +13,8 @@
 # the License.
 
 load("@rules_python//python:defs.bzl", "py_library")
-load("//pw_build:python.bzl", "pw_py_test")
+load("//pw_build:python.bzl", "pw_py_binary", "pw_py_test")
+load("//pw_unit_test:pw_golden_test.bzl", "pw_golden_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -21,6 +22,7 @@ py_library(
     name = "pw_unit_test",
     srcs = [
         "pw_unit_test/__init__.py",
+        "pw_unit_test/golden_test.py",
         "pw_unit_test/rpc.py",
         "pw_unit_test/serial_test_runner.py",
         "pw_unit_test/test_runner.py",
@@ -32,6 +34,12 @@ py_library(
         "//pw_unit_test:unit_test_py_pb2",
         "@pigweed_python_packages//requests",
     ],
+)
+
+pw_py_binary(
+    name = "golden_test",
+    testonly = True,
+    srcs = ["pw_unit_test/golden_test.py"],
 )
 
 pw_py_test(
@@ -49,6 +57,18 @@ pw_py_test(
         "//pw_hdlc/py:pw_hdlc",
     ],
 )
+
+# DOCSTAG[pw_unit_test-run-and-compare-test-bazel]
+pw_golden_test(
+    name = "run_and_compare_test",
+    args = [
+        "--extra",
+        "args",
+    ],
+    executable = "//pw_unit_test:run_and_compare_test_executable",
+    expected = ":run_and_compare_test.expected",
+)
+# DOCSTAG[pw_unit_test-run-and-compare-test-bazel]
 
 pw_py_test(
     name = "test_group_metadata_test",

@@ -15,12 +15,12 @@
 #![no_main]
 
 use arch_arm_cortex_m::Arch;
+use hal::Clock;
 use hal::fugit::RateExtU32;
 use hal::uart::{DataBits, StopBits, UartConfig};
-use hal::Clock;
 #[cfg(test)]
 use integration_tests as _;
-use target_common::{declare_target, TargetInterface};
+use target_common::{TargetInterface, declare_target};
 use {console_backend as _, kernel as _, rp235x_hal as hal};
 
 #[unsafe(link_section = ".start_block")]
@@ -92,23 +92,18 @@ impl TargetInterface for Target {
             // SAFETY: `main` is only executed once, so we never generate more
             // than one `&mut` reference to `DEMO_STATE`.
             #[allow(static_mut_refs)]
-            demo::main(Arch, unsafe { &mut DEMO_STATE });
+            let _ = demo::main(Arch, unsafe { &mut DEMO_STATE });
         }
 
         #[cfg(test)]
         {
-            use cortex_m_semihosting::debug::*;
-            use unittest_core::TestsResult;
-
-            exit(match unittest_core::run_all_tests!() {
-                TestsResult::AllPassed => EXIT_SUCCESS,
-                TestsResult::SomeFailed => EXIT_FAILURE,
-            });
-
-            // `exit` can return under rare circumstances.
-            #[allow(unreachable_code, clippy::empty_loop)]
-            loop {}
+            unittest_core::run_all_tests!();
         }
+
+        // For now just loop once all threads are finished.  In the future, investigate
+        // hooking up semihosting, as exit in a similar manner to the qemu based targets.
+        #[allow(clippy::empty_loop)]
+        loop {}
     }
 }
 

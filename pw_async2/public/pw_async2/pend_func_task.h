@@ -18,6 +18,8 @@
 
 namespace pw::async2 {
 
+/// @submodule{pw_async2,adapters}
+
 /// A ``Task`` that delegates to a provided function ``func``.
 ///
 /// The provided ``func`` may be any callable (function, lambda, or similar)
@@ -41,5 +43,7 @@ class PendFuncTask : public Task {
 
 template <typename Func>
 PendFuncTask(Func&&) -> PendFuncTask<Func>;
+
+/// @}
 
 }  // namespace pw::async2
