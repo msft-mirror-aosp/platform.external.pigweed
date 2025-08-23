@@ -17,6 +17,8 @@
 
 namespace pw::async2 {
 
+/// @submodule{pw_async2,combiners}
+
 /// A pendable value which joins together several separate pendable values.
 ///
 /// It will only return ``Ready`` once all of the individual pendables have

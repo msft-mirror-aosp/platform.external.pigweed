@@ -14,6 +14,8 @@
 
 #pragma once
 
+/// @submodule{pw_async2,core}
+
 /// Returns `Poll::Pending()` if \a expr is `Poll::Pending()`.
 #define PW_TRY_READY(expr)            \
   do {                                \
@@ -22,8 +24,12 @@
     }                                 \
   } while (0)
 
+/// Returns `Poll::Pending()` if \a expr is `Poll::Pending()`. If expression
+/// is `Poll::Ready()`, assigns the inner value to \a lhs.
 #define PW_TRY_READY_ASSIGN(lhs, expression) \
   _PW_TRY_READY_ASSIGN(_PW_TRY_READY_UNIQUE(__LINE__), lhs, expression)
+
+/// @}
 
 /// Returns `Poll::Pending()` if \a expr is `Poll::Pending()`. If expression
 /// is `Poll::Ready()`, assigns the inner value to \a lhs.

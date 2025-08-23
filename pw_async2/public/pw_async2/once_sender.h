@@ -20,6 +20,8 @@
 
 namespace pw::async2 {
 
+/// @submodule{pw_async2,pendables}
+
 // A lock guarding OnceReceiver and OnceSender member variables.
 //
 // This is an ``InterruptSpinLock`` in order to allow sending values from an
@@ -387,5 +389,7 @@ void InitializeOnceRefSenderAndReceiver(OnceRefSender<T>& sender,
   receiver.value_ = &value;
   sender.receiver_ = &receiver;
 }
+
+/// @}
 
 }  // namespace pw::async2

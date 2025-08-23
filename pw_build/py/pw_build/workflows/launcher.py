@@ -197,12 +197,19 @@ class WorkflowsCli(multitool.MultitoolCli):
             nargs='?',
             default=None,
         )
+        parser.add_argument(
+            '--dump-build-requests',
+            action='store_true',
+            help=argparse.SUPPRESS,
+        )
         args = parser.parse_args(plugin_args)
         if self.config is None:
             print('Config is empty')
             return 0
         if not args.name:
             print(self.dump_config())
+        elif args.dump_build_requests:
+            print(self.dump_build_request(args.name))
         else:
             print(self.dump_fragment(args.name))
         return 0
@@ -213,6 +220,13 @@ class WorkflowsCli(multitool.MultitoolCli):
             return ''
 
         return text_format.MessageToBytes(self.config).decode()
+
+    def dump_build_request(self, name: str) -> str:
+        """Dumps the unified build driver request for this config fragment."""
+        assert self._workflows is not None
+        return text_format.MessageToBytes(
+            self._workflows.get_unified_driver_request([name], sanitize=False)
+        ).decode()
 
     def dump_fragment(self, fragment_name: str) -> str:
         """Dumps a fragment of the config in a human-readable format."""
@@ -319,6 +333,42 @@ class WorkflowsCli(multitool.MultitoolCli):
                 for g in self.config.groups
             ]
         )
+
+        # Helper to work around mypy bug limitation for the lambda pattern of
+        # argument freezing (https://github.com/python/mypy/issues/12557).
+        def create_build_callback(
+            build: workflows_pb2.Build,
+        ) -> Callable[[Sequence[str]], int]:
+            return lambda _: self._launch_build([build.name])
+
+        for build in self.config.builds:
+            if not build.rerun_shortcut:
+                continue
+            all_plugins.append(
+                _BuiltinPlugin(
+                    name=build.rerun_shortcut,
+                    description=build.description,
+                    callback=create_build_callback(build),
+                )
+            )
+
+        #
+        def create_tool_callback(
+            tool: workflows_pb2.Tool,
+        ) -> Callable[[Sequence[str]], int]:
+            return lambda args: self._launch_analyzer([tool.name, *args])
+
+        for tool in self.config.tools:
+            if not tool.rerun_shortcut:
+                continue
+            all_plugins.append(
+                _BuiltinPlugin(
+                    name=tool.rerun_shortcut,
+                    description=f'(Analyzer) {tool.description}',
+                    callback=create_tool_callback(tool),
+                )
+            )
+
         return all_plugins
 
     def main(self) -> NoReturn:

@@ -16,5 +16,198 @@
 // TODO: b/426012010 - Auto-generate this file from the metadata provided
 // in //docs/sphinx/module_metadata.json.
 
+// clang-format off
+
+/// @defgroup pw_alignment pw_alignment
+/// @brief Natural object alignment, guaranteed. Main docs: https://pigweed.dev/pw_alignment
+
+/// @defgroup pw_analog pw_analog
+/// @brief Analog-to-digital converter libraries and utilities. Main docs: https://pigweed.dev/pw_analog
+
+/// @defgroup pw_async pw_async
+/// @brief Portable APIs for asynchronous code. Main docs: https://pigweed.dev/pw_async
+
+/// @defgroup pw_async2 pw_async2
+/// @brief Cooperative async tasks for embedded.
+/// @details Main docs: [Home](../../pw_async2/docs.html) |
+/// [Quickstart](../../pw_async2/quickstart.html) |
+/// [Codelab](../../pw_async2/codelab.html) |
+/// [Guides](../../pw_async2/guides.html) |
+/// [Code size analysis](../../pw_async2/code_size.html) |
+/// [Coroutines](../../pw_async2/coroutines.html) |
+/// [Backends](../../pw_async2/backends.html)
+
+/// @defgroup pw_async2_adapters Pendable adapters
+/// @ingroup pw_async2
+/// @brief Pendable wrappers and helpers
+
+/// @defgroup pw_async2_alloc Dynamic allocation
+/// @ingroup pw_async2
+/// @brief Heap allocate space for tasks or functions with `pw::Allocator`
+
+/// @defgroup pw_async2_backends Dispatcher backends
+/// @ingroup pw_async2
+/// @brief Dispatcher implementation interfaces
+
+/// @defgroup pw_async2_combiners Combining tasks
+/// @ingroup pw_async2
+/// @brief Helpers for interacting with multiple pendables
+
+/// @defgroup pw_async2_core Core
+/// @ingroup pw_async2
+/// @brief Core primitives such as tasks, dispatchers, polls, contexts, and wakers
+/// @details Learn more: [Core concepts](../../pw_async2/design.html#core-concepts)
+
+/// @defgroup pw_async2_coroutines Coroutines
+/// @ingroup pw_async2
+/// @brief C++20 coroutine support. Learn more: [Coroutines](../../pw_async2/coroutines.html)
+
+/// @defgroup pw_async2_pendables Built-in pendables
+/// @ingroup pw_async2
+/// @brief Async operations that can be polled for completion and suspended. Learn more: [The pendable function interface](../../pw_async2/design.html#the-pendable-function-interface)
+
+/// @defgroup pw_async_basic pw_async_basic
+/// @brief Main docs: https://pigweed.dev/pw_async_basic
+
+/// @defgroup pw_base64 pw_base64
+/// @brief Base64 encoding, decoding, and validating. Main docs: https://pigweed.dev/pw_base64
+
+/// @defgroup pw_bloat pw_bloat
+/// @brief Utilities for generating binary size reports. Main docs: https://pigweed.dev/pw_bloat
+
+/// @defgroup pw_bluetooth pw_bluetooth
+/// @brief Host-layer Bluetooth Low Energy APIs and utilities. Main docs: https://pigweed.dev/pw_bluetooth
+
+/// @defgroup pw_bluetooth_proxy pw_bluetooth_proxy
+/// @brief Lightweight proxy for augmenting Bluetooth functionality. Main docs: https://pigweed.dev/pw_bluetooth_proxy
+
+/// @defgroup pw_bluetooth_sapphire pw_bluetooth_sapphire
+/// @brief Battle-tested Bluetooth with rock-solid reliability. Main docs: https://pigweed.dev/pw_bluetooth_sapphire
+
+/// @defgroup pw_build pw_build
+/// @brief Integrations for Bazel, GN, and CMake. Main docs: https://pigweed.dev/pw_build
+
+/// @defgroup pw_bytes pw_bytes
+/// @brief Utilities for manipulating binary data. Main docs: https://pigweed.dev/pw_bytes
+
+/// @defgroup pw_channel pw_channel
+/// @brief Async, zero-copy API for sending and receiving bytes or datagrams. Main docs: https://pigweed.dev/pw_channel
+
+/// @defgroup pw_chre pw_chre
+/// @brief Android Context Hub Runtime Environment backend. Main docs: https://pigweed.dev/pw_chre
+
+/// @defgroup pw_chrono pw_chrono
+/// @brief Portable std::chrono for constrained embedded devices. Main docs: https://pigweed.dev/pw_chrono
+
+/// @defgroup pw_clock_tree pw_clock_tree
+/// @brief Clock tree management for embedded devices. Main docs: https://pigweed.dev/pw_clock_tree
+
+/// @defgroup pw_clock_tree_mcuxpresso pw_clock_tree_mcuxpresso
+/// @brief NXP MCUXpresso SDK implementation for pw_clock_tree. Main docs: https://pigweed.dev/pw_clock_tree_mcuxpresso
+
+/// @defgroup pw_containers pw_containers
+/// @brief Generic collections of objects for embedded devices: https://pigweed.dev/pw_containers
+
+/// @defgroup pw_crypto pw_crypto
+/// @brief Main docs: https://pigweed.dev/pw_crypto
+
+/// @defgroup pw_digital_io pw_digital_io
+/// @brief Digital I/O interface. Main docs: https://pigweed.dev/pw_digital_io
+
+/// @defgroup pw_digital_io_mcuxpresso pw_digital_io_mcuxpresso
+/// @brief Digital I/O for NXP MCUXpresso. Main docs: https://pigweed.dev/pw_digital_io_mcuxpresso
+
+/// @defgroup pw_display pw_display
+/// @brief Graphic display support and framebuffer management. Main docs: https://pigweed.dev/pw_display
+
+/// @defgroup pw_elf pw_elf
+/// @brief ELF file support. Main docs: https://pigweed.dev/pw_elf
+
 /// @defgroup pw_function pw_function
 /// @brief Embedded-friendly `std::function`: https://pigweed.dev/pw_function
+
+/// @defgroup pw_hdlc pw_hdlc
+/// @brief Simple, robust, and efficient serial communication. Main docs: https://pigweed.dev/pw_hdlc
+
+/// @defgroup pw_hex_dump pw_hex_dump
+/// @brief Handy hexdump utilities. Main docs: https://pigweed.dev/pw_hex_dump
+
+/// @defgroup pw_i2c pw_i2c
+/// @brief Cross-platform I2C API with interactive debugging. Main docs: https://pigweed.dev/pw_i2c
+
+/// @defgroup pw_i2c_linux pw_i2c_linux
+/// @brief Linux userspace implementation for pw_i2c. Main docs: https://pigweed.dev/pw_i2c_linux
+
+/// @defgroup pw_interrupt pw_interrupt
+/// @brief Main docs: https://pigweed.dev/pw_interrupt
+
+/// @defgroup pw_json pw_json
+/// @brief Simple, efficient C++ JSON serialization. Main docs: https://pigweed.dev/pw_json
+
+/// @defgroup pw_kvs pw_kvs
+/// @brief Lightweight, persistent key-value store. Main docs: https://pigweed.dev/pw_kvs
+
+/// @defgroup pw_log_tokenized pw_log_tokenized
+/// @brief Main docs: https://pigweed.dev/pw_log_tokenized
+
+/// @defgroup pw_malloc pw_malloc
+/// @brief Replacement interface for standard libc dynamic memory operations. Main docs: https://pigweed.dev/pw_malloc
+
+/// @defgroup pw_multibuf pw_multibuf
+/// @brief A buffer API optimized for zero-copy messaging. Main docs: https://pigweed.dev/pw_multibuf
+
+/// @defgroup pw_numeric pw_numeric
+/// @brief Efficient mathematical utilities for embedded. Main docs: https://pigweed.dev/pw_numeric
+
+/// @defgroup pw_perf_test pw_perf_test
+/// @brief Micro-benchmarks that are easy to write and run. Main docs: https://pigweed.dev/pw_perf_test
+
+/// @defgroup pw_persistent_ram pw_persistent_ram
+/// @brief Main docs: https://pigweed.dev/pw_persistent_ram
+
+/// @defgroup pw_polyfill pw_polyfill
+/// @brief Main docs: https://pigweed.dev/pw_polyfill
+
+/// @defgroup pw_preprocessor pw_preprocessor
+/// @brief Helpful preprocessor macros. Main docs: https://pigweed.dev/pw_preprocessor
+
+/// @defgroup pw_random pw_random
+/// @brief Main docs: https://pigweed.dev/pw_random
+
+/// @defgroup pw_span pw_span
+/// @brief std::span for C++17. Main docs: https://pigweed.dev/pw_span
+
+/// @defgroup pw_stream_uart_linux pw_stream_uart_linux
+/// @brief Main docs: https://pigweed.dev/pw_stream_uart_linux
+
+/// @defgroup pw_sys_io pw_sys_io
+/// @brief Main docs: https://pigweed.dev/pw_sys_io
+
+/// @defgroup pw_system pw_system
+/// @brief Main docs: https://pigweed.dev/pw_system
+
+/// @defgroup pw_thread pw_thread
+/// @brief Main docs: https://pigweed.dev/pw_thread
+
+/// @defgroup pw_toolchain pw_toolchain
+/// @brief Embedded toolchains for GN-based Pigweed projects. Main docs: https://pigweed.dev/pw_toolchain
+
+/// @defgroup pw_trace_tokenized pw_trace_tokenized
+/// @brief Main docs: https://pigweed.dev/pw_trace_tokenized
+
+/// @defgroup pw_transfer pw_transfer
+/// @brief Main docs: https://pigweed.dev/pw_transfer
+
+/// @defgroup pw_varint pw_varint
+/// @brief Functions for encoding and decoding variable length integers. Main docs: https://pigweed.dev/pw_varint
+
+/// @defgroup pw_uart pw_uart
+/// @brief Core interfaces for UART communication. Main docs: https://pigweed.dev/pw_uart
+
+/// @defgroup pw_uuid pw_uuid
+/// @brief 128-bit universally unique identifier (UUID). Main docs: https://pigweed.dev/pw_uuid
+
+/// @defgroup pw_work_queue pw_work_queue
+/// @brief Main docs: https://pigweed.dev/pw_work_queue
+
+// clang-format on

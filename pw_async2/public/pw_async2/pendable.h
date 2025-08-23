@@ -53,6 +53,8 @@ inline constexpr bool IsPendable = PendableTraits<decltype(Func)>::kIsPendable;
 
 }  // namespace internal
 
+/// @submodule{pw_async2,adapters}
+
 /// Wraps a pendable member function in an object which has a single ``Pend``
 /// method, allowing it to be used more broadly.
 template <auto Func>
@@ -167,9 +169,6 @@ class FreePendableWrapper {
   Arguments args_;
   bool completed_;
 };
-
-/// @defgroup pw_async2_pendable_for
-/// @{
 
 /// Wraps a pendable member function in an object which has a single ``Pend``
 /// method, allowing it to be used more broadly.

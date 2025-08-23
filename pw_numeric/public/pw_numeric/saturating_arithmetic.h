@@ -23,6 +23,8 @@
 
 namespace pw {
 
+/// @module{pw_numeric}
+
 using std::add_sat;
 using std::mul_sat;
 
@@ -33,11 +35,13 @@ using std::mul_sat;
 #include <limits>
 #include <type_traits>
 
-#include "pw_preprocessor/compiler.h"
+#include "pw_numeric/checked_arithmetic.h"
 
 // Polyfills of C++26's saturating arithmetic operations in <numeric>.
 
 namespace pw {
+
+/// @module{pw_numeric}
 
 /// Polyfill of C++26's `std::add_sat`. Returns the sum of two integers, giving
 /// the integer's maximum or minimum value if the sum would otherwise have

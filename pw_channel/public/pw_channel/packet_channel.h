@@ -40,11 +40,15 @@
 
 namespace pw::channel {
 
+/// @module{pw_channel}
+
 /// Represents a pending write operation. Returned by
 /// `pw::channel::PacketChannel::PendReadyToWrite`.
 template <typename Packet>
 class PendingWrite {
  public:
+  constexpr PendingWrite() : channel_(nullptr), num_packets_(0) {}
+
   PendingWrite(const PendingWrite&) = delete;
   PendingWrite& operator=(const PendingWrite&) = delete;
 
@@ -54,6 +58,7 @@ class PendingWrite {
   constexpr PendingWrite& operator=(PendingWrite&& other) {
     channel_ = other.channel_;
     num_packets_ = cpp20::exchange(other.num_packets_, 0u);
+    return *this;
   }
 
   ~PendingWrite() {
@@ -83,7 +88,7 @@ class PendingWrite {
   size_t num_packets_;
 };
 
-/// @defgroup pw_channel_packets
+/// @defgroup pw_channel_packets Packets
 /// @{
 
 /// If the number of available writes is set to this value, flow control is
