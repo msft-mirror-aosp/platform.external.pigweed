@@ -52,7 +52,18 @@ void TransferThread::Run() {
   next_event_ownership_.release();
 
   while (true) {
-    if (event_notification_.try_acquire_until(GetNextTransferTimeout())) {
+    std::optional<chrono::SystemClock::time_point> timeout =
+        GetNextTransferTimeout();
+    bool has_event = false;
+
+    if (timeout.has_value()) {
+      has_event = event_notification_.try_acquire_until(timeout.value());
+    } else {
+      event_notification_.acquire();
+      has_event = true;
+    }
+
+    if (has_event) {
       HandleEvent(next_event_);
 
       // Sample event type before we release ownership of next_event_.
@@ -82,19 +93,21 @@ void TransferThread::Run() {
   }
 }
 
-chrono::SystemClock::time_point TransferThread::GetNextTransferTimeout() const {
-  chrono::SystemClock::time_point timeout =
-      chrono::SystemClock::TimePointAfterAtLeast(kMaxTimeout);
+std::optional<chrono::SystemClock::time_point>
+TransferThread::GetNextTransferTimeout() const {
+  std::optional<chrono::SystemClock::time_point> timeout = std::nullopt;
 
   for (Context& context : client_transfers_) {
     auto ctx_timeout = context.timeout();
-    if (ctx_timeout.has_value() && ctx_timeout.value() < timeout) {
+    if (ctx_timeout.has_value() &&
+        (!timeout.has_value() || ctx_timeout.value() < timeout.value())) {
       timeout = ctx_timeout.value();
     }
   }
   for (Context& context : server_transfers_) {
     auto ctx_timeout = context.timeout();
-    if (ctx_timeout.has_value() && ctx_timeout.value() < timeout) {
+    if (ctx_timeout.has_value() &&
+        (!timeout.has_value() || ctx_timeout.value() < timeout.value())) {
       timeout = ctx_timeout.value();
     }
   }
@@ -584,6 +597,8 @@ void TransferThread::HandleSetStreamEvent(TransferStream stream) {
 void TransferThread::EnqueueResourceEvent(uint32_t resource_id,
                                           ResourceStatusCallback&& callback) {
   if (!TryWaitForEventToProcess()) {
+    internal::ResourceStatus stats;
+    callback(Status::Unavailable(), stats);
     return;
   }
 
@@ -617,6 +632,8 @@ void TransferThread::GetResourceState(uint32_t resource_id) {
   } else {
     resource_status_callback_(Status::NotFound(), stats);
   }
+
+  resource_status_callback_ = nullptr;
 }
 
 rpc::Writer& TransferThread::stream_for(TransferStream stream) {

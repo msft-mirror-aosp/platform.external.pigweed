@@ -31,6 +31,8 @@ struct AllocatableBase {};
 
 }  // namespace internal
 
+/// @submodule{pw_allocator,block_mixins}
+
 /// Mix-in for blocks that can be allocated and freed.
 ///
 /// Block mix-ins are stateless and trivially constructible. See `BasicBlock`
@@ -242,6 +244,8 @@ struct is_allocatable : std::is_base_of<internal::AllocatableBase, BlockType> {
 template <typename BlockType>
 constexpr bool is_allocatable_v = is_allocatable<BlockType>::value;
 
+/// @}
+
 // Template method implementations.
 
 template <typename Derived>
@@ -272,7 +276,7 @@ constexpr StatusWithSize AllocatableBlock<Derived>::DoCanAlloc(
   }
   size_t extra = derived()->InnerSize();
   size_t new_inner_size = AlignUp(layout.size(), Derived::kAlignment);
-  if (PW_SUB_OVERFLOW(extra, new_inner_size, &extra)) {
+  if (!CheckedSub(extra, new_inner_size, extra)) {
     return StatusWithSize::ResourceExhausted();
   }
   return StatusWithSize(extra);
