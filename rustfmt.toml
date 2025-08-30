@@ -12,14 +12,14 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-import("//build_overrides/pigweed.gni")
+edition = "2024"
+style_edition = "2024"
 
-import("$dir_pw_build/python.gni")
+# Prevent carriage returns
+newline_style = "Unix"
 
-pw_python_script("qemu_runner") {
-  sources = [ "qemu_runner.py" ]
-  python_deps = [ "$dir_pw_tokenizer/py" ]
-  pylintrc = "$dir_pigweed/.pylintrc"
-  mypy_ini = "$dir_pigweed/.mypy.ini"
-  ruff_toml = "$dir_pigweed/.ruff.toml"
-}
+imports_granularity = "Module"
+group_imports = "StdExternalCrate"
+
+# Don't try to format generated files.
+skip_children = true

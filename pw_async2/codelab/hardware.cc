@@ -16,7 +16,6 @@
 
 #include <cctype>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <thread>
 
@@ -42,7 +41,17 @@ enum : char {
   kKeypress3 = '3',
   kKeypress4 = '4',
   kQuit = 'q',
+  kDebugDispatcher = 'd',
 };
+
+// For use with kDebugDispatcher
+pw::async2::Dispatcher* current_dispatcher = nullptr;
+
+void DebugDispatcher() {
+  if (current_dispatcher != nullptr) {
+    current_dispatcher->LogRegisteredTasks();
+  }
+}
 
 Status StreamHardwareLoop(pw::stream::Reader& reader) {
   char command = '\0';
@@ -65,6 +74,9 @@ Status StreamHardwareLoop(pw::stream::Reader& reader) {
         break;
       case kQuit:
         return pw::OkStatus();
+      case kDebugDispatcher:
+        DebugDispatcher();
+        break;
       default:
         PW_LOG_WARN("Received unexpected command: %c (0x%02x)",
                     static_cast<char>(command),
@@ -98,8 +110,19 @@ Status WebUiHardwareLoop() {
 constexpr bool kUseWebUi = PW_ASYNC2_CODELAB_WEBUI;
 
 void HardwareLoop() {
+  // Registering an atexit handler allows us to terminate this thread when
+  // there is a return from main() even when this thread is otherwise blocked
+  // on a read from a stream.
+  //
+  // One consequence is that we don't know what main() returned, so we just
+  // assume it returned zero.
+  //
+  // We also must use something other than std::exit() to terminate.
+  // `std::quick_exit` would have been nice, but isn't available everywhere.
+  std::atexit([]() { std::_Exit(0); });
+
   Status status = kUseWebUi ? WebUiHardwareLoop() : CommandLineHardwareLoop();
-  std::exit(status.ok() ? 0 : 1);
+  std::_Exit(status.ok() ? 0 : 1);
 }
 
 }  // namespace
@@ -118,7 +141,19 @@ void SetDisplay(std::string_view text) {
   }
 }
 
-void HardwareInit() {
+void HardwareInit(pw::async2::Dispatcher* dispatcher) {
+  current_dispatcher = dispatcher;
+
+  if (!kUseWebUi) {
+    PW_LOG_INFO("==========================================");
+    PW_LOG_INFO("Command line HW simulation notes:");
+    PW_LOG_INFO("  Type 'q' (then enter) to quit.");
+    PW_LOG_INFO("  Type 'd' to show the dispatcher state.");
+    PW_LOG_INFO("  Type 'c' to insert a coin.");
+    PW_LOG_INFO("  Type '0'..'4' to press a keypad key.");
+    PW_LOG_INFO("==========================================");
+  }
+
   std::thread hardware_thread(HardwareLoop);
   hardware_thread.detach();
 }

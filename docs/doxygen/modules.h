@@ -16,10 +16,97 @@
 // TODO: b/426012010 - Auto-generate this file from the metadata provided
 // in //docs/sphinx/module_metadata.json.
 
+// TODO: b/441319784 - Move each module's content into that module's directory.
+// E.g. the pw_allocator content should go into //pw_allocator/doxygen.h
+
 // clang-format off
 
 /// @defgroup pw_alignment pw_alignment
 /// @brief Natural object alignment, guaranteed. Main docs: https://pigweed.dev/pw_alignment
+
+/// @defgroup pw_allocator pw_allocator
+/// @brief Flexible, safe, and measurable memory allocation
+/// @details Main docs: [Home](../../pw_allocator/docs.html) |
+/// [Guides](../../pw_allocator/guide.html) |
+/// [Design & roadmap](../../pw_allocator/design.html) |
+/// [Code size analysis](../../pw_allocator/code_size.html)
+
+/// @defgroup pw_allocator_block Blocks
+/// @ingroup pw_allocator
+/// @brief An allocatable region of memory
+/// @details Blocks are the fundamental type managed by several of the
+/// @ref pw_allocator_concrete_block
+
+/// @defgroup pw_allocator_block_impl Block implementations
+/// @ingroup pw_allocator_block
+/// @brief The following combine block mix-ins and provide both the methods
+/// they require as well as a concrete representation of the data those methods
+/// need
+
+/// @brief Blocks are defined using several stateless “mix-in” interface types
+/// @details These provide specific functionality, while deferring the detailed
+/// representation of a block to a derived type.
+
+/// @defgroup pw_allocator_block_mixins Block mix-ins
+/// @ingroup pw_allocator_block
+/// @brief Blocks are defined using several stateless “mix-in” interface types
+/// @details These provide specific functionality, while deferring the detailed
+/// representation of a block to a derived type.
+
+/// @defgroup pw_allocator_bucket Buckets
+/// @ingroup pw_allocator
+/// @brief Data structures that track free blocks
+
+/// @defgroup pw_allocator_config Configuration
+/// @ingroup pw_allocator
+/// @brief Options for controlling block poisoning intervals, validation
+/// checks, and deprecation warnings
+
+/// @defgroup pw_allocator_concrete Concrete allocators
+/// @ingroup pw_allocator
+/// @brief Concrete allocator implementations that provide memory dynamically
+
+/// @defgroup pw_allocator_concrete_block Block allocators
+/// @ingroup pw_allocator_concrete
+
+/// @defgroup pw_allocator_core Core interfaces
+/// @ingroup pw_allocator
+/// @brief Generic allocator interfaces that can be injected into routines that
+/// need dynamic memory
+/// @details These include `Allocator`, as well as the `Layout` type that is
+/// passed to it and the managed smart pointer types, such as `UniquePtr`, that
+/// can be returned from it.
+
+/// @defgroup pw_allocator_forwarding Forwarding allocators
+/// @ingroup pw_allocator
+/// @brief Allocator implementations that don’t allocate memory directly
+/// and instead rely on other allocators while providing additional behaviors
+/// @details Learn more: [Forwarding allocator
+/// concept](../../pw_allocator/design.html#module-pw-allocator-design-forwarding)
+
+/// @defgroup pw_allocator_impl_test_fuzz FuzzTest support
+/// @ingroup pw_allocator_impl_test
+
+/// @defgroup pw_allocator_impl Implementation interfaces
+/// @ingroup pw_allocator
+/// @brief Interfaces for allocator implementers
+/// @details These interfaces are intended for allocator implementers, not for
+/// `pw_allocator` consumers.
+
+/// @defgroup pw_allocator_impl_size Size reports
+/// @ingroup pw_allocator_impl
+/// @brief Generate code size reports for allocator implementations
+
+/// @defgroup pw_allocator_impl_test Testing and debugging
+/// @ingroup pw_allocator_impl
+/// @brief Test utilities for allocator implementers
+/// @details These facilitate writing unit tests and fuzz tests for both
+/// concrete and forwarding allocator implementations. They are not intended to
+/// be used by module consumers.
+
+/// @defgroup pw_allocator_util Utilities
+/// @ingroup pw_allocator
+/// @brief Helpers for metrics, fragmentation, and buffer management
 
 /// @defgroup pw_analog pw_analog
 /// @brief Analog-to-digital converter libraries and utilities. Main docs: https://pigweed.dev/pw_analog
@@ -177,8 +264,58 @@
 /// @defgroup pw_span pw_span
 /// @brief std::span for C++17. Main docs: https://pigweed.dev/pw_span
 
+/// @defgroup pw_stream pw_stream
+/// @brief A foundational interface for streaming data
+/// @details Main docs: [Home](../../pw_stream/docs.html) |
+/// [Backends](../../pw_stream/backends.html) |
+/// [Python](../../pw_stream/py/docs.html)
+
+/// @defgroup pw_stream_interface Interfaces
+/// @ingroup pw_stream
+/// @brief Generic stream interfaces that support a combination of reading,
+/// writing, and seeking
+
+/// @defgroup pw_stream_interface_reader Readers
+/// @ingroup pw_stream_interface
+/// @brief Streams that support reading but not writing
+
+/// @defgroup pw_stream_interface_writer Writers
+/// @ingroup pw_stream_interface
+/// @brief Streams that support writing but not reading
+
+/// @defgroup pw_stream_interface_readerwriter ReaderWriters
+/// @ingroup pw_stream_interface
+/// @brief Streams that support both reading and writing
+
+/// @defgroup pw_stream_concrete Implementations
+/// @ingroup pw_stream
+/// @brief Concrete implementations of stream interfaces for general use
+
 /// @defgroup pw_stream_uart_linux pw_stream_uart_linux
 /// @brief Main docs: https://pigweed.dev/pw_stream_uart_linux
+
+/// @defgroup pw_string pw_string
+/// @brief Efficient, easy, and safe string manipulation
+/// @details Main docs: [Home](../../pw_string/docs.html) |
+/// [Get started & guides](../../pw_string/guide.html) |
+/// [Design & roadmap](../../pw_string/design.html) |
+/// [Code size analysis](../../pw_string/code_size.html)
+
+/// @defgroup pw_string_inline InlineString and InlineBasicString
+/// @ingroup pw_string
+/// @brief Safer alternatives to `std::string` and `std::basic_string`
+
+/// @defgroup pw_string_builder StringBuilder
+/// @ingroup pw_string
+/// @brief The flexibility of `std::ostringstream` but with a small footprint
+
+/// @defgroup pw_string_util Utilities
+/// @ingroup pw_string
+/// @brief Safer alternatives to C++ standard library string functions
+
+/// @defgroup pw_string_utf8 UTF-8 helpers
+/// @ingroup pw_string
+/// @brief Basic helpers for reading and writing UTF-8-encoded strings
 
 /// @defgroup pw_sys_io pw_sys_io
 /// @brief Main docs: https://pigweed.dev/pw_sys_io
