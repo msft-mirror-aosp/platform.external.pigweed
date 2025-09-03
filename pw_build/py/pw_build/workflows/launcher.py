@@ -14,6 +14,7 @@
 """A CLI tool for running tools, builds, and more from a workflows.json file."""
 
 import argparse
+from collections import defaultdict
 from collections.abc import Callable, Sequence
 import json
 import logging
@@ -160,10 +161,20 @@ class _WorkflowGroupPlugin(multitool.MultitoolPlugin):
         return builder.run_builds()
 
 
+def _extra_arg_handler(arg: str) -> tuple[str, str]:
+    """An argparse argument type for foo_build=--bar argument handling."""
+    assert (
+        '=' in arg
+    ), f'Invalid argument: `{arg}`, must be of the form BUILD_TYPE=--flag'
+    parts = arg.split('=', 1)
+    return parts[0], parts[1]
+
+
 class WorkflowsCli(multitool.MultitoolCli):
     """A CLI entry point for launching project-specific workflows."""
 
     def __init__(self, config: workflows_pb2.WorkflowSuite | None = None):
+        super().__init__()
         self.config: workflows_pb2.WorkflowSuite | None = config
         self._workflows: WorkflowsManager | None = None
 
@@ -189,6 +200,33 @@ class WorkflowsCli(multitool.MultitoolCli):
             )
             return workflows_pb2.WorkflowSuite()
         return WorkflowsCli._load_proto_json(config)
+
+    def add_arguments(self, parser: argparse.ArgumentParser) -> None:
+        super().add_arguments(parser)
+        parser.add_argument(
+            '--output-dir',
+            '-o',
+            default=Path('out'),
+            type=Path,
+            help=(
+                'Output root for builds triggered by launched workflows. '
+                'Builds and tools will be nested in configuration-specific '
+                'subdirectories.'
+            ),
+        )
+
+        parser.add_argument(
+            '--extra-arg',
+            '-X',
+            nargs='*',
+            metavar='build_type=--argument',
+            type=_extra_arg_handler,
+            help=(
+                'Forwards additional arguments to all builds of the specified '
+                'build type. These are always injected at the end of the '
+                'configuration-specific list of arguments.'
+            ),
+        )
 
     def _dump_textproto(self, plugin_args: Sequence[str]) -> int:
         parser = argparse.ArgumentParser(
@@ -330,16 +368,25 @@ class WorkflowsCli(multitool.MultitoolCli):
             ),
         ]
 
-    def plugins(self) -> Sequence[multitool.MultitoolPlugin]:
+    def plugins(
+        self, args: argparse.Namespace
+    ) -> Sequence[multitool.MultitoolPlugin]:
         if not self.config:
             self.config = self._load_config_from()
+
+        extra_args_by_type = defaultdict(list)
+        if args.extra_arg:
+            for build_type, arg in args.extra_arg:
+                extra_args_by_type[build_type].append(arg)
+
         self._workflows = WorkflowsManager(
             self.config,
             {
                 "bazel": BazelBuildDriver(),
             },
             working_dir=Path.cwd(),
-            base_out_dir=Path.cwd() / 'out',
+            base_out_dir=args.output_dir,
+            extra_build_args=extra_args_by_type,
         )
 
         all_plugins = []
