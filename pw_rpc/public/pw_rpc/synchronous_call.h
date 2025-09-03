@@ -102,7 +102,7 @@
 /// @cpp_type{pw::Function} and returns a @cpp_class{pw::Status}. If the RPC
 /// completes, the @cpp_type{pw::Function} is called with the response and
 /// returned status, and the `SynchronousCall` invocation returns
-/// @pw_status{OK}. If the RPC fails, `SynchronousCall` returns an error.
+/// `pw::OkStatus()`. If the RPC fails, `SynchronousCall` returns an error.
 ///
 /// @code{.cpp}
 ///   pw::Status rpc_status = pw::rpc::SynchronousCall<EchoService::Echo>(
@@ -119,6 +119,8 @@
 /// and translate the response into a `pw::rpc::SynchronousCallResult` that
 /// contains the error type and status or the proto response.
 namespace pw::rpc {
+
+/// @submodule{pw_rpc,sync}
 
 /// Invokes a unary RPC synchronously using Nanopb or pwpb. Blocks indefinitely
 /// until a response is received.
@@ -303,5 +305,7 @@ Status SynchronousCallUntil(
       internal::CallGeneratedClient<kRpcMethod>(client, request),
       deadline);
 }
+
+/// @}
 
 }  // namespace pw::rpc
