@@ -177,6 +177,42 @@
 /// @defgroup pw_bytes pw_bytes
 /// @brief Utilities for manipulating binary data. Main docs: https://pigweed.dev/pw_bytes
 
+/// @defgroup pw_bytes_ptr Packed pointers
+/// @ingroup pw_bytes
+/// @brief Store data in unused pointer bits
+
+/// @defgroup pw_bytes_align Alignment
+/// @ingroup pw_bytes
+/// @brief Functions for memory alignment
+
+/// @defgroup pw_bytes_array Byte arrays
+/// @ingroup pw_bytes
+/// @brief Compile-time construction of byte arrays
+
+/// @defgroup pw_bytes_build Byte builders
+/// @ingroup pw_bytes
+/// @brief Dynamically build byte sequences in fixed-size buffers
+
+/// @defgroup pw_bytes_bit Bit manipulation
+/// @ingroup pw_bytes
+/// @brief C++20 `<bit>` features and extensions
+
+/// @defgroup pw_bytes_endian Endian conversion
+/// @ingroup pw_bytes
+/// @brief Utilities for handling byte order
+
+/// @defgroup pw_bytes_suffix Byte suffixes
+/// @ingroup pw_bytes
+/// @brief Convenient literal for `std::byte`
+
+/// @defgroup pw_bytes_unit Byte units
+/// @ingroup pw_bytes
+/// @brief Constants and literals for byte sizes e.g. KiB
+
+/// @defgroup pw_bytes_span Byte spans
+/// @ingroup pw_bytes
+/// @brief Aliases for `pw::span` of bytes
+
 /// @defgroup pw_channel pw_channel
 /// @brief Async, zero-copy API for sending and receiving bytes or datagrams. Main docs: https://pigweed.dev/pw_channel
 
@@ -347,6 +383,14 @@
 /// @defgroup pw_preprocessor pw_preprocessor
 /// @brief Helpful preprocessor macros. Main docs: https://pigweed.dev/pw_preprocessor
 
+/// @defgroup pw_protobuf pw_protobuf
+/// @brief Expressive interface for encoding and decoding protocol buffers
+/// @details Main docs: [Home](../../pw_protobuf/docs.html) |
+/// [Extended size report](../../pw_protobuf/size_report.html)
+
+/// @defgroup pw_protobuf_find Find APIs
+/// @ingroup pw_protobuf
+
 /// @defgroup pw_random pw_random
 /// @brief Main docs: https://pigweed.dev/pw_random
 
@@ -372,6 +416,8 @@
 
 /// @defgroup pw_rpc_sync Synchronous API
 /// @ingroup pw_rpc
+/// @details Main docs: [Client synchronous call
+/// wrappers](../../pw_rpc/cpp.html#client-synchronous-call-wrappers)
 
 /// @defgroup pw_rpc_config Configuration
 /// @ingroup pw_rpc
@@ -488,6 +534,40 @@
 
 /// @defgroup pw_uart pw_uart
 /// @brief Core interfaces for UART communication. Main docs: https://pigweed.dev/pw_uart
+
+/// @defgroup pw_unit_test pw_unit_test
+/// @brief GoogleTest for embedded
+/// @details Main docs: [Home](../../pw_unit_test/docs.html)
+
+/// @defgroup pw_unit_test_declaration Test declaration
+/// @ingroup pw_unit_test
+
+/// @defgroup pw_unit_test_control Test control
+/// @ingroup pw_unit_test
+
+/// @defgroup pw_unit_test_expectations Expectations
+/// @ingroup pw_unit_test
+/// @details When a test fails an expectation, the framework marks the test as
+/// a failure and then continues executing the test. They’re useful when you
+/// want to verify multiple dimensions of the same feature and see all the
+/// errors at the same time.
+
+/// @defgroup pw_unit_test_assertions Assertions
+/// @ingroup pw_unit_test
+/// @details Assertions work the same as expectations except they stop the
+/// execution of the test as soon as a failed condition is met.
+
+/// @defgroup pw_unit_test_events Event handlers
+/// @ingroup pw_unit_test
+
+/// @defgroup pw_unit_test_configuration Configuration
+/// @ingroup pw_unit_test
+
+/// @defgroup pw_unit_test_helpers Helpers
+/// @ingroup pw_unit_test
+
+/// @defgroup pw_unit_test_constexpr Constexpr tests
+/// @ingroup pw_unit_test
 
 /// @defgroup pw_uuid pw_uuid
 /// @brief 128-bit universally unique identifier (UUID). Main docs: https://pigweed.dev/pw_uuid
