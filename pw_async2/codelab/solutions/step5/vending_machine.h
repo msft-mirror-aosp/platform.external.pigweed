@@ -52,7 +52,7 @@ class Keypad {
 
   pw::sync::InterruptSpinLock lock_;
   int key_pressed_ PW_GUARDED_BY(lock_);
-  pw::async2::Waker waker_ PW_GUARDED_BY(lock_);
+  pw::async2::Waker waker_;  // No guard needed!
 };
 
 // Does this belong in pw_async2?
@@ -113,8 +113,8 @@ class DispenserTask : public pw::async2::Task {
   DispenserTask(ItemDropSensor& item_drop_sensor,
                 DispenseRequestQueue& dispense_requests,
                 DispenseResponseQueue& dispense_responses)
-
-      : item_drop_sensor_(item_drop_sensor),
+      : pw::async2::Task(PW_ASYNC_TASK_NAME("DispenserTask")),
+        item_drop_sensor_(item_drop_sensor),
         dispense_requests_(dispense_requests),
         dispense_responses_(dispense_responses),
         state_{kIdle} {}
