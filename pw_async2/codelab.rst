@@ -229,9 +229,9 @@ Here's how you would write that:
 
 .. code-block:: cpp
 
-   Poll<unsigned> poll_result = coin_slot_.Pend(cx);
+   pw::async2::Poll<unsigned> poll_result = coin_slot_.Pend(cx);
    if (poll_result.IsPending()) {
-     return Pending();
+     return pw::async2::Pending();
    }
    unsigned coins = poll_result.value();
 
@@ -488,7 +488,7 @@ member function.
 
 .. code-block:: cpp
 
-   void key_press_isr(int raw_key_code) { keypad.Press(raw_key_code); }
+   void key_press_isr(int key) { keypad.Press(key); }
 
 The next step is harder, implementing the ``Keypad::Press`` member function
 correctly.
@@ -618,12 +618,12 @@ Let's set up the waiter.
 
 2. Add an instance as member data to your ``Keypad`` class.
 
-   As this will ultimately be used by both ``Pend()`` and ``Press()``, it needs
-   to be guarded by the spin lock.
+   Note that the instance is internally thread-safe, and you do not need to
+   guard it with a lock. An external spinlock is redundant, but harmless.
 
    .. code-block:: cpp
 
-      pw::async2::Waker waker_ PW_GUARDED_BY(lock_);
+      pw::async2::Waker waker_;
 
 3. Setup the waker right before returning :doxylink:`pw::async2::Pending`
 
@@ -1131,7 +1131,7 @@ Then, call it from ``item_drop_sensor_isr()``.
 
 2. Setting up inter-task communication
 ======================================
-We'll be adding a new ``DispatcherTask`` soon. To get ready for that, let's set
+We'll be adding a new ``DispenserTask`` soon. To get ready for that, let's set
 up communications channels between ``VendingMachineTask`` and the new task.
 
 There are many ways to use a :doxylink:`Waker <pw::async2::Waker>` to
@@ -1246,10 +1246,10 @@ Here's what the three states need to do.
      calling :doxylink:`PendNotEmpty()
      <pw::BasicInlineAsyncQueue::PendNotEmpty>` and accessing the request with
      a call to ``front()``. Keep the item in the queue until you turn off the
-     dispensing motor; you'll to reference the number.
-
-  2. Start the motor with a call to ``SetDispenerMotorState()``.
-  3. Move to the ``kDispensing`` state.
+     dispensing motor; you'll need to reference the number.
+  2. Call ``item_drop_sensor_.Clear()`` so the sensor is ready for a new item.
+  3. Start the motor with a call to ``SetDispenerMotorState()``.
+  4. Move to the ``kDispensing`` state.
 
 - ``kDispensing``
 
