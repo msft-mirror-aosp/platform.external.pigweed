@@ -12,17 +12,4 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@rules_jni//jni:cc_jni_library.bzl", "cc_jni_library")
-load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
-
-cc_jni_library(
-    name = "pw_tokenizer_jni",
-    srcs = ["detokenizer.cc"],
-    tags = ["jni"],
-    target_compatible_with = incompatible_with_mcu(),
-    visibility = ["//pw_tokenizer/java_jni/src/main/java/dev/pigweed/pw_tokenizer:__pkg__"],
-    deps = [
-        "//pw_span",
-        "//pw_tokenizer:decoder",
-    ],
-)
+exports_files(glob(["*.patch"]))
