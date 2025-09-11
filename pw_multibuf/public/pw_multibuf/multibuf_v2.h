@@ -259,25 +259,25 @@ class BasicMultiBuf {
   // Conversions
 
   template <typename OtherMultiBuf>
-  OtherMultiBuf& as() & {
+  constexpr OtherMultiBuf& as() & {
     multibuf_impl::AssertIsConvertible<BasicMultiBuf, OtherMultiBuf>();
     return generic().template as<OtherMultiBuf>();
   }
 
   template <typename OtherMultiBuf>
-  const OtherMultiBuf& as() const& {
+  constexpr const OtherMultiBuf& as() const& {
     multibuf_impl::AssertIsConvertible<BasicMultiBuf, OtherMultiBuf>();
     return generic().template as<OtherMultiBuf>();
   }
 
   template <typename OtherMultiBuf>
-  OtherMultiBuf&& as() && {
+  constexpr OtherMultiBuf&& as() && {
     multibuf_impl::AssertIsConvertible<BasicMultiBuf, OtherMultiBuf>();
     return std::move(generic().template as<OtherMultiBuf>());
   }
 
   template <typename OtherMultiBuf>
-  const OtherMultiBuf&& as() const&& {
+  constexpr const OtherMultiBuf&& as() const&& {
     multibuf_impl::AssertIsConvertible<BasicMultiBuf, OtherMultiBuf>();
     return std::move(generic().template as<OtherMultiBuf>());
   }
@@ -285,28 +285,28 @@ class BasicMultiBuf {
   template <typename OtherMultiBuf,
             typename = multibuf_impl::EnableIfConvertible<BasicMultiBuf,
                                                           OtherMultiBuf>>
-  operator OtherMultiBuf&() & {
+  constexpr operator OtherMultiBuf&() & {
     return as<OtherMultiBuf>();
   }
 
   template <typename OtherMultiBuf,
             typename = multibuf_impl::EnableIfConvertible<BasicMultiBuf,
                                                           OtherMultiBuf>>
-  operator const OtherMultiBuf&() const& {
+  constexpr operator const OtherMultiBuf&() const& {
     return as<OtherMultiBuf>();
   }
 
   template <typename OtherMultiBuf,
             typename = multibuf_impl::EnableIfConvertible<BasicMultiBuf,
                                                           OtherMultiBuf>>
-  operator OtherMultiBuf&&() && {
+  constexpr operator OtherMultiBuf&&() && {
     return std::move(as<OtherMultiBuf>());
   }
 
   template <typename OtherMultiBuf,
             typename = multibuf_impl::EnableIfConvertible<BasicMultiBuf,
                                                           OtherMultiBuf>>
-  operator const OtherMultiBuf&&() const&& {
+  constexpr operator const OtherMultiBuf&&() const&& {
     return std::move(as<OtherMultiBuf>());
   }
 
@@ -361,8 +361,10 @@ class BasicMultiBuf {
   constexpr std::enable_if_t<kMutable, ChunksType> Chunks() {
     return generic().Chunks();
   }
-  ConstChunksType Chunks() const { return generic().ConstChunks(); }
-  ConstChunksType ConstChunks() const { return generic().ConstChunks(); }
+  constexpr ConstChunksType Chunks() const { return generic().ConstChunks(); }
+  constexpr ConstChunksType ConstChunks() const {
+    return generic().ConstChunks();
+  }
   /// @}
 
   // Iterators.
@@ -813,15 +815,9 @@ class BasicMultiBuf {
   /// @param    pos     Location from which to remove memory from the MultiBuf.
   /// @param    size    Amount of memory to remove.
   ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK:                  The returned MultiBuf contains the removed chunks.
-  ///
-  ///    RESOURCE_EXHAUSTED:  Failed to allocate memory for the new MultiBuf's
-  ///                         metadata.
-  /// @endrst
+  /// @returns @Result{the MultiBuf containing the removed chunks}
+  /// * @RESOURCE_EXHAUSTED: Failed to allocate memory for the new %MultiBuf's
+  ///   metadata.
   Result<Instance> Remove(const_iterator pos, size_t size);
 
   /// Removes the first fragment from this object and returns it.
@@ -831,18 +827,12 @@ class BasicMultiBuf {
   ///
   /// It is an error to call this method when the MultiBuf is empty.
   ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK:                  Returns the fragment in a new MultiBuf.
-  ///
-  ///    RESOURCE_EXHAUSTED:  Attempting to reserve space for the new MultiBuf
-  ///                         failed.
-  ///
-  /// @endrst
+  /// @returns @Result{the fragment in a new MultiBuf}
+  /// * @RESOURCE_EXHAUSTED: Attempting to reserve space for the new MultiBuf
+  ///   failed.
   Result<Instance> PopFrontFragment();
 
+  // clang-format off
   /// Removes if a range of bytes from this object.
   ///
   /// The range given by `pos` and `size` MUST fall within this MultiBuf.
@@ -861,15 +851,10 @@ class BasicMultiBuf {
   /// @param    pos     Location from which to discard memory from the MultiBuf.
   /// @param    size    Amount of memory to discard.
   ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK:                  The memory range has been discarded.
-  ///
-  ///    RESOURCE_EXHAUSTED:  Failed to allocate memory for the new MultiBuf's
-  ///                         metadata.
-  /// @endrst
+  /// @returns @Result{an iterator pointing to the memory after the discarded range}
+  /// * @RESOURCE_EXHAUSTED:  Failed to allocate memory for the new %MultiBuf's
+  ///   metadata.
+  // clang-format on
   Result<const_iterator> Discard(const_iterator pos, size_t size) {
     return generic().Discard(pos, size);
   }
@@ -1226,12 +1211,12 @@ class GenericMultiBuf final
       : deque_(allocator) {}
 
   template <typename MultiBufType>
-  MultiBufType& as() {
+  constexpr MultiBufType& as() {
     return *this;
   }
 
   template <typename MultiBufType>
-  const MultiBufType& as() const {
+  constexpr const MultiBufType& as() const {
     return *this;
   }
 
@@ -1662,22 +1647,32 @@ class Instance {
     return *this;
   }
 
-  MultiBufType* operator->() { return &base_.as<MultiBufType>(); }
-  const MultiBufType* operator->() const { return &base_.as<MultiBufType>(); }
+  constexpr MultiBufType* operator->() { return &base_.as<MultiBufType>(); }
+  constexpr const MultiBufType* operator->() const {
+    return &base_.as<MultiBufType>();
+  }
 
-  MultiBufType& operator*() & { return base_.as<MultiBufType>(); }
-  const MultiBufType& operator*() const& { return base_.as<MultiBufType>(); }
+  constexpr MultiBufType& operator*() & { return base_.as<MultiBufType>(); }
+  constexpr const MultiBufType& operator*() const& {
+    return base_.as<MultiBufType>();
+  }
 
-  MultiBufType&& operator*() && { return std::move(base_.as<MultiBufType>()); }
-  const MultiBufType&& operator*() const&& {
+  constexpr MultiBufType&& operator*() && {
+    return std::move(base_.as<MultiBufType>());
+  }
+  constexpr const MultiBufType&& operator*() const&& {
     return std::move(base_.as<MultiBufType>());
   }
 
-  operator MultiBufType&() & { return base_.as<MultiBufType>(); }
-  operator const MultiBufType&() const& { return base_.as<MultiBufType>(); }
+  constexpr operator MultiBufType&() & { return base_.as<MultiBufType>(); }
+  constexpr operator const MultiBufType&() const& {
+    return base_.as<MultiBufType>();
+  }
 
-  operator MultiBufType&&() && { return std::move(base_.as<MultiBufType>()); }
-  operator const MultiBufType&&() const&& {
+  constexpr operator MultiBufType&&() && {
+    return std::move(base_.as<MultiBufType>());
+  }
+  constexpr operator const MultiBufType&&() const&& {
     return std::move(base_.as<MultiBufType>());
   }
 

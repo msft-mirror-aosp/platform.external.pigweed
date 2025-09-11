@@ -136,7 +136,7 @@
 /// @ingroup pw_async2
 /// @brief Dispatcher implementation interfaces
 
-/// @defgroup pw_async2_combiners Combining tasks
+/// @defgroup pw_async2_combinators Combinators
 /// @ingroup pw_async2
 /// @brief Helpers for interacting with multiple pendables
 
@@ -393,6 +393,10 @@
 
 /// @defgroup pw_random pw_random
 /// @brief Main docs: https://pigweed.dev/pw_random
+
+/// @defgroup pw_result pw_result
+/// @brief Error propagation primitives: value-or-error
+/// @details Main docs: [Home](../../pw_random/docs.html)
 
 /// @defgroup pw_rpc pw_rpc
 /// @brief Efficient, low-code-size RPC system for embedded devices
