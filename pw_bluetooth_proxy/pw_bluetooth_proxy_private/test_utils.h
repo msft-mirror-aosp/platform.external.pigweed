@@ -18,6 +18,7 @@
 #include <variant>
 #include <vector>
 
+#include "pw_allocator/libc_allocator.h"
 #include "pw_bluetooth/emboss_util.h"
 #include "pw_bluetooth/hci_common.emb.h"
 #include "pw_bluetooth/hci_data.emb.h"
@@ -35,12 +36,19 @@
 #include "pw_bluetooth_proxy/rfcomm_channel.h"
 #include "pw_containers/flat_map.h"
 #include "pw_function/function.h"
-#include "pw_multibuf/simple_allocator_for_test.h"
+#include "pw_multibuf/simple_allocator.h"
 #include "pw_status/status.h"
 #include "pw_status/try.h"
 #include "pw_unit_test/framework.h"
 
 namespace pw::bluetooth::proxy {
+
+// ########## Test Constants
+
+// Should align with L2capChannel::kQueueCapacity.
+// TODO: https://pwbug.dev/349700888 - Update uses once capacity is
+// configurable.
+inline constexpr size_t kTestL2capQueueCapacity = 5;
 
 // ########## Util functions
 
@@ -324,14 +332,20 @@ class ProxyHostTest : public testing::Test {
       ChannelEventCallback&& event_fn = nullptr);
 
   template <typename T, size_t N>
-  pw::multibuf::MultiBuf MultiBufFromSpan(span<T, N> buf) {
+  static pw::multibuf::MultiBuf MultiBufFromSpan(
+      span<T, N> buf, multibuf::MultiBufAllocator& allocator) {
     std::optional<pw::multibuf::MultiBuf> multibuf =
-        test_multibuf_allocator_.AllocateContiguous(buf.size());
+        allocator.AllocateContiguous(buf.size());
     PW_ASSERT(multibuf.has_value());
     std::optional<ConstByteSpan> multibuf_span = multibuf->ContiguousSpan();
     PW_ASSERT(multibuf_span);
     PW_TEST_EXPECT_OK(multibuf->CopyFrom(as_bytes(buf)));
     return std::move(*multibuf);
+  }
+
+  template <typename T, size_t N>
+  pw::multibuf::MultiBuf MultiBufFromSpan(span<T, N> buf) {
+    return MultiBufFromSpan(buf, test_multibuf_allocator_);
   }
 
   template <typename T, size_t N>
@@ -342,15 +356,25 @@ class ProxyHostTest : public testing::Test {
  private:
   // MultiBuf allocator for creating objects to pass to the system under
   // test (e.g. creating test packets to send to proxy host).
-  pw::multibuf::test::SimpleAllocatorForTest</*kDataSizeBytes=*/2 * 1024,
-                                             /*kMetaSizeBytes=*/2 * 1024>
-      test_multibuf_allocator_{};
+  std::array<std::byte, 2 * 1024> test_multibuf_data_mem{};
+  // Use a libc allocator for metadata so msan can detect use after free at
+  // multibuf level. When we move to MultiBuf 2 we can use libc for entire
+  // multibuf.
+  pw::allocator::LibCAllocator test_multibuf_libc_allocator;
+  pw::multibuf::SimpleAllocator test_multibuf_allocator_{
+      /*data_area=*/test_multibuf_data_mem,
+      /*metadata_alloc=*/test_multibuf_libc_allocator};
 
   // Default MultiBuf allocator to be passed to system under test (e.g.
   // to pass to AcquireL2capCoc).
-  pw::multibuf::test::SimpleAllocatorForTest</*kDataSizeBytes=*/1024,
-                                             /*kMetaSizeBytes=*/2 * 1024>
-      sut_multibuf_allocator_{};
+  std::array<std::byte, 2 * 1024> sut_multibuf_data_mem{};
+  // Use a libc allocator for metadata so msan can detect use after free at
+  // multibuf level. When we move to MultiBuf 2 we can use libc for entire
+  // multibuf.
+  pw::allocator::LibCAllocator sut_multibuf_libc_allocator;
+  pw::multibuf::SimpleAllocator sut_multibuf_allocator_{
+      /*data_area=*/sut_multibuf_data_mem,
+      /*metadata_alloc=*/sut_multibuf_libc_allocator};
 };
 
 }  // namespace pw::bluetooth::proxy

@@ -75,9 +75,13 @@ L2capCoc::L2capCoc(L2capCoc&& other)
 Status L2capCoc::DoCheckWriteParameter(pw::multibuf::MultiBuf& payload) {
   if (payload.size() > tx_mtu_) {
     PW_LOG_ERROR(
-        "Payload (%zu bytes) exceeds MTU (%d bytes). So will not process.",
+        "Payload (%zu bytes) exceeds MTU (%d bytes). So will not process. "
+        "local_cid: %#x, remote_cid: %#x, state: %u",
         payload.size(),
-        tx_mtu_);
+        tx_mtu_,
+        local_cid(),
+        remote_cid(),
+        cpp23::to_underlying(state()));
     return Status::InvalidArgument();
   }
   return pw::OkStatus();
@@ -430,7 +434,8 @@ std::optional<H4PacketWithH4> L2capCoc::GenerateNextTxPacket() {
   tx_sdu_offset_ += sdu_bytes_in_segment;
 
   if (tx_sdu_offset_ == sdu_span.size()) {
-    // This segment was the final (or only) PDU of the SDU.
+    // This segment was the final (or only) PDU of the SDU payload. So all
+    // content has been copied from the front payload so it can be released.
     PopFrontPayload();
     tx_sdu_offset_ = 0;
     is_continuing_segment_ = false;
