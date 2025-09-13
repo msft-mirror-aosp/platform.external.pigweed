@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2025 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -11,29 +11,16 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
-
-package {
-    default_applicable_licenses: ["external_pigweed_license"],
-}
-
-cc_library_static {
-    name: "pw_containers",
-    defaults: [
-        "pw_android_common_backends",
-        "pw_android_common_target_support",
-    ],
-    export_include_dirs: ["public"],
-    header_libs: [
-        "pw_assert",
-        "pw_log",
-    ],
-    static_libs: [
-        "pw_numeric",
-        "pw_polyfill",
-        "pw_preprocessor",
-        "pw_span",
-    ],
-    srcs: [
-        "intrusive_item.cc",
-    ],
+{
+  arch: {
+    type: "armv8m",
+    vector_table_start_address: 0x10000000,
+    vector_table_size_bytes: 2048,
+  },
+  kernel: {
+    flash_start_address: 0x10000800,
+    flash_size_bytes: 261120,        // 255Kb
+    ram_start_address: 0x38000000,
+    ram_size_bytes: 65536,           // 64Kb
+  },
 }
