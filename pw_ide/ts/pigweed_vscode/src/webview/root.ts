@@ -253,9 +253,6 @@ export class Root extends LitElement {
                       type="text"
                       class="vscode-input"
                       @click=${(e: MouseEvent) => e.stopPropagation()}
-                      @keydown=${(e: KeyboardEvent) => {
-                        e.stopPropagation();
-                      }}
                       .value=${currentManualTarget}
                       @input=${this._handleManualBazelInputChange}
                       placeholder="//..."
@@ -294,11 +291,11 @@ export class Root extends LitElement {
               <div class="row">
                 <div>
                   <b>Compile commands generated using</b><br />
-                  <sub
-                    >bazel
-                    ${this.cipdReport.bazelCompileCommandsLastBuildCommand ||
-                    'N/A'}</sub
-                  >
+                  <sub>
+                    ${this.cipdReport.bazelCompileCommandsLastBuildCommand
+                      ? `bazel ${this.cipdReport.bazelCompileCommandsLastBuildCommand}`
+                      : 'N/A'}
+                  </sub>
                 </div>
                 <div></div>
               </div>
