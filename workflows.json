@@ -325,6 +325,118 @@
       "targets": [
         "//pw_kernel/..."
       ]
+    },
+    {
+      "name": "clang_tidy",
+      "build_config": {
+        "name": "clang_tidy_config",
+        "description": "Clang-Tidy config",
+        "build_type": "bazel",
+        "args": [
+          "--config=clang-tidy"
+        ],
+        "env": {},
+        "driver_options": {
+          "@type": "pw.build.proto.BazelDriverOptions",
+          "no_test": true
+        }
+      },
+      "targets": [
+        "//..."
+      ]
+    },
+    {
+      "name": "asan_build",
+      "build_config": {
+        "name": "asan_config",
+        "description": "ASAN config",
+        "build_type": "bazel",
+        "args": [
+          "--config=asan"
+        ],
+        "env": {}
+      },
+      "targets": [
+        "//..."
+      ]
+    },
+    {
+      "name": "asan_googletest",
+      "build_config": {
+        "name": "asan_googletest_config",
+        "description": "ASAN Googletest config",
+        "build_type": "bazel",
+        "args": [
+          "--config=asan",
+          "--config=googletest"
+        ],
+        "env": {}
+      },
+      "targets": [
+        "//..."
+      ]
+    },
+    {
+      "name": "tsan_build",
+      "build_config": {
+        "name": "tsan_config",
+        "description": "TSAN config",
+        "build_type": "bazel",
+        "args": [
+          "--config=tsan"
+        ],
+        "env": {}
+      },
+      "targets": [
+        "//..."
+      ]
+    },
+    {
+      "name": "tsan_googletest",
+      "build_config": {
+        "name": "tsan_googletest_config",
+        "description": "TSAN Googletest config",
+        "build_type": "bazel",
+        "args": [
+          "--config=tsan",
+          "--config=googletest"
+        ],
+        "env": {}
+      },
+      "targets": [
+        "//..."
+      ]
+    },
+    {
+      "name": "ubsan_build",
+      "build_config": {
+        "name": "ubsan_config",
+        "description": "UBSAN config",
+        "build_type": "bazel",
+        "args": [
+          "--config=ubsan"
+        ],
+        "env": {}
+      },
+      "targets": [
+        "//..."
+      ]
+    },
+    {
+      "name": "ubsan_googletest",
+      "build_config": {
+        "name": "ubsan_googletest_config",
+        "description": "UBSAN Googletest config",
+        "build_type": "bazel",
+        "args": [
+          "--config=ubsan",
+          "--config=googletest"
+        ],
+        "env": {}
+      },
+      "targets": [
+        "//..."
+      ]
     }
   ],
   "tools": [
@@ -412,6 +524,30 @@
         "k_qemu_virt_riscv32",
         "k_rp2350",
         "k_lint"
+      ]
+    },
+    {
+      "name": "asan",
+      "description": "ASAN-related builds",
+      "builds": [
+        "asan_build",
+        "asan_googletest"
+      ]
+    },
+    {
+      "name": "tsan",
+      "description": "TSAN-related builds",
+      "builds": [
+        "tsan_build",
+        "tsan_googletest"
+      ]
+    },
+    {
+      "name": "ubsan",
+      "description": "UBSAN-related builds",
+      "builds": [
+        "ubsan_build",
+        "ubsan_googletest"
       ]
     }
   ]
