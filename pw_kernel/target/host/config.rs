@@ -16,4 +16,6 @@ pub use kernel_config::KernelConfigInterface;
 
 pub struct KernelConfig;
 
-impl KernelConfigInterface for KernelConfig {}
+impl KernelConfigInterface for KernelConfig {
+    const SYSTEM_CLOCK_HZ: u64 = 0;
+}

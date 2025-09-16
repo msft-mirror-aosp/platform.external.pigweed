@@ -24,7 +24,6 @@ pw_allocator
    TrackingAllocator tracker(libc_allocator);
    SynchronizedAllocator synced(*block_allocator);
 
-
 Dynamically allocate without giving up control! Pigweed's allocators let you
 easily combine allocator features for your needs, without extra code size or
 performance penalties for those you don't. Complex projects in particular can
@@ -145,7 +144,7 @@ manage memory.
       Integrate pw_allocator into your project and learn common use cases
 
    .. grid-item-card:: :octicon:`code-square` API reference
-      :link: ../doxygen/group__pw__allocator.html
+      :link: ../api/cc/group__pw__allocator.html
       :link-type: url
       :class-item: sales-pitch-cta-secondary
 
