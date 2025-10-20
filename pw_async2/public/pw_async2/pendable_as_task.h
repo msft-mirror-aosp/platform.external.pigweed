@@ -19,6 +19,8 @@
 
 namespace pw::async2 {
 
+/// @submodule{pw_async2,adapters}
+
 /// A ``Task`` that delegates to a type with a ``Pend`` method.
 ///
 /// The wrapped type must have a ``Pend`` method which accepts a ``Context&``
@@ -50,5 +52,7 @@ class PendableAsTask : public Task {
 
 template <typename T>
 PendableAsTask(T&&) -> PendableAsTask<T>;
+
+/// @}
 
 }  // namespace pw::async2

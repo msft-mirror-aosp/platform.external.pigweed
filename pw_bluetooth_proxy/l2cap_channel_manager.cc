@@ -33,6 +33,10 @@ L2capChannelManager::L2capChannelManager(AclDataChannel& acl_data_channel)
 
 void L2capChannelManager::RegisterChannel(L2capChannel& channel) {
   std::lock_guard lock(channels_mutex_);
+  RegisterChannelLocked(channel);
+}
+
+void L2capChannelManager::RegisterChannelLocked(L2capChannel& channel) {
   // Insert new channels before `lrd_channel_`.
   IntrusiveForwardList<L2capChannel>::iterator before_it =
       channels_.before_begin();
@@ -70,6 +74,13 @@ void L2capChannelManager::DeregisterChannel(L2capChannel& channel) {
   DeregisterChannelLocked(channel);
 }
 
+void L2capChannelManager::MoveChannelRegistration(L2capChannel& from,
+                                                  L2capChannel& to) {
+  std::lock_guard lock(channels_mutex_);
+  DeregisterChannelLocked(from);
+  RegisterChannelLocked(to);
+}
+
 void L2capChannelManager::DeregisterAndCloseChannels(L2capChannelEvent event) {
   std::lock_guard lock(channels_mutex_);
   while (!channels_.empty()) {
@@ -97,6 +108,8 @@ pw::Result<H4PacketWithH4> L2capChannelManager::GetAclH4Packet(uint16_t size) {
   H4PacketWithH4 h4_packet(span(h4_buff->data(), size),
                            /*release_fn=*/[this](const uint8_t* buffer) {
                              this->h4_storage_.ReleaseH4Buff(buffer);
+                             // TODO: https://pwbug.dev/421249712 - Only report
+                             // if we were previously out of buffers.
                              ForceDrainChannelQueues();
                            });
   h4_packet.SetH4Type(emboss::H4PacketType::ACL_DATA);
@@ -114,14 +127,23 @@ void L2capChannelManager::ForceDrainChannelQueues() {
 }
 
 void L2capChannelManager::ReportNewTxPacketsOrCredits() {
-  new_tx_since_drain_ = true;
+  std::lock_guard lock(drain_status_mutex_);
+  drain_needed_ = true;
 }
 
 void L2capChannelManager::DrainChannelQueuesIfNewTx() {
-  if (!new_tx_since_drain_) {
-    return;
+  {
+    std::lock_guard lock(drain_status_mutex_);
+    if (drain_running_) {
+      // Drain is already in progress
+      return;
+    }
+    if (!drain_needed_) {
+      return;
+    }
+    drain_running_ = true;
+    drain_needed_ = false;
   }
-  new_tx_since_drain_ = false;
 
   pw::containers::FlatMap<AclTransportType,
                           std::optional<AclDataChannel::SendCredit>,
@@ -149,6 +171,10 @@ void L2capChannelManager::DrainChannelQueuesIfNewTx() {
 
       // Container is empty, nothing to do.
       if (lrd_channel_ == channels_.end()) {
+        // No channels, no drain needed.
+        std::lock_guard drain_lock(drain_status_mutex_);
+        drain_needed_ = false;
+        drain_running_ = false;
         return;
       }
 
@@ -193,12 +219,28 @@ void L2capChannelManager::DrainChannelQueuesIfNewTx() {
           std::move(std::exchange(packet_credit, std::nullopt).value())));
       continue;
     }
+    {
+      std::lock_guard channels_lock(channels_mutex_);
+      std::lock_guard drain_lock(drain_status_mutex_);
 
-    std::lock_guard lock(channels_mutex_);
-    if (lrd_channel_ == round_robin_terminus_) {
-      break;
+      if (drain_needed_) {
+        // Additional tx packets or resources have arrived, so reset terminus so
+        // we attempt to dequeue all the channels again.
+        round_robin_terminus_ = lrd_channel_;
+        drain_needed_ = false;
+        continue;
+      }
+
+      if (lrd_channel_ != round_robin_terminus_) {
+        // Continue until last drained channel is terminus, meaning we have
+        // failed to dequeue from all channels (so nothing left to send).
+        continue;
+      }
+
+      drain_running_ = false;
+      return;
     }
-  }
+  }  // lock_guard: channels_mutex_, drain_status_mutex_
 }
 
 std::optional<LockedL2capChannel> L2capChannelManager::FindChannelByLocalCid(

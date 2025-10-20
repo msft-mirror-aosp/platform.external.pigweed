@@ -91,6 +91,8 @@ class BlockAllocatorTest;
 
 }  // namespace test
 
+/// @submodule{pw_allocator,concrete_block}
+
 /// A memory allocator that uses a list of blocks.
 ///
 /// This class does not implement `ChooseBlock` and cannot be used directly.
@@ -131,7 +133,7 @@ class BlockAllocator : public internal::GenericBlockAllocator {
   /// state of the allocator.
   ///
   /// The largest allocation possible at any given time is the inner size of the
-  /// the largest free block. This method may be expensive to call if the block
+  /// largest free block. This method may be expensive to call if the block
   /// allocator implementation does not track its largest block. As a result, it
   /// should primarily be used for diagnostic purposes after an allocation
   /// failure, e.g.
@@ -172,15 +174,9 @@ class BlockAllocator : public internal::GenericBlockAllocator {
   ///
   /// @param  ptr           Pointer to an allocated block's usable space.
   ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK: Result contains a pointer to the block.
-  ///
-  ///    OUT_OF_RANGE: Given pointer is outside the allocator's memory.
-  ///
-  /// @endrst
+  /// @returns
+  /// * @OK: Result contains a pointer to the block.
+  /// * @OUT_OF_RANGE: Given pointer is outside the allocator's memory.
   template <typename Ptr>
   internal::copy_const_ptr_t<Ptr, BlockType*> FromUsableSpace(Ptr ptr) const;
 
@@ -282,6 +278,8 @@ class BlockAllocator : public internal::GenericBlockAllocator {
   BlockType* last_ = nullptr;
   uint16_t unpoisoned_ = 0;
 };
+
+/// @}
 
 // Template method implementations
 

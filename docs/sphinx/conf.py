@@ -85,13 +85,11 @@ else:  # GN build
     sys.path.append(f'{pw_root}/docs/_extensions')
 
 extensions = [
-    "breathe",
     "bug",  # Custom extension to normalize Pigweed bug links.
     "kconfig",
     "module_metadata",
     "modules_index",
     "pigweed_live",
-    "pw_status_codes",
     "pw_docgen.sphinx.google_analytics",  # Enables optional Google Analytics
     "seed_metadata",
     "sitemap",  # Custom extension to handle pigweed.dev sitemap nuances.
@@ -304,23 +302,14 @@ doxygen_xml_path = (
 # perspective of the Sphinx build system. The organization of the
 # source files (as Sphinx sees it) can be viewed by running this:
 # bazelisk build //docs:sources
-tagfile_path = os.path.abspath("doxygen/doxygen/index.tag")
+tagfile_path = os.path.abspath("doxygen/api/cc/index.tag")
 # The relative path that Doxylink should use when creating links.
-doxygen_site_path = "./doxygen"
+doxygen_site_path = "./api/cc"
 doxylink = {
     "doxylink": (tagfile_path, doxygen_site_path),
 }
-
-breathe_projects = {
-    # Assuming doxygen output is at out/docs/doxygen/
-    # This dir should be relative to out/docs/gen/docs/pw_docgen_tree/
-    "Pigweed": doxygen_xml_path,
-}
-breathe_default_project = "Pigweed"
-breathe_debug_trace_directives = False
-# (b/295023422) Disable the inaccurate `#include` statements that are generated
-# when `doxygennamespace` is used.
-breathe_show_include = False
+# TODO: b/441605063 - Remove after variadic macro bug is fixed.
+doxylink_parse_error_ignore_regexes = [r"\.\.\."]
 
 # Treat these as valid attributes in function signatures.
 cpp_id_attributes = [

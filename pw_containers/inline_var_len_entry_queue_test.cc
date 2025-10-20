@@ -19,6 +19,7 @@
 #include <variant>
 
 #include "pw_containers_private/inline_var_len_entry_queue_test_oracle.h"
+#include "pw_span/span.h"
 #include "pw_unit_test/framework.h"
 
 namespace {
@@ -55,99 +56,101 @@ std::vector<std::byte> ReadEntry(const pw_InlineVarLenEntryQueue_Iterator& it) {
 // Declares a test that performs a series of operations on the C and C++
 // versions of InlineVarLenEntryQueue and the "oracle" class, and checks that
 // they match after every step.
-#define DATA_DRIVEN_TEST(program, max_entry_size)                              \
+template <size_t kMaxEntrySize>
+void DataDrivenTest(pw::span<const TestStep> program) {
+  pw::InlineVarLenEntryQueue<kMaxEntrySize> cpp_queue;
+  PW_VARIABLE_LENGTH_ENTRY_QUEUE_DECLARE(c_queue, kMaxEntrySize);
+  pw::containers::InlineVarLenEntryQueueTestOracle oracle(kMaxEntrySize);
+
+  /* Check the queue sizes */
+  static_assert(sizeof(cpp_queue) == sizeof(c_queue));
+  ASSERT_EQ(cpp_queue.raw_storage().data(),
+            reinterpret_cast<const std::byte*>(&cpp_queue));
+  ASSERT_EQ(cpp_queue.raw_storage().size_bytes(),
+            pw_InlineVarLenEntryQueue_RawStorageSizeBytes(c_queue));
+
+  for (const TestStep& step : program) {
+    /* Take the action */
+    if (auto ow = std::get_if<PushOverwrite>(&step); ow != nullptr) {
+      cpp_queue.push_overwrite(pw::as_bytes(pw::span(ow->data)));
+      pw_InlineVarLenEntryQueue_PushOverwrite(
+          c_queue, ow->data.data(), static_cast<uint32_t>(ow->data.size()));
+      oracle.push_overwrite(pw::as_bytes(pw::span(ow->data)));
+    } else if (auto push = std::get_if<Push>(&step); push != nullptr) {
+      cpp_queue.push(pw::as_bytes(pw::span(push->data)));
+      pw_InlineVarLenEntryQueue_Push(
+          c_queue, push->data.data(), static_cast<uint32_t>(push->data.size()));
+      oracle.push(pw::as_bytes(pw::span(push->data)));
+    } else if (auto try_push = std::get_if<TryPush>(&step);
+               try_push != nullptr) {
+      ASSERT_EQ(try_push->expected,
+                cpp_queue.try_push(pw::as_bytes(pw::span(try_push->data))));
+      ASSERT_EQ(try_push->expected,
+                pw_InlineVarLenEntryQueue_TryPush(
+                    c_queue,
+                    try_push->data.data(),
+                    static_cast<uint32_t>(try_push->data.size())));
+      if (try_push->expected) {
+        oracle.push(pw::as_bytes(pw::span(try_push->data)));
+      }
+    } else if (std::holds_alternative<Pop>(step)) {
+      cpp_queue.pop();
+      pw_InlineVarLenEntryQueue_Pop(c_queue);
+      oracle.pop();
+    } else if (auto size = std::get_if<SizeEquals>(&step); size != nullptr) {
+      const size_t actual = cpp_queue.size();
+      ASSERT_EQ(actual, pw_InlineVarLenEntryQueue_Size(c_queue));
+      ASSERT_EQ(oracle.size(), actual);
+      ASSERT_EQ(size->expected, actual);
+    } else if (std::holds_alternative<Clear>(step)) {
+      cpp_queue.clear();
+      pw_InlineVarLenEntryQueue_Clear(c_queue);
+      oracle.clear();
+    } else {
+      FAIL() << "Unhandled case";
+    }
+    /* Check sizes */
+    ASSERT_EQ(cpp_queue.size(), oracle.size());
+    ASSERT_EQ(cpp_queue.size_bytes(), oracle.size_bytes());
+    ASSERT_EQ(cpp_queue.max_size_bytes(), oracle.max_size_bytes());
+
+    ASSERT_EQ(pw_InlineVarLenEntryQueue_Size(c_queue), oracle.size());
+    ASSERT_EQ(pw_InlineVarLenEntryQueue_SizeBytes(c_queue),
+              oracle.size_bytes());
+    ASSERT_EQ(pw_InlineVarLenEntryQueue_MaxSizeBytes(c_queue),
+              oracle.max_size_bytes());
+
+    /* Compare the contents */
+    auto oracle_it = oracle.begin();
+    auto c_queue_it = pw_InlineVarLenEntryQueue_Begin(c_queue);
+
+    const auto c_queue_end = pw_InlineVarLenEntryQueue_End(c_queue);
+    uint32_t entries_compared = 0;
+
+    for (auto entry : cpp_queue) {
+      entries_compared += 1;
+
+      ASSERT_EQ(*oracle_it, ReadEntry(c_queue_it));
+      ASSERT_EQ(*oracle_it, std::vector<std::byte>(entry.begin(), entry.end()));
+
+      ASSERT_NE(oracle_it, oracle.end());
+      ASSERT_FALSE(
+          pw_InlineVarLenEntryQueue_Iterator_Equal(&c_queue_it, &c_queue_end));
+
+      ++oracle_it;
+      pw_InlineVarLenEntryQueue_Iterator_Advance(&c_queue_it);
+    }
+    ASSERT_EQ(entries_compared, oracle.size());
+    ASSERT_TRUE(
+        pw_InlineVarLenEntryQueue_Iterator_Equal(&c_queue_it, &c_queue_end));
+    ASSERT_EQ(oracle_it, oracle.end());
+  }
+}
+
+#define DATA_DRIVEN_TEST(steps, max_entry_size)                                \
   TEST(InlineVarLenEntryQueue,                                                 \
-       DataDrivenTest_##program##_MaxSizeBytes##max_entry_size) {              \
-    pw::InlineVarLenEntryQueue<max_entry_size> cpp_queue;                      \
-    PW_VARIABLE_LENGTH_ENTRY_QUEUE_DECLARE(c_queue, max_entry_size);           \
-    pw::containers::InlineVarLenEntryQueueTestOracle oracle(max_entry_size);   \
-                                                                               \
-    /* Check the queue sizes */                                                \
-    static_assert(sizeof(cpp_queue) == sizeof(c_queue));                       \
-    ASSERT_EQ(cpp_queue.raw_storage().data(),                                  \
-              reinterpret_cast<const std::byte*>(&cpp_queue));                 \
-    ASSERT_EQ(cpp_queue.raw_storage().size_bytes(),                            \
-              pw_InlineVarLenEntryQueue_RawStorageSizeBytes(c_queue));         \
-                                                                               \
-    for (const TestStep& step : program) {                                     \
-      /* Take the action */                                                    \
-      if (auto ow = std::get_if<PushOverwrite>(&step); ow != nullptr) {        \
-        cpp_queue.push_overwrite(pw::as_bytes(pw::span(ow->data)));            \
-        pw_InlineVarLenEntryQueue_PushOverwrite(                               \
-            c_queue, ow->data.data(), static_cast<uint32_t>(ow->data.size())); \
-        oracle.push_overwrite(pw::as_bytes(pw::span(ow->data)));               \
-      } else if (auto push = std::get_if<Push>(&step); push != nullptr) {      \
-        cpp_queue.push(pw::as_bytes(pw::span(push->data)));                    \
-        pw_InlineVarLenEntryQueue_Push(                                        \
-            c_queue,                                                           \
-            push->data.data(),                                                 \
-            static_cast<uint32_t>(push->data.size()));                         \
-        oracle.push(pw::as_bytes(pw::span(push->data)));                       \
-      } else if (auto try_push = std::get_if<TryPush>(&step);                  \
-                 try_push != nullptr) {                                        \
-        ASSERT_EQ(try_push->expected,                                          \
-                  cpp_queue.try_push(pw::as_bytes(pw::span(try_push->data)))); \
-        ASSERT_EQ(try_push->expected,                                          \
-                  pw_InlineVarLenEntryQueue_TryPush(                           \
-                      c_queue,                                                 \
-                      try_push->data.data(),                                   \
-                      static_cast<uint32_t>(try_push->data.size())));          \
-        if (try_push->expected) {                                              \
-          oracle.push(pw::as_bytes(pw::span(try_push->data)));                 \
-        }                                                                      \
-      } else if (std::holds_alternative<Pop>(step)) {                          \
-        cpp_queue.pop();                                                       \
-        pw_InlineVarLenEntryQueue_Pop(c_queue);                                \
-        oracle.pop();                                                          \
-      } else if (auto size = std::get_if<SizeEquals>(&step);                   \
-                 size != nullptr) {                                            \
-        const size_t actual = cpp_queue.size();                                \
-        ASSERT_EQ(actual, pw_InlineVarLenEntryQueue_Size(c_queue));            \
-        ASSERT_EQ(oracle.size(), actual);                                      \
-        ASSERT_EQ(size->expected, actual);                                     \
-      } else if (std::holds_alternative<Clear>(step)) {                        \
-        cpp_queue.clear();                                                     \
-        pw_InlineVarLenEntryQueue_Clear(c_queue);                              \
-        oracle.clear();                                                        \
-      } else {                                                                 \
-        FAIL() << "Unhandled case";                                            \
-      }                                                                        \
-      /* Check sizes */                                                        \
-      ASSERT_EQ(cpp_queue.size(), oracle.size());                              \
-      ASSERT_EQ(cpp_queue.size_bytes(), oracle.size_bytes());                  \
-      ASSERT_EQ(cpp_queue.max_size_bytes(), oracle.max_size_bytes());          \
-                                                                               \
-      ASSERT_EQ(pw_InlineVarLenEntryQueue_Size(c_queue), oracle.size());       \
-      ASSERT_EQ(pw_InlineVarLenEntryQueue_SizeBytes(c_queue),                  \
-                oracle.size_bytes());                                          \
-      ASSERT_EQ(pw_InlineVarLenEntryQueue_MaxSizeBytes(c_queue),               \
-                oracle.max_size_bytes());                                      \
-                                                                               \
-      /* Compare the contents */                                               \
-      auto oracle_it = oracle.begin();                                         \
-      auto c_queue_it = pw_InlineVarLenEntryQueue_Begin(c_queue);              \
-      const auto c_queue_end = pw_InlineVarLenEntryQueue_End(c_queue);         \
-      uint32_t entries_compared = 0;                                           \
-                                                                               \
-      for (auto entry : cpp_queue) {                                           \
-        entries_compared += 1;                                                 \
-                                                                               \
-        ASSERT_EQ(*oracle_it, ReadEntry(c_queue_it));                          \
-        ASSERT_EQ(*oracle_it,                                                  \
-                  std::vector<std::byte>(entry.begin(), entry.end()));         \
-                                                                               \
-        ASSERT_NE(oracle_it, oracle.end());                                    \
-        ASSERT_FALSE(pw_InlineVarLenEntryQueue_Iterator_Equal(&c_queue_it,     \
-                                                              &c_queue_end));  \
-                                                                               \
-        ++oracle_it;                                                           \
-        pw_InlineVarLenEntryQueue_Iterator_Advance(&c_queue_it);               \
-      }                                                                        \
-      ASSERT_EQ(entries_compared, oracle.size());                              \
-      ASSERT_TRUE(pw_InlineVarLenEntryQueue_Iterator_Equal(&c_queue_it,        \
-                                                           &c_queue_end));     \
-      ASSERT_EQ(oracle_it, oracle.end());                                      \
-    }                                                                          \
+       DataDrivenTest_##steps##_MaxSizeBytes##max_entry_size) {                \
+    DataDrivenTest<max_entry_size>({steps, sizeof(steps) / sizeof(TestStep)}); \
   }                                                                            \
   static_assert(true, "use a semicolon")
 
@@ -422,12 +425,12 @@ TEST(InlineVarLenEntryQueueClass, MaxSizeTwoBytePrefix) {
   EXPECT_EQ(queue.size_bytes(), 0u);
 }
 
-TEST(InlineVarLenEntryQueueClass, Entry) {
+TEST(InlineVarLenEntryQueueClass, ConstEntry) {
   pw::BasicInlineVarLenEntryQueue<char, 5> queue;
   queue.push("12");  // Split the next entry across the end.
   queue.push_overwrite(std::string_view("ABCDE"));
 
-  decltype(queue)::Entry front = queue.front();
+  decltype(queue)::const_value_type front = queue.front();
 
   ASSERT_EQ(front.size(), 5u);
   EXPECT_EQ(front[0], 'A');
@@ -460,6 +463,122 @@ TEST(InlineVarLenEntryQueueClass, Entry) {
   EXPECT_STREQ(value, "ABCDE");
 
   EXPECT_TRUE(std::equal(front.begin(), front.end(), "ABCDE"));
+}
+
+TEST(InlineVarLenEntryQueueClass, ModifyEntry) {
+  pw::BasicInlineVarLenEntryQueue<char, 5> queue;
+  queue.push("12");  // Split the next entry across the end.
+  queue.push_overwrite(std::string_view("ABCDE"));
+
+  decltype(queue)::value_type front = queue.front();
+
+  ASSERT_EQ(front.size(), 5u);
+  EXPECT_EQ(std::exchange(front[0], 'a'), 'A');
+  EXPECT_EQ(std::exchange(front[1], 'b'), 'B');
+  EXPECT_EQ(std::exchange(front[2], 'c'), 'C');
+  EXPECT_EQ(std::exchange(front[3], 'd'), 'D');
+  EXPECT_EQ(std::exchange(front[4], 'e'), 'E');
+
+  EXPECT_EQ(std::exchange(front.at(0), 'A'), 'a');
+  EXPECT_EQ(std::exchange(front.at(1), 'B'), 'b');
+  EXPECT_EQ(std::exchange(front.at(2), 'C'), 'c');
+  EXPECT_EQ(std::exchange(front.at(3), 'D'), 'd');
+  EXPECT_EQ(std::exchange(front.at(4), 'E'), 'e');
+
+  const auto [span_1, span_2] = front.contiguous_data();
+  EXPECT_EQ(span_1.size(), 2u);
+  EXPECT_EQ(std::memcmp(span_1.data(), "AB", 2u), 0);
+  std::fill(span_1.begin(), span_1.end(), '?');
+  EXPECT_EQ(std::memcmp(span_1.data(), "??", 2u), 0);
+
+  EXPECT_EQ(span_2.size(), 3u);
+  std::fill(span_2.begin(), span_2.end(), '#');
+  EXPECT_EQ(std::memcmp(span_2.data(), "###", 3u), 0);
+
+  const char* expected_ptr = "??###";
+  for (char c : front) {
+    EXPECT_EQ(*expected_ptr, c);
+    ++expected_ptr;
+  }
+
+  // Check the iterators with std::copy, std::fill, and std::equal.
+  std::string_view data("1234");
+  std::copy(data.begin(), data.end(), ++front.begin());
+  EXPECT_TRUE(std::equal(front.begin(), front.end(), "?1234"));
+
+  ASSERT_EQ(front.front(), '?');
+  front.front() = '!';
+  EXPECT_EQ(front.front(), '!');
+
+  ASSERT_EQ(front.back(), '4');
+  front.back() = '!';
+  EXPECT_EQ(front.back(), '!');
+}
+
+TEST(InlineVarLenEntryQueueClass, EntryIteratorPlusAndPlusEquals) {
+  pw::BasicInlineVarLenEntryQueue<char, 5> queue;
+  queue.push(std::string_view("12"));  // Split the next entry across the end.
+  queue.push_overwrite(std::string_view("ABCDE"));
+
+  auto entry = queue.front();
+  auto it = entry.begin();
+
+  EXPECT_EQ(*(it + 0), 'A');
+  EXPECT_EQ(*(it + 1), 'B');
+  EXPECT_EQ(*(it + 2), 'C');
+  EXPECT_EQ(*(it + 3), 'D');
+  EXPECT_EQ(*(it + 4), 'E');
+
+  EXPECT_EQ(*(0 + it), 'A');
+  EXPECT_EQ(*(4 + it), 'E');
+
+  auto it2 = it;
+  it2 += 2;
+  EXPECT_EQ(*it2, 'C');
+  it2 += 2;
+  EXPECT_EQ(*it2, 'E');
+
+  // Test non-wrapped entry.
+  pw::BasicInlineVarLenEntryQueue<char, 10> queue2;
+  queue2.push(std::string_view("0123456789"));
+
+  auto entry2 = queue2.front();
+  auto it3 = entry2.begin();
+
+  EXPECT_EQ(*(it3 + 0), '0');
+  EXPECT_EQ(*(it3 + 5), '5');
+  EXPECT_EQ(*(5 + it3), '5');
+
+  auto it4 = it3;
+  it4 += 3;
+  EXPECT_EQ(*it4, '3');
+  it4 += 4;
+  EXPECT_EQ(*it4, '7');
+}
+
+TEST(InlineVarLenEntryQueueClass, ModifyMultipleEntries) {
+  pw::BasicInlineVarLenEntryQueue<char, 7> queue;
+  queue.push(std::string_view("ab"));
+  queue.push(std::string_view("CDE"));
+  ASSERT_EQ(queue.size(), 2u);
+
+  auto it = queue.begin();
+  (*it)[0] = 'v';
+  (*it)[1] = 'w';
+
+  ++it;
+  (*it)[0] = 'X';
+  (*it)[2] = 'Z';
+
+  it = queue.begin();
+  EXPECT_EQ(it->size(), 2u);
+  EXPECT_TRUE(std::equal(it->begin(), it->end(), "vw"));
+
+  ++it;
+  ASSERT_EQ(it->size(), 3u);
+  EXPECT_TRUE(std::equal(it->begin(), it->end(), "XDZ"));
+
+  EXPECT_EQ(++it, queue.end());
 }
 
 TEST(InlineVarLenEntryQueueClass, Construct_Constexpr) {

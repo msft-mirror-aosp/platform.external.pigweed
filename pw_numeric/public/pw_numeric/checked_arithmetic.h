@@ -13,15 +13,43 @@
 // the License.
 #pragma once
 
+/// `PW_ADD_OVERFLOW` adds two integers while checking for overflow.
+///
+/// Returns true if the result of `a + b` overflows the type of `out`; otherwise
+/// stores the result in `out` and returns false.
+///
+/// For C++ code, use @cpp_func{pw::CheckedAdd} or
+/// @cpp_func{pw::CheckedIncrement} instead.
+#define PW_ADD_OVERFLOW(a, b, out) __builtin_add_overflow(a, b, out)
+
+/// `PW_SUB_OVERFLOW` subtracts an integer from another while checking for
+/// overflow.
+///
+/// Returns true if the result of `a - b` overflows the type of `out`; otherwise
+/// stores the result in `out` and returns false.
+///
+/// For C++ code, use @cpp_func{pw::CheckedSub} or
+/// @cpp_func{pw::CheckedDecrement} instead.
+#define PW_SUB_OVERFLOW(a, b, out) __builtin_sub_overflow(a, b, out)
+
+/// `PW_MUL_OVERFLOW` multiplies two integers while checking for overflow.
+///
+/// Returns true if the result of `a * b` overflows the type of `out`; otherwise
+/// stores the result in `out` and returns false.
+///
+/// For C++ code, use @cpp_func{pw::CheckedMul} instead.
+#define PW_MUL_OVERFLOW(a, b, out) __builtin_mul_overflow(a, b, out)
+
+#ifdef __cplusplus
+
+#include <cstdint>
+#include <limits>
 #include <optional>
 #include <type_traits>
 
-#include "pw_preprocessor/compiler.h"
-
 namespace pw {
 
-/// @defgroup pw_numeric_checked_arithmetic
-/// @{
+/// @module{pw_numeric}
 
 /// Adds two numbers, checking for overflow.
 ///
@@ -41,10 +69,12 @@ namespace pw {
 template <typename A, typename B, typename T>
 [[nodiscard]] constexpr bool CheckedAdd(A a, B b, T& result) {
   T temp = 0;
+
   if (PW_ADD_OVERFLOW(a, b, &temp)) {
     return false;
   }
   result = temp;
+
   return true;
 }
 
@@ -64,9 +94,9 @@ template <typename A, typename B, typename T>
 /// `pw::CheckedAdd<uint32_t>(...)`.
 template <typename T, typename A, typename B>
 [[nodiscard]] constexpr std::optional<T> CheckedAdd(A a, B b) {
-  T result;
+  T result{0};
 
-  if (PW_ADD_OVERFLOW(a, b, &result)) {
+  if (!CheckedAdd(a, b, result)) {
     return std::nullopt;
   }
 
@@ -107,10 +137,12 @@ template <typename T, typename Inc>
 template <typename A, typename B, typename T>
 [[nodiscard]] constexpr bool CheckedSub(A a, B b, T& result) {
   T temp = 0;
+
   if (PW_SUB_OVERFLOW(a, b, &temp)) {
     return false;
   }
   result = temp;
+
   return true;
 }
 
@@ -130,9 +162,9 @@ template <typename A, typename B, typename T>
 /// `pw::CheckedSub<uint32_t>(...)`.
 template <typename T, typename A, typename B>
 [[nodiscard]] constexpr std::optional<T> CheckedSub(A a, B b) {
-  T result;
+  T result{0};
 
-  if (PW_SUB_OVERFLOW(a, b, &result)) {
+  if (!CheckedSub(a, b, result)) {
     return std::nullopt;
   }
 
@@ -173,10 +205,12 @@ template <typename T, typename Dec>
 template <typename A, typename B, typename T>
 [[nodiscard]] constexpr bool CheckedMul(A a, B b, T& result) {
   T temp = 0;
+
   if (PW_MUL_OVERFLOW(a, b, &temp)) {
     return false;
   }
   result = temp;
+
   return true;
 }
 
@@ -196,14 +230,15 @@ template <typename A, typename B, typename T>
 /// `pw::CheckedMul<uint32_t>(...)`.
 template <typename T, typename A, typename B>
 [[nodiscard]] constexpr std::optional<T> CheckedMul(A a, B b) {
-  T result;
+  T result{0};
 
-  if (PW_MUL_OVERFLOW(a, b, &result)) {
+  if (!CheckedMul(a, b, result)) {
     return std::nullopt;
   }
 
   return result;
 }
-/// @}
 
 }  // namespace pw
+
+#endif  // __cplusplus

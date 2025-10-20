@@ -38,6 +38,8 @@
 
 namespace pw::protobuf {
 
+/// @module{pw_protobuf}
+
 // Provides a size estimate to help with sizing buffers passed to
 // StreamEncoder and MemoryEncoder objects.
 //
@@ -601,6 +603,18 @@ class StreamEncoder {
     return WriteLengthDelimitedField(field_number, value);
   }
 
+  /// Provides access to a stream writer to a proto `bytes` field through a
+  /// given callback function. The function must write exactly `num_bytes`
+  /// bytes of data to the stream.
+  ///
+  /// Precondition: Encoder has no active child encoder.
+  Status WriteBytes(uint32_t field_number,
+                    size_t num_bytes,
+                    const Function<Status(stream::Writer&)>& write_func) {
+    return WriteLengthDelimitedFieldFromCallback(
+        field_number, num_bytes, write_func);
+  }
+
   // Writes a proto 'bytes' field from the stream bytes_reader.
   //
   // The payload for the value is provided through the stream::Reader
@@ -732,6 +746,11 @@ class StreamEncoder {
 
   // Implementation for encoding all length-delimited field types.
   Status WriteLengthDelimitedField(uint32_t field_number, ConstByteSpan data);
+
+  Status WriteLengthDelimitedFieldFromCallback(
+      uint32_t field_number,
+      size_t num_bytes,
+      const Function<Status(stream::Writer&)>& write_func);
 
   // Encoding of length-delimited field where payload comes from `bytes_reader`.
   Status WriteLengthDelimitedFieldFromStream(uint32_t field_number,
@@ -1013,5 +1032,7 @@ inline ToStreamEncoder& StreamEncoderCast(FromStreamEncoder& encoder) {
                 "pw::protobuf::StreamEncoder");
   return pw::internal::SiblingCast<ToStreamEncoder&, StreamEncoder>(encoder);
 }
+
+/// @}
 
 }  // namespace pw::protobuf

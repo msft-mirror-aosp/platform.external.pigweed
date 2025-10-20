@@ -196,6 +196,18 @@ class AdapterImpl final : public Adapter {
       adapter_->metrics_.le.start_discovery_events.Add();
     }
 
+    hci::Result<PeriodicAdvertisingSyncHandle> SyncToPeriodicAdvertisement(
+        PeerId peer,
+        uint8_t advertising_sid,
+        SyncOptions options,
+        PeriodicAdvertisingSyncDelegate& delegate) override {
+      if (!adapter_->periodic_advertising_sync_manager_) {
+        return fit::error(hci::Error(HostError::kNotSupported));
+      }
+      return adapter_->periodic_advertising_sync_manager_->CreateSync(
+          peer, advertising_sid, options, delegate);
+    }
+
     void EnablePrivacy(bool enabled) override {
       adapter_->le_address_manager_->EnablePrivacy(enabled);
     }
@@ -471,18 +483,28 @@ class AdapterImpl final : public Adapter {
   }
 
   std::unique_ptr<hci::LowEnergyAdvertiser> CreateAdvertiser(bool extended) {
-    // TODO(b/405398246): When we enabled Android vendor extensions, we found
-    // that OOBE on smart displays and some other devices stopped working. As
-    // a stop gap measure, we disabled multiple advertising via vendor
-    // extensions. Once we work out the issues with multiple advertising via
-    // vendor extensions, we should re-enable them.
+    constexpr auto kAndroidVendorExtensions =
+        pw::bluetooth::Controller::FeaturesBits::kAndroidVendorExtensions;
     std::unique_ptr<hci::LowEnergyAdvertiser> advertiser;
     if (extended) {
       advertiser = std::make_unique<hci::ExtendedLowEnergyAdvertiser>(
           hci_, state_.low_energy_state.max_advertising_data_length_);
+    } else if (state().IsControllerFeatureSupported(kAndroidVendorExtensions) &&
+               state().android_vendor_capabilities.has_value()) {
+      uint8_t max_advt =
+          state()
+              .android_vendor_capabilities->max_simultaneous_advertisements();
+      bt_log(INFO,
+             "gap",
+             "controller support for extended advertising via android vendor "
+             "extensions: yes, max simultaneous advertisements: %d",
+             max_advt);
+      advertiser = std::make_unique<hci::AndroidExtendedLowEnergyAdvertiser>(
+          hci_, max_advt);
     } else {
       advertiser = std::make_unique<hci::LegacyLowEnergyAdvertiser>(hci_);
     }
+
     advertiser->AttachInspect(adapter_node_);
     return advertiser;
   }
@@ -606,6 +628,8 @@ class AdapterImpl final : public Adapter {
   // Objects that perform LE procedures.
   std::unique_ptr<LowEnergyAddressManager> le_address_manager_;
   std::unique_ptr<LowEnergyDiscoveryManager> le_discovery_manager_;
+  std::optional<PeriodicAdvertisingSyncManager>
+      periodic_advertising_sync_manager_;
   std::unique_ptr<LowEnergyConnectionManager> le_connection_manager_;
   std::unique_ptr<LowEnergyAdvertisingManager> le_advertising_manager_;
   std::unique_ptr<LowEnergyImpl> low_energy_;
@@ -1585,7 +1609,7 @@ void AdapterImpl::InitializeStep4() {
       fit::bind_member<&AdapterImpl::OnLeAutoConnectRequest>(this));
 
   le_connection_manager_ = std::make_unique<LowEnergyConnectionManager>(
-      hci_->GetWeakPtr(),
+      hci_,
       le_address_manager_.get(),
       hci_le_connector_.get(),
       &peer_cache_,
@@ -1601,6 +1625,13 @@ void AdapterImpl::InitializeStep4() {
 
   le_advertising_manager_ = std::make_unique<LowEnergyAdvertisingManager>(
       hci_le_advertiser_.get(), le_address_manager_.get());
+
+  if (state().low_energy_state.IsFeatureSupported(
+          hci_spec::LESupportedFeature::kSynchronizedReceiver)) {
+    periodic_advertising_sync_manager_.emplace(
+        hci_, peer_cache_, le_discovery_manager_->GetWeakPtr(), dispatcher_);
+  }
+
   low_energy_ = std::make_unique<LowEnergyImpl>(this);
 
   // Initialize the BR/EDR manager objects if the controller supports BR/EDR.

@@ -92,9 +92,6 @@ std::optional<H4PacketWithH4> RfcommChannel::GenerateNextTxPacket() {
   PW_CHECK(result2.ok());
   emboss::AclDataFrameWriter acl = result2.value();
 
-  // At this point we assume we can return a PDU with the payload.
-  PopFrontPayload();
-
   emboss::BFrameWriter bframe = emboss::MakeBFrameView(
       acl.payload().BackingStorage().data(), acl.payload().SizeInBytes());
   PW_CHECK(bframe.IsComplete());
@@ -150,6 +147,9 @@ std::optional<H4PacketWithH4> RfcommChannel::GenerateNextTxPacket() {
   PW_CHECK(bframe.Ok());
   PW_CHECK(rfcomm.Ok());
 
+  // All content has been copied from the front payload so it can be released.
+  PopFrontPayload();
+
   return h4_packet;
 }
 
@@ -181,14 +181,16 @@ Result<RfcommChannel> RfcommChannel::Create(
     return Status::InvalidArgument();
   }
 
-  return RfcommChannel(l2cap_channel_manager,
-                       rx_multibuf_allocator,
-                       connection_handle,
-                       rx_config,
-                       tx_config,
-                       channel_number,
-                       std::move(payload_from_controller_fn),
-                       std::move(event_fn));
+  RfcommChannel channel(l2cap_channel_manager,
+                        rx_multibuf_allocator,
+                        connection_handle,
+                        rx_config,
+                        tx_config,
+                        channel_number,
+                        std::move(payload_from_controller_fn),
+                        std::move(event_fn));
+  channel.Init();
+  return channel;
 }
 
 bool RfcommChannel::DoHandlePduFromController(pw::span<uint8_t> l2cap_pdu) {

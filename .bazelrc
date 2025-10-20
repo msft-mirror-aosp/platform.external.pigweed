@@ -24,18 +24,17 @@ common --enable_workspace
 common --//pw_presubmit/py:enable_gn_formatter=True
 common --//pw_presubmit/py:enable_go_formatter=True
 common --//pw_presubmit/py:enable_javascript_formatter=True
+common --//pw_presubmit/py:enable_rust_formatter=True
 common --//pw_presubmit/py:enable_typescript_formatter=True
 
 # Default build_tag_filters and test_tag_filters
 # ==============================================
-# Skip building any targets tagged do_not_build.
-build --build_tag_filters=-do_not_build,-kernel
-
-# Exclude integration tests from the default build. The test_tag_filters flag
-# doesn't accumulate (https://github.com/bazelbuild/bazel/issues/7322): we have
-# to specify it only once, setting all the exclusions in a comma-separated
-# list.
-test --test_tag_filters=-integration,-do_not_build,-do_not_run_test,-kernel
+# Exclude targets with certain tags from default build/test runs. The
+# build/test_tag_filters flag doesn't accumulate
+# (https://github.com/bazelbuild/bazel/issues/7322): we have to specify it only
+# once, setting all the exclusions in a comma-separated list.
+build --build_tag_filters=-do_not_build,-kernel,-jni
+test --test_tag_filters=-integration,-do_not_build,-do_not_run_test,-kernel,-jni
 
 # C++ related flags
 # =================
@@ -281,5 +280,5 @@ try-import %workspace%/user.bazelrc
 
 # (Experimental) Configuration to automatically generate compile_commands.json for IDEs.
 # Usage: bazel build --config=ide //your/target/...
-build:ide --aspects=//pw_ide/bazel/compile_commands:defs.bzl%compile_commands_aspect
-build:ide --output_groups=+compile_commands_fragments
+build:ide --aspects=//pw_ide/bazel/compile_commands:pw_cc_compile_commands_aspect.bzl%pw_cc_compile_commands_aspect
+build:ide --output_groups=+pw_cc_compile_commands_fragments

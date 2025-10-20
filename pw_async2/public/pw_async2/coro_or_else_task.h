@@ -19,6 +19,8 @@
 
 namespace pw::async2 {
 
+/// @submodule{pw_async2,coroutines}
+
 /// A ``Task`` that delegates to a provided ``Coro<Status>>`` and executes
 /// an ``or_else`` handler function on failure.
 class CoroOrElseTask : public Task {
@@ -59,5 +61,7 @@ class CoroOrElseTask : public Task {
   Coro<Status> coro_;
   pw::Function<void(Status)> or_else_;
 };
+
+/// @}
 
 }  // namespace pw::async2

@@ -30,8 +30,9 @@
 #include "pw_status/status_with_size.h"
 #include "pw_string/string.h"
 
-/// String manipulation library
 namespace pw::string {
+
+/// @submodule{pw_string,util}
 
 /// Writes a printf-style formatted string to the provided buffer, similarly to
 /// `std::snprintf()`.
@@ -39,18 +40,11 @@ namespace pw::string {
 /// The `std::snprintf()` return value is awkward to interpret, and
 /// misinterpreting it can lead to serious bugs.
 ///
-/// @returns @rst
-///
-/// .. pw-status-codes::
-///
-///    OK: Returns the number of characters written, excluding the null
-///    terminator. The buffer is always null-terminated unless it is empty.
-///
-///    RESOURCE_EXHAUSTED: The buffer was too small to fit the output.
-///
-///    INVALID_ARGUMENT: There was a formatting error.
-///
-/// @endrst
+/// @returns
+/// * @OK: Returns the number of characters written, excluding the null
+///   terminator. The buffer is always null-terminated unless it is empty.
+/// * @RESOURCE_EXHAUSTED: The buffer was too small to fit the output.
+/// * @INVALID_ARGUMENT: There was a formatting error.
 PW_PRINTF_FORMAT(2, 3)
 StatusWithSize Format(span<char> buffer, const char* format, ...);
 
@@ -95,5 +89,7 @@ inline Status FormatOverwriteVaList(InlineString<>& string,
   string.clear();
   return FormatVaList(string, format, args);
 }
+
+/// @}
 
 }  // namespace pw::string

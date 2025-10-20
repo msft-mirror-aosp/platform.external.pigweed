@@ -19,6 +19,8 @@
 
 namespace pw::sync {
 
+/// @module{pw_sync}
+
 /// `NoLock` is a no-op lock that satisfies the C++ named requirements for
 /// `BasicLockable` but performs no synchronization. This can be used for code
 /// that is conditionally thread-safe.
@@ -26,6 +28,9 @@ class PW_LOCKABLE("pw::sync::NoLock") NoLock {
  public:
   constexpr void lock() PW_EXCLUSIVE_LOCK_FUNCTION() {}
   constexpr void unlock() PW_UNLOCK_FUNCTION() {}
+  [[nodiscard]] bool try_lock() PW_EXCLUSIVE_TRYLOCK_FUNCTION(true) {
+    return true;
+  }
 };
 
 /// `MaybeLock` is a helper that selects between a real lock type and `NoLock`
@@ -36,5 +41,7 @@ class PW_LOCKABLE("pw::sync::NoLock") NoLock {
 /// @tparam LockType        The lock type to use when locking is enabled.
 template <bool kEnableLocking, typename LockType>
 using MaybeLock = std::conditional_t<kEnableLocking, LockType, NoLock>;
+
+/// @}
 
 }  // namespace pw::sync

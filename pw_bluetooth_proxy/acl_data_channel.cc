@@ -39,8 +39,10 @@ AclDataChannel::AclConnection::AclConnection(
     : transport_(transport),
       connection_handle_(connection_handle),
       num_pending_packets_(num_pending_packets),
-      leu_signaling_channel_(l2cap_channel_manager, connection_handle),
-      aclu_signaling_channel_(l2cap_channel_manager, connection_handle) {
+      leu_signaling_channel_(L2capLeUSignalingChannel::Create(
+          l2cap_channel_manager, connection_handle)),
+      aclu_signaling_channel_(L2capAclUSignalingChannel::Create(
+          l2cap_channel_manager, connection_handle)) {
   PW_LOG_INFO(
       "btproxy: AclConnection ctor. transport_: %u, connection_handle_: %#x",
       cpp23::to_underlying(transport_),
@@ -394,9 +396,9 @@ void AclDataChannel::ProcessDisconnectionCompleteEvent(
     AclConnection* connection_ptr = FindAclConnection(conn_handle);
 
     if (!connection_ptr) {
-      PW_LOG_WARN(
-          "btproxy: Viewed disconnect (reason: %#.2hhx) for connection %#x, "
-          "but was unable to find an existing open AclConnection.",
+      PW_LOG_INFO(
+          "btproxy: Viewed disconnect (reason: %#.2hhx) for unacquired "
+          "connection %#x.",
           cpp23::to_underlying(dc_event->reason().Read()),
           conn_handle);
       return;
@@ -914,8 +916,10 @@ bool AclDataChannel::HandleAclData(Direction direction,
         MakeEmbossWriter<emboss::AclDataFrameWriter>(hci_span);
     PW_CHECK_OK(recombined_acl);
     recombined_acl->header().handle().Write(acl.header().handle().Read());
+    // Controller to Host are always flushable (except for loopback), per
+    // Volume 4, Part E, 5.4.2, Packet_Boundary_Flag table.
     recombined_acl->header().packet_boundary_flag().Write(
-        emboss::AclDataPacketBoundaryFlag::FIRST_NON_FLUSHABLE);
+        emboss::AclDataPacketBoundaryFlag::FIRST_FLUSHABLE);
     recombined_acl->header().broadcast_flag().Write(
         acl.header().broadcast_flag().Read());
     recombined_acl->data_total_length().Write(h4_span.size() -

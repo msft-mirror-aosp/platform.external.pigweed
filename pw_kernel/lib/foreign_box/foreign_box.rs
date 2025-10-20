@@ -17,7 +17,7 @@
 
 use core::cell::UnsafeCell;
 use core::marker::PhantomData;
-use core::mem::ManuallyDrop;
+use core::mem::{ManuallyDrop, offset_of};
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
@@ -224,8 +224,40 @@ impl<A: AtomicUsize, T: ?Sized> ForeignRcState<A, T> {
     }
 }
 
+impl<A: AtomicUsize, T: Sized> ForeignRcState<A, T> {
+    /// Return a new [`ForeignRc`] from a reference to a [`ForeignRcState`]'s
+    /// inner storage.
+    ///
+    /// # Safety
+    /// The caller must guarantee that `inner: &T` is a reference storage that
+    /// is contained inside a [`ForeignRcState<A, T>`].
+    pub unsafe fn create_ref_from_inner(inner: &T) -> ForeignRc<A, T> {
+        let inner = NonNull::from_ref(inner);
+        let state: &Self = unsafe { inner.byte_sub(offset_of!(Self, inner)).cast().as_ref() };
+        state.ref_count.fetch_add(1, Ordering::SeqCst);
+        ForeignRc { state }
+    }
+}
+
 pub struct ForeignRc<A: AtomicUsize + 'static, T: ?Sized + 'static> {
     state: &'static ForeignRcState<A, T>,
+}
+
+impl<A: AtomicUsize, T: ?Sized> ForeignRc<A, T> {
+    #[doc(hidden)]
+    /// Map a `ForeignRc` into a compatible type.
+    ///
+    /// # Safety
+    /// The caller must guarantee that the `map` closure returns a reference
+    /// pointing to the same address and byte range as was passed in.
+    pub unsafe fn map<U: ?Sized>(
+        self,
+        map: impl Fn(&ForeignRcState<A, T>) -> &ForeignRcState<A, U>,
+    ) -> ForeignRc<A, U> {
+        ForeignRc {
+            state: map(self.state),
+        }
+    }
 }
 
 impl<A: AtomicUsize, T: ?Sized> Deref for ForeignRc<A, T> {
@@ -273,6 +305,96 @@ impl<A: AtomicUsize, T: ?Sized> Drop for ForeignRc<A, T> {
             unsafe { ManuallyDrop::drop(md) };
         }
     }
+}
+
+/// Upcasts a [`ForeignRc`] from a concrete type to a `dyn Trait` that the concrete
+/// type implements
+#[macro_export]
+macro_rules! upcast_foreign_rc {
+    ($rc:expr => dyn $trait:ident $(<$($trait_tyvar:ident),*>)? ) => {{
+        use $crate::ForeignRcState;
+        // SAFETY: The closure passed to `.map()` fulfils the precondition that
+        // the returned reference points to the same place as the passed in reference.
+        unsafe {
+            $rc.map(|inner: &ForeignRcState<_, _>|
+                -> &ForeignRcState<_, dyn $trait $(<$($trait_tyvar),*>)?> { inner })
+        }
+    }};
+}
+
+/// Helper type to declare a static value with runtime initialization.
+///
+/// # Safety
+/// The user must ensure that [`StaticStorage::init()`] is only called once.
+#[doc(hidden)]
+pub struct StaticStorage<T> {
+    inner: UnsafeCell<core::mem::MaybeUninit<T>>,
+}
+
+impl<T> StaticStorage<T> {
+    /// Initialize a new `StaticStorage`.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            inner: UnsafeCell::new(core::mem::MaybeUninit::uninit()),
+        }
+    }
+
+    /// Initialize the value in the `StaticStorage` and return a mutable
+    /// reference to it.
+    ///
+    /// # Safety
+    /// The user must ensure that this method is only called once.
+    #[allow(clippy::mut_from_ref)]
+    pub unsafe fn init(&self, val: T) -> &mut T {
+        unsafe { (*self.inner.get()).write(val) }
+    }
+}
+
+// SAFETY: By contract, the user will only call `init()` once therefore only
+// creating a single reference to the inner data.
+unsafe impl<T> Sync for StaticStorage<T> {}
+
+/// Declare a [`ForeignBox`] in static storage that is runtime initialized.
+///
+/// # Safety
+/// Caller must ensure that the macro is executed only once.
+#[macro_export]
+macro_rules! static_foreign_box {
+    ($ty:ty, $init:expr) => {{
+        unsafe fn declare_static(val: $ty) -> &'static mut $ty {
+            use $crate::StaticStorage;
+
+            static STORAGE: StaticStorage<$ty> = StaticStorage::new();
+            unsafe { STORAGE.init(val) }
+        }
+        let r = declare_static($init);
+
+        // ForeignBox created outside of function to allow type coercion.
+        $crate::ForeignBox::new(NonNull::from_ref(r))
+    }};
+}
+
+/// Declare a [`ForeignRc`] in static storage that is runtime initialized.
+///
+/// # Safety
+/// Caller must ensure that the macro is executed only once.
+#[macro_export]
+macro_rules! static_foreign_rc {
+    ($atomic_usize:ty, $ty:ty, $init:expr) => {{
+        unsafe fn declare_static(val: $ty) -> $crate::ForeignRc<$atomic_usize, $ty> {
+            use $crate::{ForeignRcState, StaticStorage};
+
+            static STORAGE: StaticStorage<ForeignRcState<$atomic_usize, $ty>> =
+                StaticStorage::new();
+            unsafe {
+                let r = STORAGE.init(ForeignRcState::new(val));
+                r.create_first_ref()
+            }
+        }
+
+        declare_static($init)
+    }};
 }
 
 #[cfg(test)]

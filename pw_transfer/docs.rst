@@ -170,15 +170,15 @@ thread and registered with the system's RPC server.
    // link.
    constexpr size_t kDefaultMaxBytesToReceive = 16384;
 
-   pw::transfer::TransferService transfer_service(
-       GetSystemTransferThread(), kDefaultMaxBytesToReceive);
+   pw::transfer::TransferService transfer_service(GetSystemTransferThread(),
+                                                  kDefaultMaxBytesToReceive);
 
    // Instantiate a handler for the data to be transferred. The resource ID will
    // be used by the transfer client and server to identify the handler.
    constexpr uint32_t kMagicBufferResourceId = 1;
-   char magic_buffer_to_transfer[256] = { /* ... */ };
-   SimpleBufferReadHandler magic_buffer_handler(
-       kMagicBufferResourceId, magic_buffer_to_transfer);
+   char magic_buffer_to_transfer[256] = {/* ... */};
+   SimpleBufferReadHandler magic_buffer_handler(kMagicBufferResourceId,
+                                                magic_buffer_to_transfer);
 
    }  // namespace
 
@@ -271,9 +271,7 @@ is used to manage the transfer. These handles support the following operations:
      } transfer_state;
 
      Result<pw::transfer::Client::Handle> handle = transfer_client.Read(
-         kMagicBufferResourceId,
-         writer,
-         [&transfer_state](pw::Status status) {
+         kMagicBufferResourceId, writer, [&transfer_state](pw::Status status) {
            transfer_state.status = status;
            transfer_state.notification.release();
          });
@@ -323,9 +321,7 @@ be sent.
     public:
      Status PrepareRead() final;
 
-     virtual size_t ResourceSize() const final {
-       return kMyResourceSize;
-     }
+     virtual size_t ResourceSize() const final { return kMyResourceSize; }
 
   };
 
@@ -697,8 +693,6 @@ Protocol errors
 The following table describes the meaning of each status code when sent by the
 sender or the receiver (see `Transfer roles`_).
 
-.. cpp:namespace-push:: pw::stream
-
 +-------------------------+-------------------------+-------------------------+
 | Status                  | Sent by sender          | Sent by receiver        |
 +=========================+=========================+=========================+
@@ -715,17 +709,18 @@ sender or the receiver (see `Transfer roles`_).
 +-------------------------+-------------------------+-------------------------+
 | ``DATA_LOSS``           | Failed to read the data | Failed to write the     |
 |                         | to send. The            | received data. The      |
-|                         | :cpp:class:`Reader`     | :cpp:class:`Writer`     |
+|                         | :doxylink:`Reader       | :doxylink:`Writer       |
+|                         | <pw::stream::Reader>`   | <pw::stream::Writer>`   |
 |                         | returned an error.      | returned an error.      |
 +-------------------------+-------------------------+-------------------------+
 | ``FAILED_PRECONDITION`` | Received chunk for transfer that is not active.   |
-+-------------------------+-------------------------+-------------------------+
++-------------------------+---------------------------------------------------+
 | ``INVALID_ARGUMENT``    | Received a malformed packet.                      |
-+-------------------------+-------------------------+-------------------------+
++-------------------------+---------------------------------------------------+
 | ``INTERNAL``            | An assumption of the protocol was violated.       |
 |                         | Encountering ``INTERNAL`` indicates that there is |
 |                         | a bug in the service or client implementation.    |
-+-------------------------+-------------------------+-------------------------+
++-------------------------+---------------------------------------------------+
 | ``PERMISSION_DENIED``   | The transfer does not support the requested       |
 |                         | operation (either reading or writing).            |
 +-------------------------+-------------------------+-------------------------+
@@ -742,9 +737,6 @@ sender or the receiver (see `Transfer roles`_).
 |                         | requested, but seeking  |                         |
 |                         | is not supported.       |                         |
 +-------------------------+-------------------------+-------------------------+
-
-.. cpp:namespace-pop::
-
 
 Transfer roles
 ==============
@@ -939,8 +931,3 @@ to the tests depending on the OS. But this is not supported, `gh#2971
 We don't want to tag the tests ``"exclusive"`` by default because that will
 prevent *different* tests from running in parallel, significantly slowing them
 down.
-
-.. toctree::
-   :hidden:
-
-   API reference <api>

@@ -24,14 +24,14 @@ Example
    void SomeLongRunningProcessing();
 
    void SomeInterruptHandler() {
-       // Instead of executing the long running processing task in the interrupt,
-       // the work_queue executes it on the interrupt's behalf.
-       work_queue.CheckPushWork(SomeLongRunningProcessing);
+     // Instead of executing the long running processing task in the interrupt,
+     // the work_queue executes it on the interrupt's behalf.
+     work_queue.CheckPushWork(SomeLongRunningProcessing);
    }
 
    int main() {
-       // Start up the work_queue as a detached thread which runs forever.
-       pw::thread::DetachedThread(WorkQueueThreadOptions(), work_queue);
+     // Start up the work_queue as a detached thread which runs forever.
+     pw::thread::DetachedThread(WorkQueueThreadOptions(), work_queue);
    }
 
 .. code-block:: cpp
@@ -65,5 +65,4 @@ Example
 -------------
 API reference
 -------------
-.. doxygennamespace:: pw::work_queue
-   :members:
+Moved: :doxylink:`pw_work_queue`

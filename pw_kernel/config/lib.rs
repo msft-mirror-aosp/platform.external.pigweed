@@ -17,8 +17,12 @@
 pub trait KernelConfigInterface {
     /// Rate of the scheduler monotonic tick.
     const SCHEDULER_TICK_HZ: u32 = 100;
+
     /// The number of bytes allocated for each kernel stack.
     const KERNEL_STACK_SIZE_BYTES: usize = 2048;
+
+    /// The native rate at which the system clock advances.
+    const SYSTEM_CLOCK_HZ: u64;
 }
 
 /// Cortex-M specific configuration.
@@ -44,9 +48,9 @@ pub trait RiscVKernelConfigInterface {
     /// or 64.
     const PMP_ENTRIES: usize;
 
-    /// Number of pmpcfgN registers.  For rv32 this is `PMP_ENTRIES / 4`, for
-    /// rv64 it is `PMP_ENTRIES / 8`.
-    const PMP_CFG_REGISTERS: usize;
+    /// A range of PMP entries the kernel will use to configure memory access
+    /// for userspace.
+    const PMP_USERSPACE_ENTRIES: core::ops::Range<usize>;
 
     /// mtvec exception mode. When in direct mode, base address will be set
     /// to the `_start_trap` address.

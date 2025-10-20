@@ -14,14 +14,17 @@
 
 use core::cell::UnsafeCell;
 use core::mem::MaybeUninit;
+use core::ops::Range;
+use core::ptr::NonNull;
 
 use foreign_box::{ForeignBox, ForeignRc};
 use list::*;
 use pw_log::info;
 use pw_status::Result;
 
-use crate::Kernel;
+use crate::memory::MemoryConfig;
 use crate::object::{KernelObject, ObjectTable};
+use crate::{Kernel, MemoryRegionType};
 
 /// The memory backing a thread's stack before it has been started.
 ///
@@ -225,14 +228,19 @@ impl<K: Kernel> Process<K> {
             kernel
                 .get_scheduler()
                 .lock(kernel)
-                .add_process_to_list(self);
-        }
+                .add_process_to_list(NonNull::from(self))
+        };
     }
 
     pub fn add_to_thread_list(&mut self, thread: &mut Thread<K>) {
         unsafe {
-            self.thread_list.push_front_unchecked(thread);
+            self.thread_list.push_front_unchecked(NonNull::from(thread));
         }
+    }
+
+    pub fn range_has_access(&self, access_type: MemoryRegionType, range: Range<usize>) -> bool {
+        self.memory_config
+            .range_has_access(access_type, range.start, range.end)
     }
 
     /// A simple ID for debugging purposes, currently the pointer to the thread
@@ -420,6 +428,13 @@ impl<K: Kernel> Thread<K> {
         );
     }
 
+    /// Returns a reference to the thread's parent process.
+    pub fn process(&self) -> &Process<K> {
+        // SAFETY: The returned process references is bound to an immutable
+        // borrow of the thread the `process` pointer can not change.
+        unsafe { &*self.process }
+    }
+
     /// A simple ID for debugging purposes, currently the pointer to the thread
     /// structure itself.
     ///
@@ -600,9 +615,11 @@ macro_rules! init_thread {
 macro_rules! init_non_priv_process {
     ($name:literal, $memory_config:expr, $object_table:expr $(,)?) => {{
         use $crate::scheduler::thread::Process;
+        use $crate::object::ObjectTable;
+        use $crate::Kernel;
 
         /// SAFETY: This must be executed at most once at run time.
-        unsafe fn __init_non_priv_process() -> &'static mut Process<arch::Arch> {
+        unsafe fn __init_non_priv_process(object_table: ForeignBox<dyn ObjectTable<arch::Arch>>) -> &'static mut Process<arch::Arch> {
             use pw_log::info;
             info!(
                 "allocating non-privileged process: {}",
@@ -614,12 +631,13 @@ macro_rules! init_non_priv_process {
             let proc =
                 unsafe {
                     $crate::static_mut_ref!(Process<arch::Arch> =
-                         Process::new($name, $memory_config, $object_table))
-                };            proc.register(arch::Arch);
+                         Process::new($name, $memory_config, object_table))
+                };
+            proc.register(arch::Arch);
             proc
         }
 
-        __init_non_priv_process()
+        __init_non_priv_process($object_table)
     }};
 }
 

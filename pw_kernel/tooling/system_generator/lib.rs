@@ -12,19 +12,20 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-use core::str::FromStr;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
-use anyhow::{Context, Error, Result, anyhow};
-use askama::Template;
+use anyhow::{Context, Result, anyhow};
 use clap::{Args, Parser, Subcommand};
-use serde::Deserialize;
+use minijinja::{Environment, State};
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 
-use crate::system_config::filters;
 pub mod system_config;
+
+use system_config::SystemConfig;
 
 #[derive(Debug, Parser)]
 pub struct Cli {
@@ -40,13 +41,25 @@ pub struct CommonArgs {
     config: PathBuf,
     #[arg(long, required(true))]
     output: PathBuf,
+    #[arg(
+        long("template"),
+        value_name = "NAME=PATH",
+        value_parser = parse_template,
+        action = clap::ArgAction::Append
+    )]
+    templates: Vec<(String, PathBuf)>,
+}
+
+fn parse_template(s: &str) -> Result<(String, PathBuf), String> {
+    s.split_once('=')
+        .map(|(name, path)| (name.to_string(), path.into()))
+        .ok_or_else(|| format!("invalid template format: '{s}'. Expected NAME=PATH."))
 }
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    #[command()]
     CodegenSystem,
-    #[command()]
+    SystemLinkerScript,
     AppLinkerScript(AppLinkerScriptArgs),
 }
 
@@ -56,30 +69,105 @@ pub struct AppLinkerScriptArgs {
     pub app_name: String,
 }
 
-pub trait SystemGenerator {
-    fn new(config: system_config::SystemConfig) -> Self;
-    fn config(&self) -> &system_config::SystemConfig;
-    fn populate_addresses(&mut self);
-    fn render_arch_app_linker_script(
-        &mut self,
-        _app_config: &system_config::AppConfig,
-    ) -> Result<String>;
+pub trait ArchConfigInterface {
+    fn get_arch_crate_name(&self) -> &'static str;
+    fn get_start_fn_address(&self, flash_start_address: usize) -> usize;
+}
 
-    fn render_system(&mut self) -> Result<String> {
-        self.populate_addresses();
-        self.config().render().context("Failed to render system")
+pub fn parse_config<A: ArchConfigInterface + DeserializeOwned>(
+    cli: &Cli,
+) -> Result<system_config::SystemConfig<A>> {
+    let json5_str =
+        fs::read_to_string(&cli.common_args.config).context("Failed to read config file")?;
+    let mut config: SystemConfig<A> =
+        serde_json5::from_str(&json5_str).context("Failed to parse config file")?;
+    config.calculate_and_validate()?;
+    Ok(config)
+}
+
+const FLASH_ALIGNMENT: usize = 4;
+const RAM_ALIGNMENT: usize = 8;
+
+impl ArchConfigInterface for system_config::Armv8MConfig {
+    fn get_arch_crate_name(&self) -> &'static str {
+        "arch_arm_cortex_m"
     }
 
-    fn render_app_linker_script(&mut self, app_name: &String) -> Result<String> {
-        self.populate_addresses();
-        let app_config = self
-            .config()
-            .apps
-            .get(app_name)
-            .with_context(|| format!("'{app_name}' does not exist in the config file."))?
-            .clone();
+    fn get_start_fn_address(&self, flash_start_address: usize) -> usize {
+        // On Armv8M, the +1 is to denote thumb mode.
+        flash_start_address + 1
+    }
+}
 
-        self.render_arch_app_linker_script(&app_config)
+impl ArchConfigInterface for system_config::RiscVConfig {
+    fn get_arch_crate_name(&self) -> &'static str {
+        "arch_riscv"
+    }
+
+    fn get_start_fn_address(&self, flash_start_address: usize) -> usize {
+        flash_start_address
+    }
+}
+
+pub struct SystemGenerator<'a, A: ArchConfigInterface> {
+    cli: Cli,
+    config: system_config::SystemConfig<A>,
+    env: Environment<'a>,
+}
+
+impl<'a, A: ArchConfigInterface + Serialize> SystemGenerator<'a, A> {
+    pub fn new(cli: Cli, config: system_config::SystemConfig<A>) -> Result<Self> {
+        let mut instance = Self {
+            cli,
+            config,
+            env: Environment::new(),
+        };
+
+        instance.env.add_filter("hex", hex);
+        for (name, path) in instance.cli.common_args.templates.clone() {
+            let template = fs::read_to_string(path)?;
+            instance.env.add_template_owned(name, template)?;
+        }
+
+        instance.populate_addresses();
+
+        Ok(instance)
+    }
+
+    pub fn generate(&mut self) -> Result<()> {
+        let out_str = match &self.cli.command {
+            Command::CodegenSystem => self.render_system()?,
+            Command::SystemLinkerScript => self.render_system_linker_script()?,
+            Command::AppLinkerScript(args) => self.render_app_linker_script(&args.app_name)?,
+        };
+
+        let mut file = File::create(&self.cli.common_args.output)?;
+        file.write_all(out_str.as_bytes())
+            .context("Failed to write output")
+    }
+
+    fn render_system(&self) -> Result<String> {
+        let template = self.env.get_template("system")?;
+        match template.render(&self.config) {
+            Ok(str) => Ok(str),
+            Err(e) => Err(anyhow!(e)),
+        }
+    }
+
+    fn render_system_linker_script(&self) -> Result<String> {
+        let template = self.env.get_template("system")?;
+        match template.render(&self.config) {
+            Ok(str) => Ok(str),
+            Err(e) => Err(anyhow!(e)),
+        }
+    }
+
+    fn render_app_linker_script(&self, app_name: &String) -> Result<String> {
+        let template = self.env.get_template("app")?;
+        match template.render(self.config.apps.get(app_name)) {
+            Ok(str) => Ok(str),
+            Err(e) => Err(anyhow!(e)),
+        }
     }
 
     #[must_use]
@@ -87,133 +175,43 @@ pub trait SystemGenerator {
         debug_assert!(alignment.is_power_of_two());
         (value + alignment - 1) & !(alignment - 1)
     }
-}
-
-pub fn parse_config(cli: &Cli) -> Result<system_config::SystemConfig> {
-    let json5_str =
-        fs::read_to_string(&cli.common_args.config).context("Failed to read config file")?;
-    serde_json5::from_str(&json5_str).context("Failed to parse config file")
-}
-
-pub fn generate<T: SystemGenerator>(cli: &Cli, system_generator: &mut T) -> Result<()> {
-    let out_str = match &cli.command {
-        Command::CodegenSystem => system_generator.render_system()?,
-        Command::AppLinkerScript(args) => {
-            system_generator.render_app_linker_script(&args.app_name)?
-        }
-    };
-    // println!("OUT:\n{}", out_str);
-
-    let mut file = File::create(&cli.common_args.output)?;
-    file.write_all(out_str.as_bytes())
-        .context("Failed to write output")
-}
-
-// The DefaultSystemGenerator below supports Armv7m and RiscV.
-// New architectures which are implemented out of tree can
-// depend on this crate with a custom SystemGenerator impl.
-
-const FLASH_ALIGNMENT: usize = 4;
-const RAM_ALIGNMENT: usize = 8;
-
-#[derive(Template)]
-#[template(path = "armv8m_app.ld.tmpl", escape = "none")]
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AppConfigArmv8M {
-    pub config: system_config::AppConfig,
-}
-
-#[derive(Template)]
-#[template(path = "riscv_app.ld.tmpl", escape = "none")]
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AppConfigRiscV {
-    pub config: system_config::AppConfig,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Arch {
-    Armv8M,
-    RiscV,
-}
-
-impl FromStr for Arch {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "armv8m" => Ok(Arch::Armv8M),
-            "riscv" => Ok(Arch::RiscV),
-            _ => Err(anyhow!("'{}' is not a valid architecture", s)),
-        }
-    }
-}
-
-pub struct DefaultSystemGenerator {
-    config: system_config::SystemConfig,
-}
-
-impl SystemGenerator for DefaultSystemGenerator {
-    fn new(config: system_config::SystemConfig) -> Self {
-        DefaultSystemGenerator { config }
-    }
-
-    fn config(&self) -> &system_config::SystemConfig {
-        &self.config
-    }
 
     fn populate_addresses(&mut self) {
         // Stack the apps after the kernel in flash and ram.
         // TODO: davidroth - remove the requirement of setting the size of
         // flash, and instead calculate it based on code size.
-        let mut flash_offset =
+        let mut next_flash_start_address =
             self.config.kernel.flash_start_address + self.config.kernel.flash_size_bytes;
-        flash_offset = Self::align(flash_offset, FLASH_ALIGNMENT);
-        let mut ram_offset =
+        next_flash_start_address = Self::align(next_flash_start_address, FLASH_ALIGNMENT);
+        let mut next_ram_start_address =
             self.config.kernel.ram_start_address + self.config.kernel.ram_size_bytes;
-        ram_offset = Self::align(ram_offset, RAM_ALIGNMENT);
+        next_ram_start_address = Self::align(next_ram_start_address, RAM_ALIGNMENT);
 
-        let arch = self.config.arch.parse().unwrap();
-        self.config.arch_crate_name = match arch {
-            Arch::Armv8M => "arch_arm_cortex_m",
-            Arch::RiscV => "arch_riscv",
-        };
+        self.config.arch_crate_name = self.config.arch.get_arch_crate_name();
 
         for app in self.config.apps.values_mut() {
-            app.flash_start_address = flash_offset;
-            app.flash_end_address = app.flash_start_address + app.flash_size_bytes;
-            flash_offset = Self::align(app.flash_end_address + 1, FLASH_ALIGNMENT);
+            app.flash_start_address = next_flash_start_address;
+            next_flash_start_address = Self::align(
+                app.flash_start_address + app.flash_size_bytes,
+                FLASH_ALIGNMENT,
+            );
 
-            app.ram_start_address = ram_offset;
-            app.ram_end_address = app.ram_start_address + app.ram_size_bytes;
-            ram_offset = Self::align(app.ram_end_address + 1, RAM_ALIGNMENT);
+            app.ram_start_address = next_ram_start_address;
+            next_ram_start_address =
+                Self::align(app.ram_start_address + app.ram_size_bytes, RAM_ALIGNMENT);
 
-            app.start_fn_address = match arch {
-                // On Armv8M, the +1 is to denote thumb mode.
-                Arch::Armv8M => app.flash_start_address + 1,
-                Arch::RiscV => app.flash_start_address,
-            };
+            app.start_fn_address = self
+                .config
+                .arch
+                .get_start_fn_address(app.flash_start_address);
 
-            app.initial_sp = app.ram_end_address;
+            app.initial_sp = app.ram_start_address + app.ram_size_bytes;
         }
     }
+}
 
-    fn render_arch_app_linker_script(
-        &mut self,
-        app_config: &system_config::AppConfig,
-    ) -> Result<String> {
-        let arch = self.config.arch.parse().unwrap();
-        match arch {
-            Arch::Armv8M => AppConfigArmv8M {
-                config: app_config.clone(),
-            }
-            .render(),
-            Arch::RiscV => AppConfigRiscV {
-                config: app_config.clone(),
-            }
-            .render(),
-        }
-        .context("Failed to render app linker script")
-    }
+// Custom filters
+#[must_use]
+pub fn hex(_state: &State, value: usize) -> String {
+    format!("{value:#x}")
 }

@@ -17,10 +17,12 @@
 
 namespace pw::trace {
 
+/// @module{pw_trace_tokenized}
+
 /// A ReadOnlyHandler that transfers trace buffer data via pw_transfer.
 ///
 /// To use, create a handler object and register with
-/// pw::transfer::TransferService::RegisterHandler
+/// `pw::transfer::TransferService::RegisterHandler`
 ///
 /// Stop tracing before transfer if the reader object passed
 /// to the constructor does not provide synchronization between
@@ -42,5 +44,7 @@ class TraceBufferReader : public stream::NonSeekableReader {
 };
 
 TraceBufferReader& GetTraceBufferReader();
+
+/// @}
 
 }  // namespace pw::trace

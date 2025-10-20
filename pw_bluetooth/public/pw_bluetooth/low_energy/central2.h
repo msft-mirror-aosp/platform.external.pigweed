@@ -25,6 +25,8 @@
 
 namespace pw::bluetooth::low_energy {
 
+/// @module{pw_bluetooth}
+
 /// Represents the LE central role. Used to scan and connect to peripherals.
 class Central2 {
  public:
@@ -151,15 +153,10 @@ class Central2 {
     /// Returns the next `ScanResult` if available. Otherwise, invokes
     /// `cx.waker()` when a `ScanResult` is available. Only one waker is
     /// supported at a time.
-    /// @return @rst
     ///
-    /// .. pw-status-codes::
-    ///
-    ///    OK: ScanResult was returned.
-    ///
-    ///    CANCELLED: An internal error occurred and the scan was cancelled.
-    ///
-    /// @endrst
+    /// @returns
+    /// * @OK: `ScanResult` was returned.
+    /// * @CANCELLED: An internal error occurred and the scan was cancelled.
     virtual async2::PollResult<ScanResult> PendResult(async2::Context& cx) = 0;
 
    private:

@@ -16,15 +16,23 @@ use core::any::Any;
 use core::cell::UnsafeCell;
 use core::ptr::NonNull;
 
-use bitflags::bitflags;
 use foreign_box::{ForeignBox, ForeignRc};
 use list::{self, Link, RandomAccessForeignList};
 use pw_status::{Error, Result};
+use syscall_defs::Signals;
 use time::Instant;
 
 use crate::Kernel;
 use crate::sync::event::{Event, EventConfig, EventSignaler};
 use crate::sync::spinlock::SpinLock;
+
+mod buffer;
+mod channel;
+mod ticker;
+
+pub use buffer::SyscallBuffer;
+pub use channel::{ChannelHandlerObject, ChannelInitiatorObject};
+pub use ticker::{TickerCallback, TickerObject};
 
 /// Trait that all kernel objects implement.
 ///
@@ -34,60 +42,39 @@ pub trait KernelObject<K: Kernel>: Any + Send + Sync {
     ///
     /// Blocks until any of the signals in `signal_mask` are active on the object
     /// or `deadline` has expired.
-    fn object_wait(&self, ctx: K, signal_mask: Signals, deadline: Instant<K::Clock>) -> Result<()>;
-}
-
-/// Demo kernel object that signals based off of a timer.
-pub struct TickerObject<K: Kernel> {
-    base: ObjectBase<K>,
-}
-
-impl<K: Kernel> TickerObject<K> {
-    #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            base: ObjectBase::new(),
-        }
-    }
-    pub fn tick(&self, kernel: K) {
-        self.base.signal(kernel, Signals(0x1));
-        self.base.signal(kernel, Signals(0));
-    }
-}
-
-impl<K: Kernel> KernelObject<K> for TickerObject<K> {
+    #[allow(unused_variables)]
     fn object_wait(
         &self,
         kernel: K,
         signal_mask: Signals,
         deadline: Instant<K::Clock>,
     ) -> Result<()> {
-        self.base.wait_until(kernel, signal_mask, deadline).map(|_|
-                 //  wait result TBD
-            ())
+        Err(Error::Unimplemented)
+    }
+
+    #[allow(unused_variables)]
+    fn channel_transact(
+        &self,
+        kernel: K,
+        send_buffer: SyscallBuffer,
+        recv_buffer: SyscallBuffer,
+        deadline: Instant<K::Clock>,
+    ) -> Result<usize> {
+        Err(Error::Unimplemented)
+    }
+
+    #[allow(unused_variables)]
+    fn channel_read(&self, kernel: K, offset: usize, read_buffer: SyscallBuffer) -> Result<usize> {
+        Err(Error::Unimplemented)
+    }
+
+    #[allow(unused_variables)]
+    fn channel_respond(&self, ctx: K, response_buffer: SyscallBuffer) -> Result<()> {
+        Err(Error::Unimplemented)
     }
 }
 
 list::define_adapter!(pub ObjectWaiterListAdapter<K: Kernel> => ObjectWaiter<K>::link);
-
-#[derive(Copy, Clone)]
-pub struct Signals(u32);
-
-bitflags! {
-    impl Signals: u32 {
-        const Readable = 1 << 0;
-        const Writeable = 1 << 1;
-        const Error = 1 << 2;
-        const User = 1 << 16;
-    }
-}
-
-impl Signals {
-    #[must_use]
-    pub const fn new() -> Self {
-        Self(0)
-    }
-}
 
 struct WaitResult {
     result: UnsafeCell<Result<Signals>>,
@@ -162,22 +149,22 @@ impl NullObjectTable {
 impl<K: Kernel> ObjectTable<K> for NullObjectTable {
     fn get_object(
         &self,
-        kernel: K,
-        handle: u32,
+        _kernel: K,
+        _handle: u32,
     ) -> Option<ForeignRc<K::AtomicUsize, dyn KernelObject<K>>> {
-        match handle {
-            // For development purposes, we cheat and hard code a ticker object
-            // into every table.  This goes away when "real" objects exist and
-            // we have per process object tables that are configured through the
-            // system generator.
-            0 => kernel
-                .get_state()
-                .ticker
-                .lock(kernel)
-                .as_ref()
-                .map(Clone::clone),
-            _ => None,
-        }
+        None
+    }
+}
+
+impl<const N: usize, K: Kernel> ObjectTable<K>
+    for [ForeignRc<<K>::AtomicUsize, dyn KernelObject<K>>; N]
+{
+    fn get_object(
+        &self,
+        _kernel: K,
+        handle: u32,
+    ) -> Option<ForeignRc<<K>::AtomicUsize, dyn KernelObject<K>>> {
+        self.get(handle as usize).cloned()
     }
 }
 
@@ -210,7 +197,7 @@ impl<K: Kernel> ObjectBase<K> {
         }
 
         let event = Event::new(kernel, EventConfig::ManualReset);
-        let signaler = Event::get_signaler(&event);
+        let signaler = event.get_signaler();
 
         let waiter = ObjectWaiter {
             link: Link::new(),

@@ -39,7 +39,7 @@ pw::Result<BasicL2capChannel> BasicL2capChannel::Create(
     return pw::Status::InvalidArgument();
   }
 
-  return BasicL2capChannel(
+  BasicL2capChannel channel(
       l2cap_channel_manager,
       rx_multibuf_allocator,
       /*connection_handle=*/connection_handle,
@@ -49,6 +49,8 @@ pw::Result<BasicL2capChannel> BasicL2capChannel::Create(
       /*payload_from_controller_fn=*/std::move(payload_from_controller_fn),
       /*payload_from_host_fn=*/std::move(payload_from_host_fn),
       /*event_fn=*/std::move(event_fn));
+  channel.Init();
+  return channel;
 }
 
 Status BasicL2capChannel::DoCheckWriteParameter(
@@ -80,9 +82,6 @@ std::optional<H4PacketWithH4> BasicL2capChannel::GenerateNextTxPacket() {
   PW_CHECK(result2.ok());
   emboss::AclDataFrameWriter acl = result2.value();
 
-  // At this point we assume we can return a PDU with the payload.
-  PopFrontPayload();
-
   emboss::BFrameWriter bframe = emboss::MakeBFrameView(
       acl.payload().BackingStorage().data(), acl.payload().SizeInBytes());
   PW_CHECK(bframe.IsComplete());
@@ -91,6 +90,9 @@ std::optional<H4PacketWithH4> BasicL2capChannel::GenerateNextTxPacket() {
 
   PW_CHECK(acl.Ok());
   PW_CHECK(bframe.Ok());
+
+  // All content has been copied from the front payload, so release it.
+  PopFrontPayload();
 
   return h4_packet;
 }

@@ -40,22 +40,6 @@ label_flag(
 # Libraries
 
 cc_library(
-    name = "pw_containers",
-    deprecation = "Depend on the individual single-header targets instead",
-    # Tagged manual so that we don't hit the deprecation warning when building
-    # upstream Pigweed itself.
-    tags = ["manual"],
-    deps = [
-        ":algorithm",
-        ":flat_map",
-        ":inline_deque",
-        ":inline_queue",
-        ":intrusive_list",
-        ":vector",
-    ],
-)
-
-cc_library(
     name = "algorithm",
     hdrs = [
         "public/pw_containers/algorithm.h",
@@ -179,7 +163,10 @@ cc_library(
 
 cc_library(
     name = "common",
-    hdrs = ["public/pw_containers/internal/traits.h"],
+    hdrs = [
+        "public/pw_containers/internal/traits.h",
+        "public/pw_containers/internal/wrap.h",
+    ],
     strip_include_prefix = "public",
     visibility = ["//:__subpackages__"],
 )
@@ -296,7 +283,6 @@ cc_library(
     hdrs = ["public/pw_containers/inline_var_len_entry_queue.h"],
     implementation_deps = ["//pw_assert:check"],
     strip_include_prefix = "public",
-    tags = ["noclangtidy"],
     deps = [
         ":raw_storage",
         "//pw_preprocessor",
@@ -433,6 +419,7 @@ pw_cc_test(
         ":inline_var_len_entry_queue",
         "//pw_assert:assert",
         "//pw_bytes",
+        "//pw_span",
         "//pw_varint",
     ],
 )
@@ -658,12 +645,14 @@ filegroup(
         "public/pw_containers/dynamic_queue.h",
         "public/pw_containers/dynamic_vector.h",
         "public/pw_containers/filtered_view.h",
+        "public/pw_containers/flat_map.h",
         "public/pw_containers/inline_async_deque.h",
         "public/pw_containers/inline_async_queue.h",
         "public/pw_containers/inline_deque.h",
         "public/pw_containers/inline_queue.h",
         "public/pw_containers/inline_var_len_entry_queue.h",
         "public/pw_containers/internal/aa_tree.h",
+        "public/pw_containers/internal/async_count_and_capacity.h",
         "public/pw_containers/internal/generic_deque.h",
         "public/pw_containers/internal/intrusive_list.h",
         "public/pw_containers/intrusive_forward_list.h",
@@ -673,7 +662,9 @@ filegroup(
         "public/pw_containers/intrusive_multiset.h",
         "public/pw_containers/intrusive_set.h",
         "public/pw_containers/ptr_iterator.h",
+        "public/pw_containers/to_array.h",
         "public/pw_containers/vector.h",
+        "public/pw_containers/wrapped_iterator.h",
     ],
 )
 

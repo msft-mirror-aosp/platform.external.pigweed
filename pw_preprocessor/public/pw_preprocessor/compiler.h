@@ -22,9 +22,12 @@
 
 #include "pw_polyfill/static_assert.h"
 
-/// @defgroup pw_preprocessor_internal
+/// @module{pw_preprocessor}
 
-/// @defgroup pw_preprocessor_compiler
+/// @defgroup pw_preprocessor_internal Internal
+/// @{
+
+/// @defgroup pw_preprocessor_compiler Compiler
 /// @{
 
 /// Marks a struct or class as packed.
@@ -269,33 +272,6 @@
 #else
 #define PW_ATTRIBUTE_LIFETIME_BOUND
 #endif  // PW_ATTRIBUTE_LIFETIME_BOUND
-
-/// `PW_ADD_OVERFLOW` adds two integers while checking for overflow.
-///
-/// Returns true if the result of `a + b` overflows the type of `out`; otherwise
-/// stores the result in `out` and returns false.
-///
-/// It's recommended to use @cpp_func{pw::CheckedAdd} or
-/// @cpp_func{pw::CheckedIncrement} instead.
-#define PW_ADD_OVERFLOW(a, b, out) __builtin_add_overflow(a, b, out)
-
-/// `PW_SUB_OVERFLOW` subtracts an integer from another while checking for
-/// overflow.
-///
-/// Returns true if the result of `a - b` overflows the type of `out`; otherwise
-/// stores the result in `out` and returns false.
-///
-/// It's recommended to use @cpp_func{pw::CheckedSub} or
-/// @cpp_func{pw::CheckedDecrement} instead.
-#define PW_SUB_OVERFLOW(a, b, out) __builtin_sub_overflow(a, b, out)
-
-/// `PW_MUL_OVERFLOW` multiplies two integers while checking for overflow.
-///
-/// Returns true if the result of `a * b` overflows the type of `out`; otherwise
-/// stores the result in `out` and returns false.
-///
-/// It's recommended to use @cpp_func{pw::CheckedMul} instead.
-#define PW_MUL_OVERFLOW(a, b, out) __builtin_mul_overflow(a, b, out)
 
 /// Evaluates to 1 if `__VA_OPT__` is supported, regardless of the C or C++
 /// standard in use.

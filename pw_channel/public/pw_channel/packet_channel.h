@@ -40,11 +40,15 @@
 
 namespace pw::channel {
 
+/// @module{pw_channel}
+
 /// Represents a pending write operation. Returned by
 /// `pw::channel::PacketChannel::PendReadyToWrite`.
 template <typename Packet>
 class PendingWrite {
  public:
+  constexpr PendingWrite() : channel_(nullptr), num_packets_(0) {}
+
   PendingWrite(const PendingWrite&) = delete;
   PendingWrite& operator=(const PendingWrite&) = delete;
 
@@ -54,6 +58,7 @@ class PendingWrite {
   constexpr PendingWrite& operator=(PendingWrite&& other) {
     channel_ = other.channel_;
     num_packets_ = cpp20::exchange(other.num_packets_, 0u);
+    return *this;
   }
 
   ~PendingWrite() {
@@ -83,7 +88,7 @@ class PendingWrite {
   size_t num_packets_;
 };
 
-/// @defgroup pw_channel_packets
+/// @defgroup pw_channel_packets Packets
 /// @{
 
 /// If the number of available writes is set to this value, flow control is
@@ -251,20 +256,12 @@ class AnyPacketChannel : private PacketChannel<T, kReadable>,
   /// is ready yet, returns `async2::Pending`. Returns `async2::Ready` with a
   /// non-OK status if there was an unrecoverable error.
   ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK: A packet was read
-  ///
-  ///    UNIMPLEMENTED: The channel does not support reading.
-  ///
-  ///    FAILED_PRECONDITION: The channel is closed for reading.
-  ///
-  ///    OUT_OF_RANGE: The end of the stream was reached and no further reads
-  ///    will succeed.
-  ///
-  /// @endrst
+  /// @returns
+  /// * @OK: A packet was read.
+  /// * @UNIMPLEMENTED: The channel does not support reading.
+  /// * @FAILED_PRECONDITION: The channel is closed for reading.
+  /// * @OUT_OF_RANGE: The end of the stream was reached and no further reads
+  ///   will succeed.
   async2::PollResult<Packet> PendRead(async2::Context& cx) {
     // TODO: b/421962771 - if not readable, what to return (when called from
     // Any*)? The is_read_open() prevents you from getting to the DoPendRead()
@@ -281,18 +278,11 @@ class AnyPacketChannel : private PacketChannel<T, kReadable>,
   ///
   /// TODO: b/421961717 - Determine whether to keep this method.
   ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK: The channel is currently writable. The returned `PendingWrite` may
-  ///    be used to write a packet.
-  ///
-  ///    UNIMPLEMENTED: The channel does not support writing.
-  ///
-  ///    FAILED_PRECONDITION: The channel is closed for writing.
-  ///
-  /// @endrst
+  /// @returns
+  /// * @OK: The channel is currently writable. The returned `PendingWrite` may
+  ///   be used to write a packet.
+  /// * @UNIMPLEMENTED: The channel does not support writing.
+  /// * @FAILED_PRECONDITION: The channel is closed for writing.
   async2::PollResult<PendingWrite<Packet>> PendReadyToWrite(async2::Context& cx,
                                                             size_t num = 1);
 
@@ -330,16 +320,10 @@ class AnyPacketChannel : private PacketChannel<T, kReadable>,
 
   /// Marks the channel as closed. Flushes any remaining data.
   ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK: The channel was closed and all data was sent successfully.
-  ///
-  ///    DATA_LOSS: The channel was closed, but not all previously written
-  ///    data was delivered.
-  ///
-  /// @endrst
+  /// @returns
+  /// * @OK: The channel was closed and all data was sent successfully.
+  /// * @DATA_LOSS: The channel was closed, but not all previously written
+  ///   data was delivered.
   async2::Poll<Status> PendClose(async2::Context& cx);
 
  protected:

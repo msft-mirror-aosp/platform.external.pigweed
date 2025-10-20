@@ -25,12 +25,14 @@ config("public_include_path") {
 pw_source_set("checked_arithmetic") {
   public = [ "public/pw_numeric/checked_arithmetic.h" ]
   public_configs = [ ":public_include_path" ]
-  public_deps = [ dir_pw_preprocessor ]
 }
 
 pw_test("checked_arithmetic_test") {
   sources = [ "checked_arithmetic_test.cc" ]
-  deps = [ ":checked_arithmetic" ]
+  deps = [
+    ":checked_arithmetic",
+    "$dir_pw_unit_test:constexpr",
+  ]
 }
 
 pw_source_set("integer_division") {
@@ -46,7 +48,7 @@ pw_test("integer_division_test") {
 pw_source_set("saturating_arithmetic") {
   public = [ "public/pw_numeric/saturating_arithmetic.h" ]
   public_configs = [ ":public_include_path" ]
-  deps = [ dir_pw_preprocessor ]
+  deps = [ ":checked_arithmetic" ]
 }
 
 pw_test("saturating_arithmetic_test") {

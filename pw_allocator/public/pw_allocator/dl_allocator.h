@@ -24,6 +24,8 @@
 
 namespace pw::allocator {
 
+/// @submodule{pw_allocator,concrete_block}
+
 /// Alias for a default block type that is compatible with `DlAllocator`.
 template <typename OffsetType>
 using DlBlock = DetailedBlock<OffsetType, GenericFastSortedItem>;
@@ -38,9 +40,9 @@ using DlBlock = DetailedBlock<OffsetType, GenericFastSortedItem>;
 /// not currently supported.
 ///
 /// Note that Doug Lea's "bins" are provided by pw_allocator's buckets. Both the
-/// the "fast" and "small" bins hold a single size, and can therefore be
-/// implemented using `UnorderedBucket`. The "large" bins hold a range of sizes
-/// a use `FastSortedBucket` to quickly return best-fit blocks as requested.
+/// "fast" and "small" bins hold a single size, and can therefore be implemented
+/// using `UnorderedBucket`. The "large" bins hold a range of sizes a use
+/// `FastSortedBucket` to quickly return best-fit blocks as requested.
 template <typename BlockType = DlBlock<uintptr_t>>
 class DlAllocator : public BlockAllocator<BlockType> {
  private:
@@ -131,6 +133,8 @@ class DlAllocator : public BlockAllocator<BlockType> {
   std::array<LargeBin, kNumLargeBins> large_bins_;
   std::array<uintptr_t, kNumBitmaps> bitmaps_;
 };
+
+/// @}
 
 // Template method implementations.
 

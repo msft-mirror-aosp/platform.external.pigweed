@@ -35,10 +35,11 @@ Example API usage:
 
    Status ListenForButtonPress(DigitalInterrupt& button) {
      PW_TRY(button.SetInterruptHandler(Trigger::kActivatingEdge,
-       [](State sampled_state) {
-         // Handle the button press.
-         // NOTE: this may run in an interrupt context!
-       }));
+                                       [](State sampled_state) {
+                                         // Handle the button press.
+                                         // NOTE: this may run in an interrupt
+                                         // context!
+                                       }));
      return button.EnableInterruptHandler();
    }
 
@@ -82,16 +83,16 @@ The following table summarizes the interfaces and their required functionality:
      - Interrupts Required
    * - Input/Output Not Required
      -
-     - :cpp:class:`DigitalInterrupt`
+     - :doxylink:`DigitalInterrupt <pw::digital_io::DigitalInterrupt>`
    * - Input Required
-     - :cpp:class:`DigitalIn`
-     - :cpp:class:`DigitalInInterrupt`
+     - :doxylink:`DigitalIn <pw::digital_io::DigitalIn>`
+     - :doxylink:`DigitalInInterrupt <pw::digital_io::DigitalInterrupt>`
    * - Output Required
-     - :cpp:class:`DigitalOut`
-     - :cpp:class:`DigitalOutInterrupt`
+     - :doxylink:`DigitalOut <pw::digital_io::DigitalOut>`
+     - :doxylink:`DigitalOutInterrupt <pw::digital_io::DigitalOutInterrupt>`
    * - Input/Output Required
-     - :cpp:class:`DigitalInOut`
-     - :cpp:class:`DigitalInOutInterrupt`
+     - :doxylink:`DigitalInOut <pw::digital_io::DigitalInOut>`
+     - :doxylink:`DigitalInOutInterrupt <pw::digital_io::DigitalInOutInterrupt>`
 
 Synchronization requirements
 ============================
@@ -229,11 +230,13 @@ example:
 
 .. code-block:: cpp
 
-   DigitalInInterrupt& in_interrupt_line;
-   DigitalIn& in_line = in_interrupt_line;
+   void ExampleAssignments() {
+     DigitalInInterrupt & in_interrupt_line;
+     DigitalIn& in_line = in_interrupt_line;
 
-   DigitalInInterrupt* in_interrupt_line_ptr;
-   DigitalIn* in_line_ptr = &in_interrupt_line_ptr->as<DigitalIn>();
+     DigitalInInterrupt* in_interrupt_line_ptr;
+     DigitalIn* in_line_ptr = &in_interrupt_line_ptr->as<DigitalIn>();
+   }
 
 Asynchronous APIs
 =================
@@ -285,8 +288,8 @@ and output.
 .. code-block:: cpp
 
    std::array<std::reference_wrapper<DigitalIoOptional>> lines = {
-     ...DigitalIn(),
-     ...DigitalOut(),
+       FooDigitalIn(),
+       FooDigitalOut(),
    };
    DigitalIoService service(lines);
    rpc_server.RegisterService(service);
@@ -305,16 +308,7 @@ might do that using a Pigweed console device object.
 -------------
 API reference
 -------------
-.. note::
-   This API reference is incomplete.
-
-.. doxygenclass:: pw::digital_io::DigitalIoOptional
-   :members:
-   :private-members:
-
-.. doxygenclass:: pw::digital_io::DigitalInOutMock
-   :members:
-   :private-members:
+Moved: :doxylink:`pw_digital_io`
 
 ------------
 Dependencies

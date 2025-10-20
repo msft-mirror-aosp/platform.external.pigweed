@@ -33,6 +33,9 @@
 #include "pw_status/status_with_size.h"
 
 namespace pw {
+
+/// @module{pw_kvs}
+
 /// Lightweight key-value store library
 namespace kvs {
 
@@ -109,18 +112,11 @@ class KeyValueStore {
  public:
   /// Initializes the KVS. Must be called before calling other functions.
   ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK: The KVS successfully initialized.
-  ///
-  ///    DATA_LOSS: The KVS initialized and is usable, but contains corrupt
-  ///    data.
-  ///
-  ///    UNKNOWN: Unknown error. The KVS is not initialized.
-  ///
-  /// @endrst
+  /// @returns
+  /// * @OK: The KVS successfully initialized.
+  /// * @DATA_LOSS: The KVS initialized and is usable, but contains corrupt
+  ///   data.
+  /// * @UNKNOWN: Unknown error. The KVS is not initialized.
   Status Init();
 
   bool initialized() const {
@@ -137,28 +133,17 @@ class KeyValueStore {
   ///
   /// @param[in] offset_bytes The byte offset to start the read at. Optional.
   ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK: The entry was successfully read.
-  ///
-  ///    NOT_FOUND: The key is not present in the KVS.
-  ///
-  ///    DATA_LOSS: Found the entry, but the data was corrupted.
-  ///
-  ///    RESOURCE_EXHAUSTED: The buffer could not fit the entire
-  ///    value, but as many bytes as possible were written to it. The number of
-  ///    of bytes read is returned. The remainder of the value can be read by
-  ///    calling ``Get()`` again with an offset.
-  ///
-  ///    FAILED_PRECONDITION: The KVS is not initialized. Call ``Init()``
-  ///    before calling this method.
-  ///
-  ///    INVALID_ARGUMENT: ``key`` is empty or too long, or ``value``
-  ///    is too large.
-  ///
-  /// @endrst
+  /// @returns
+  /// * @OK: The entry was successfully read.
+  /// * @NOT_FOUND: The key is not present in the KVS.
+  /// * @DATA_LOSS: Found the entry, but the data was corrupted.
+  /// * @RESOURCE_EXHAUSTED: The buffer could not fit the entire value, but as
+  ///   many bytes as possible were written to it. The number of bytes read
+  ///   is returned. The remainder of the value can be read by calling `Get()`
+  ///   again with an offset.
+  /// * @FAILED_PRECONDITION: The KVS is not initialized. Call `Init()` before
+  ///   calling this method.
+  /// * @INVALID_ARGUMENT: `key` is empty or too long, or `value` is too large.
   StatusWithSize Get(std::string_view key,
                      span<std::byte> value,
                      size_t offset_bytes = 0) const;
@@ -182,31 +167,20 @@ class KeyValueStore {
   ///
   /// @param[in] key The name of the key. All keys in the KVS must have a
   /// unique hash. If the hash of your key matches an existing key, nothing is
-  /// added and @pw_status{ALREADY_EXISTS} is returned.
+  /// added and `pw::Status::AlreadyExists()` is returned.
   ///
   /// @param[in] value The value for the key. This can be a span of bytes or a
   /// trivially copyable object.
   ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK: The entry was successfully added or updated.
-  ///
-  ///    DATA_LOSS: Checksum validation failed after writing data.
-  ///
-  ///    RESOURCE_EXHAUSTED: Not enough space to add the entry.
-  ///
-  ///    ALREADY_EXISTS: The entry could not be added because a different
-  ///    key with the same hash is already in the KVS.
-  ///
-  ///    FAILED_PRECONDITION: The KVS is not initialized. Call ``Init()``
-  ///    before calling this method.
-  ///
-  ///    INVALID_ARGUMENT: ``key`` is empty or too long, or ``value``
-  ///    is too large.
-  ///
-  /// @endrst
+  /// @returns
+  /// * @OK: The entry was successfully added or updated.
+  /// * @DATA_LOSS: Checksum validation failed after writing data.
+  /// * @RESOURCE_EXHAUSTED: Not enough space to add the entry.
+  /// * @ALREADY_EXISTS: The entry could not be added because a different key
+  ///   with the same hash is already in the KVS.
+  /// * @FAILED_PRECONDITION: The KVS is not initialized. Call `Init()` before
+  ///   calling this method.
+  /// * @INVALID_ARGUMENT: `key` is empty or too long, or `value` is too large.
   template <typename T,
             typename std::enable_if_t<ConvertsToSpan<T>::value>* = nullptr>
   Status Put(const std::string_view& key, const T& value) {
@@ -224,47 +198,27 @@ class KeyValueStore {
   ///
   /// @param[in] key - The name of the key-value entry to delete.
   ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK: The entry was successfully deleted.
-  ///
-  ///    NOT_FOUND: ``key`` is not present in the KVS.
-  ///
-  ///    DATA_LOSS: Checksum validation failed after recording the
-  ///    erase.
-  ///
-  ///    RESOURCE_EXHAUSTED: Insufficient space to mark the entry as deleted.
-  ///
-  ///    FAILED_PRECONDITION: The KVS is not initialized. Call ``Init()``
-  ///    before calling this method.
-  ///
-  ///    INVALID_ARGUMENT: ``key`` is empty or too long.
-  ///
-  /// @endrst
+  /// @returns
+  /// * @OK: The entry was successfully deleted.
+  /// * @NOT_FOUND: `key` is not present in the KVS.
+  /// * @DATA_LOSS: Checksum validation failed after recording the erase.
+  /// * @RESOURCE_EXHAUSTED: Insufficient space to mark the entry as deleted.
+  /// * @FAILED_PRECONDITION: The KVS is not initialized. Call `Init()` before
+  ///   calling this method.
+  /// * @INVALID_ARGUMENT: `key` is empty or too long.
   Status Delete(std::string_view key);
 
   /// Returns the size of the value corresponding to the key.
   ///
   /// @param[in] key - The name of the key.
   ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK: The size was returned successfully.
-  ///
-  ///    NOT_FOUND: ``key`` is not present in the KVS.
-  ///
-  ///    DATA_LOSS: Checksum validation failed after reading the entry.
-  ///
-  ///    FAILED_PRECONDITION: The KVS is not initialized. Call ``Init()``
-  ///    before calling this method.
-  ///
-  ///    INVALID_ARGUMENT: ``key`` is empty or too long.
-  ///
-  /// @endrst
+  /// @returns
+  /// * @OK: The size was returned successfully.
+  /// * @NOT_FOUND: `key` is not present in the KVS.
+  /// * @DATA_LOSS: Checksum validation failed after reading the entry.
+  /// * @FAILED_PRECONDITION: The KVS is not initialized. Call `Init()` before
+  ///   calling this method.
+  /// * @INVALID_ARGUMENT: `key` is empty or too long.
   StatusWithSize ValueSize(std::string_view key) const;
 
   /// Performs all maintenance possible, including all needed repairing of

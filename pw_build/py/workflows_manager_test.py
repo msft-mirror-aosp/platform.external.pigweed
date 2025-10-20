@@ -43,6 +43,8 @@ class FakeBuildDriver(BuildDriver):
 class WorkflowsManagerTest(unittest.TestCase):
     """Tests for the WorkflowsManager class."""
 
+    # pylint: disable=too-many-public-methods
+
     def setUp(self):
         """Set up a test environment."""
         self.project_root = Path('/test/project/root')
@@ -102,6 +104,15 @@ class WorkflowsManagerTest(unittest.TestCase):
                     targets=['//:my_target'],
                     use_config='shared_config',
                 ),
+                workflows_pb2.Build(
+                    name='build_with_args',
+                    targets=['//:my_target'],
+                    build_config=workflows_pb2.BuildConfig(
+                        name='build_config_with_args',
+                        build_type='fake_build_type',
+                        args=['--existing-arg'],
+                    ),
+                ),
             ],
             groups=[
                 workflows_pb2.TaskGroup(
@@ -153,7 +164,7 @@ class WorkflowsManagerTest(unittest.TestCase):
         self.assertEqual(len(recipes), 1)
         recipe = recipes[0]
         self.assertIsInstance(recipe, BuildRecipe)
-        self.assertEqual(recipe.title, 'tool_config')
+        self.assertEqual(recipe.title, 'check my_tool')
         self.assertEqual(len(recipe.steps), 1)
         step = recipe.steps[0]
         self.assertEqual(step.command, ['fake_executable', 'fake_arg'])
@@ -227,7 +238,7 @@ class WorkflowsManagerTest(unittest.TestCase):
         self.assertEqual(len(recipes), 1)
         recipe = recipes[0]
         self.assertIsInstance(recipe, BuildRecipe)
-        self.assertEqual(recipe.title, 'build_config')
+        self.assertEqual(recipe.title, 'build my_build')
         self.assertEqual(recipe.steps[0].targets, ['//:my_target'])
 
     def test_program_build_not_a_build_raises_error(self):
@@ -253,8 +264,8 @@ class WorkflowsManagerTest(unittest.TestCase):
         )
         recipes = manager.program_group('my_group')
         self.assertEqual(len(recipes), 2)
-        build_recipe = next(r for r in recipes if r.title == 'build_config')
-        tool_recipe = next(r for r in recipes if r.title == 'analyzer_config')
+        build_recipe = next(r for r in recipes if r.title.startswith('build '))
+        tool_recipe = next(r for r in recipes if r.title.startswith('check '))
         self.assertIsNotNone(build_recipe)
         self.assertIsNotNone(tool_recipe)
 
@@ -268,7 +279,7 @@ class WorkflowsManagerTest(unittest.TestCase):
             self.project_root,
         )
         with self.assertRaises(TypeError):
-            manager.program_group('my_build')
+            manager.program_group('build my_build')
 
     def test_expand_action_simple(self):
         """Test simple variable expansion."""
@@ -302,7 +313,7 @@ class WorkflowsManagerTest(unittest.TestCase):
         )
         recipes = manager.program_build('build_with_shared_config')
         self.assertEqual(len(recipes), 1)
-        self.assertEqual(recipes[0].title, 'shared_config')
+        self.assertEqual(recipes[0].title, 'build build_with_shared_config')
 
     def test_program_by_name_group_success(self):
         """Test program_by_name with a group."""
@@ -356,6 +367,171 @@ class WorkflowsManagerTest(unittest.TestCase):
         )
         with self.assertRaises(TypeError):
             manager.program_by_name('not_a_real_program')
+
+    def test_get_unified_driver_request_single_build(self):
+        """Test get_unified_driver_request with a single build."""
+        manager = WorkflowsManager(
+            self.workflow_suite,
+            self.build_drivers,
+            self.working_dir,
+            self.base_out_dir,
+            self.project_root,
+        )
+        request = manager.get_unified_driver_request(['my_build'])
+        self.assertEqual(len(request.jobs), 1)
+        self.assertEqual(request.jobs[0].build.name, 'my_build')
+        self.assertEqual(
+            request.jobs[0].build.build_config.name, 'build_config'
+        )
+
+    def test_get_unified_driver_request_single_build_sanitized(self):
+        """Test get_unified_driver_request with a sanitized single build."""
+        manager = WorkflowsManager(
+            self.workflow_suite,
+            self.build_drivers,
+            self.working_dir,
+            self.base_out_dir,
+            self.project_root,
+        )
+        request = manager.get_unified_driver_request(
+            ['my_build'], sanitize=True
+        )
+        self.assertEqual(len(request.jobs), 1)
+        self.assertEqual(request.jobs[0].build.name, '')
+        self.assertEqual(request.jobs[0].build.build_config.name, '')
+
+    def test_get_unified_driver_request_single_tool(self):
+        """Test get_unified_driver_request with a single tool."""
+        manager = WorkflowsManager(
+            self.workflow_suite,
+            self.build_drivers,
+            self.working_dir,
+            self.base_out_dir,
+            self.project_root,
+        )
+        request = manager.get_unified_driver_request(['my_tool'])
+        self.assertEqual(len(request.jobs), 1)
+        self.assertEqual(request.jobs[0].tool.name, 'my_tool')
+
+    def test_get_unified_driver_request_group(self):
+        """Test get_unified_driver_request with a group."""
+        manager = WorkflowsManager(
+            self.workflow_suite,
+            self.build_drivers,
+            self.working_dir,
+            self.base_out_dir,
+            self.project_root,
+        )
+        request = manager.get_unified_driver_request(['my_group'])
+        self.assertEqual(len(request.jobs), 2)
+        job_fragments = [
+            job.build if job.WhichOneof('type') == 'build' else job.tool
+            for job in request.jobs
+        ]
+        job_names = {fragment.name for fragment in job_fragments}
+        self.assertEqual(job_names, {'my_build', 'analyzer_tool'})
+
+    def test_get_unified_driver_request_mix_build_and_tool(self):
+        """Test get_unified_driver_request with a mix of build and tool."""
+        manager = WorkflowsManager(
+            self.workflow_suite,
+            self.build_drivers,
+            self.working_dir,
+            self.base_out_dir,
+            self.project_root,
+        )
+        request = manager.get_unified_driver_request(['my_build', 'my_tool'])
+        self.assertEqual(len(request.jobs), 2)
+        job_fragments = [
+            job.build if job.WhichOneof('type') == 'build' else job.tool
+            for job in request.jobs
+        ]
+        job_names = {fragment.name for fragment in job_fragments}
+        self.assertEqual(job_names, {'my_build', 'my_tool'})
+
+    def test_get_unified_driver_request_non_existent_raises_error(self):
+        """Test get_unified_driver_request with a non-existent name."""
+        manager = WorkflowsManager(
+            self.workflow_suite,
+            self.build_drivers,
+            self.working_dir,
+            self.base_out_dir,
+            self.project_root,
+        )
+        with self.assertRaises(AssertionError):
+            manager.get_unified_driver_request(['not_a_real_thing'])
+
+    def test_extra_args_injected_into_build_without_args(self):
+        """Test extra args injection into a build with no existing args."""
+        extra_args = {'fake_build_type': ['--extra', '--args']}
+        manager = WorkflowsManager(
+            self.workflow_suite,
+            self.build_drivers,
+            self.working_dir,
+            self.base_out_dir,
+            self.project_root,
+            extra_build_args=extra_args,
+        )
+        driver = self.build_drivers['fake_build_type']
+        with patch.object(
+            driver, 'generate_jobs', wraps=driver.generate_jobs
+        ) as mock_generate_jobs:
+            manager.program_build('my_build')
+            mock_generate_jobs.assert_called_once()
+            request = mock_generate_jobs.call_args[0][0]
+            self.assertEqual(len(request.jobs), 1)
+            self.assertEqual(
+                list(request.jobs[0].build.build_config.args),
+                ['--extra', '--args'],
+            )
+
+    def test_extra_args_injected_into_build_with_args(self):
+        """Test extra args injection into a build with existing args."""
+        extra_args = {'fake_build_type': ['--extra', '--args']}
+        manager = WorkflowsManager(
+            self.workflow_suite,
+            self.build_drivers,
+            self.working_dir,
+            self.base_out_dir,
+            self.project_root,
+            extra_build_args=extra_args,
+        )
+        driver = self.build_drivers['fake_build_type']
+        with patch.object(
+            driver, 'generate_jobs', wraps=driver.generate_jobs
+        ) as mock_generate_jobs:
+            manager.program_build('build_with_args')
+            mock_generate_jobs.assert_called_once()
+            request = mock_generate_jobs.call_args[0][0]
+            self.assertEqual(len(request.jobs), 1)
+            self.assertEqual(
+                list(request.jobs[0].build.build_config.args),
+                ['--existing-arg', '--extra', '--args'],
+            )
+
+    def test_extra_args_injected_into_tool(self):
+        """Test that extra args are correctly added to tools."""
+        extra_args = {'fake_build_type': ['--extra', '--args']}
+        manager = WorkflowsManager(
+            self.workflow_suite,
+            self.build_drivers,
+            self.working_dir,
+            self.base_out_dir,
+            self.project_root,
+            extra_build_args=extra_args,
+        )
+        driver = self.build_drivers['fake_build_type']
+        with patch.object(
+            driver, 'generate_jobs', wraps=driver.generate_jobs
+        ) as mock_generate_jobs:
+            manager.program_tool('my_tool', [])
+            mock_generate_jobs.assert_called_once()
+            request = mock_generate_jobs.call_args[0][0]
+            self.assertEqual(len(request.jobs), 1)
+            self.assertEqual(
+                list(request.jobs[0].tool.build_config.args),
+                ['--extra', '--args'],
+            )
 
 
 if __name__ == '__main__':

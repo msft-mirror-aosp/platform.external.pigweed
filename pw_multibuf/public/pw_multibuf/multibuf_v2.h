@@ -13,18 +13,10 @@
 // the License.
 #pragma once
 
-//         __      ___   ___ _  _ ___ _  _  ___
-//         \ \    / /_\ | _ \ \| |_ _| \| |/ __|
-//          \ \/\/ / _ \|   / .` || || .` | (_ |
-//           \_/\_/_/ \_\_|_\_|\_|___|_|\_|\___|
-//  _____  _____ ___ ___ ___ __  __ ___ _  _ _____ _   _
-// | __\ \/ / _ \ __| _ \_ _|  \/  | __| \| |_   _/_\ | |
-// | _| >  <|  _/ _||   /| || |\/| | _|| .` | | |/ _ \| |__
-// |___/_/\_\_| |___|_|_\___|_|  |_|___|_|\_| |_/_/ \_\____|
-//
-// MultiBuf version 2 is in an early, experimental state. The APIs are in flux
-// and may change without notice. Please do not rely on it in production code,
-// but feel free to explore and share feedback with the Pigweed team!
+// NOTE: MultiBuf version 2 is in a nearly stable state, but may still change.
+// The Pigweed team will announce breaking changes in the API. It is strongly
+// recommended to coordinate with the Pigweed team if you want to start using
+// this code.
 
 #include <cstddef>
 #include <cstdint>
@@ -56,8 +48,7 @@ class GenericMultiBuf;
 
 }  // namespace multibuf_impl
 
-/// @defgroup pw_multibuf
-/// @{
+/// @submodule{pw_multibuf,v2}
 
 // Type aliases for convenience, listed here for easier discoverability.
 
@@ -268,25 +259,25 @@ class BasicMultiBuf {
   // Conversions
 
   template <typename OtherMultiBuf>
-  OtherMultiBuf& as() & {
+  constexpr OtherMultiBuf& as() & {
     multibuf_impl::AssertIsConvertible<BasicMultiBuf, OtherMultiBuf>();
     return generic().template as<OtherMultiBuf>();
   }
 
   template <typename OtherMultiBuf>
-  const OtherMultiBuf& as() const& {
+  constexpr const OtherMultiBuf& as() const& {
     multibuf_impl::AssertIsConvertible<BasicMultiBuf, OtherMultiBuf>();
     return generic().template as<OtherMultiBuf>();
   }
 
   template <typename OtherMultiBuf>
-  OtherMultiBuf&& as() && {
+  constexpr OtherMultiBuf&& as() && {
     multibuf_impl::AssertIsConvertible<BasicMultiBuf, OtherMultiBuf>();
     return std::move(generic().template as<OtherMultiBuf>());
   }
 
   template <typename OtherMultiBuf>
-  const OtherMultiBuf&& as() const&& {
+  constexpr const OtherMultiBuf&& as() const&& {
     multibuf_impl::AssertIsConvertible<BasicMultiBuf, OtherMultiBuf>();
     return std::move(generic().template as<OtherMultiBuf>());
   }
@@ -294,28 +285,28 @@ class BasicMultiBuf {
   template <typename OtherMultiBuf,
             typename = multibuf_impl::EnableIfConvertible<BasicMultiBuf,
                                                           OtherMultiBuf>>
-  operator OtherMultiBuf&() & {
+  constexpr operator OtherMultiBuf&() & {
     return as<OtherMultiBuf>();
   }
 
   template <typename OtherMultiBuf,
             typename = multibuf_impl::EnableIfConvertible<BasicMultiBuf,
                                                           OtherMultiBuf>>
-  operator const OtherMultiBuf&() const& {
+  constexpr operator const OtherMultiBuf&() const& {
     return as<OtherMultiBuf>();
   }
 
   template <typename OtherMultiBuf,
             typename = multibuf_impl::EnableIfConvertible<BasicMultiBuf,
                                                           OtherMultiBuf>>
-  operator OtherMultiBuf&&() && {
+  constexpr operator OtherMultiBuf&&() && {
     return std::move(as<OtherMultiBuf>());
   }
 
   template <typename OtherMultiBuf,
             typename = multibuf_impl::EnableIfConvertible<BasicMultiBuf,
                                                           OtherMultiBuf>>
-  operator const OtherMultiBuf&&() const&& {
+  constexpr operator const OtherMultiBuf&&() const&& {
     return std::move(as<OtherMultiBuf>());
   }
 
@@ -370,8 +361,10 @@ class BasicMultiBuf {
   constexpr std::enable_if_t<kMutable, ChunksType> Chunks() {
     return generic().Chunks();
   }
-  ConstChunksType Chunks() const { return generic().ConstChunks(); }
-  ConstChunksType ConstChunks() const { return generic().ConstChunks(); }
+  constexpr ConstChunksType Chunks() const { return generic().ConstChunks(); }
+  constexpr ConstChunksType ConstChunks() const {
+    return generic().ConstChunks();
+  }
   /// @}
 
   // Iterators.
@@ -461,18 +454,8 @@ class BasicMultiBuf {
   /// @}
 
   /// Attempts to reserves memory to hold metadata for the given number of total
-  /// chunks.
-  ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK:                  The object has space for the chunks.
-  ///
-  ///    RESOURCE_EXHAUSTED:  Out of memory; cannot add the chunks.
-  ///
-  /// @endrst
-  [[nodiscard]] bool TryReserveChunks(size_type num_chunks) {
+  /// chunks. Returns whether the memory was successfully allocated.
+  [[nodiscard]] bool TryReserveChunks(size_t num_chunks) {
     return generic().TryReserveChunks(num_chunks);
   }
 
@@ -832,15 +815,9 @@ class BasicMultiBuf {
   /// @param    pos     Location from which to remove memory from the MultiBuf.
   /// @param    size    Amount of memory to remove.
   ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK:                  The returned MultiBuf contains the removed chunks.
-  ///
-  ///    RESOURCE_EXHAUSTED:  Failed to allocate memory for the new MultiBuf's
-  ///                         metadata.
-  /// @endrst
+  /// @returns @Result{the MultiBuf containing the removed chunks}
+  /// * @RESOURCE_EXHAUSTED: Failed to allocate memory for the new %MultiBuf's
+  ///   metadata.
   Result<Instance> Remove(const_iterator pos, size_t size);
 
   /// Removes the first fragment from this object and returns it.
@@ -850,18 +827,12 @@ class BasicMultiBuf {
   ///
   /// It is an error to call this method when the MultiBuf is empty.
   ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK:                  Returns the fragment in a new MultiBuf.
-  ///
-  ///    RESOURCE_EXHAUSTED:  Attempting to reserve space for the new MultiBuf
-  ///                         failed.
-  ///
-  /// @endrst
+  /// @returns @Result{the fragment in a new MultiBuf}
+  /// * @RESOURCE_EXHAUSTED: Attempting to reserve space for the new MultiBuf
+  ///   failed.
   Result<Instance> PopFrontFragment();
 
+  // clang-format off
   /// Removes if a range of bytes from this object.
   ///
   /// The range given by `pos` and `size` MUST fall within this MultiBuf.
@@ -880,15 +851,10 @@ class BasicMultiBuf {
   /// @param    pos     Location from which to discard memory from the MultiBuf.
   /// @param    size    Amount of memory to discard.
   ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK:                  The memory range has been discarded.
-  ///
-  ///    RESOURCE_EXHAUSTED:  Failed to allocate memory for the new MultiBuf's
-  ///                         metadata.
-  /// @endrst
+  /// @returns @Result{an iterator pointing to the memory after the discarded range}
+  /// * @RESOURCE_EXHAUSTED:  Failed to allocate memory for the new %MultiBuf's
+  ///   metadata.
+  // clang-format on
   Result<const_iterator> Discard(const_iterator pos, size_t size) {
     return generic().Discard(pos, size);
   }
@@ -1057,6 +1023,18 @@ class BasicMultiBuf {
     static_assert(is_layerable(),
                   "`NumLayers` may only be called on layerable MultiBufs");
     return generic().NumLayers();
+  }
+
+  /// Attempts to reserves memory to hold metadata for the given number of
+  /// layers and chunks.
+  ///
+  /// For example, assume you know your MultiBuf needs to hold layers for
+  /// Ethernet, and IP. If separate chunks for the headers, the payload,
+  /// and the Ethernet footer, then you can preallocate the structure by calling
+  /// `TryReserveLayers(2, 3).
+  [[nodiscard]] bool TryReserveLayers(size_t num_layers,
+                                      size_t num_chunks = 1) {
+    return generic().TryReserveLayers(num_layers, num_chunks);
   }
 
   /// Adds a layer.
@@ -1233,12 +1211,12 @@ class GenericMultiBuf final
       : deque_(allocator) {}
 
   template <typename MultiBufType>
-  MultiBufType& as() {
+  constexpr MultiBufType& as() {
     return *this;
   }
 
   template <typename MultiBufType>
-  const MultiBufType& as() const {
+  constexpr const MultiBufType& as() const {
     return *this;
   }
 
@@ -1287,7 +1265,7 @@ class GenericMultiBuf final
   bool IsCompatible(const ControlBlock* other) const;
 
   /// @copydoc BasicMultiBuf<>::TryReserveChunks
-  [[nodiscard]] bool TryReserveChunks(size_type num_chunks);
+  [[nodiscard]] bool TryReserveChunks(size_t num_chunks);
 
   /// @copydoc BasicMultiBuf<>::TryReserveForInsert
   /// @{
@@ -1361,6 +1339,9 @@ class GenericMultiBuf final
 
   /// @copydoc BasicMultiBuf<>::NumLayers
   constexpr size_type NumLayers() const { return depth_ - 1; }
+
+  /// @copydoc BasicMultiBuf<>::TryReserveLayers
+  [[nodiscard]] bool TryReserveLayers(size_t num_layers, size_t num_chunks = 1);
 
   /// @copydoc BasicMultiBuf<>::AddLayer
   [[nodiscard]] bool AddLayer(size_t offset, size_t length = dynamic_extent);
@@ -1666,22 +1647,32 @@ class Instance {
     return *this;
   }
 
-  MultiBufType* operator->() { return &base_.as<MultiBufType>(); }
-  const MultiBufType* operator->() const { return &base_.as<MultiBufType>(); }
+  constexpr MultiBufType* operator->() { return &base_.as<MultiBufType>(); }
+  constexpr const MultiBufType* operator->() const {
+    return &base_.as<MultiBufType>();
+  }
 
-  MultiBufType& operator*() & { return base_.as<MultiBufType>(); }
-  const MultiBufType& operator*() const& { return base_.as<MultiBufType>(); }
+  constexpr MultiBufType& operator*() & { return base_.as<MultiBufType>(); }
+  constexpr const MultiBufType& operator*() const& {
+    return base_.as<MultiBufType>();
+  }
 
-  MultiBufType&& operator*() && { return std::move(base_.as<MultiBufType>()); }
-  const MultiBufType&& operator*() const&& {
+  constexpr MultiBufType&& operator*() && {
+    return std::move(base_.as<MultiBufType>());
+  }
+  constexpr const MultiBufType&& operator*() const&& {
     return std::move(base_.as<MultiBufType>());
   }
 
-  operator MultiBufType&() & { return base_.as<MultiBufType>(); }
-  operator const MultiBufType&() const& { return base_.as<MultiBufType>(); }
+  constexpr operator MultiBufType&() & { return base_.as<MultiBufType>(); }
+  constexpr operator const MultiBufType&() const& {
+    return base_.as<MultiBufType>();
+  }
 
-  operator MultiBufType&&() && { return std::move(base_.as<MultiBufType>()); }
-  operator const MultiBufType&&() const&& {
+  constexpr operator MultiBufType&&() && {
+    return std::move(base_.as<MultiBufType>());
+  }
+  constexpr operator const MultiBufType&&() const&& {
     return std::move(base_.as<MultiBufType>());
   }
 
@@ -1690,6 +1681,8 @@ class Instance {
 };
 
 }  // namespace multibuf_impl
+
+/// @}
 
 /// @}
 

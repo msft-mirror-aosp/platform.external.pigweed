@@ -89,8 +89,10 @@ class WorkflowsManager:
         working_dir: Path,
         base_out_dir: Path,
         project_root: Path | None = None,
+        extra_build_args: dict[str, list[str]] | None = None,
     ):
-        self._workflow_suite = workflow_suite
+        self._workflow_suite = workflows_pb2.WorkflowSuite()
+        self._workflow_suite.CopyFrom(workflow_suite)
         self._build_drivers = build_drivers
         self._fragments_by_name: dict[str, Fragment] = {}
         self._all_fragments = collect_all_fragments(self._workflow_suite)
@@ -112,7 +114,17 @@ class WorkflowsManager:
             raise ValueError('Cannot locate project root')
         self._base_out_dir = base_out_dir
         self._working_dir = working_dir
+        self._extra_build_args = extra_build_args or {}
         Validator(workflow_suite, build_drivers).validate()
+        self._init_workflow_defaults()
+
+    def _init_workflow_defaults(self):
+        for build in self._workflow_suite.builds:
+            if not build.rerun_shortcut:
+                build.rerun_shortcut = f'build {build.name}'
+        for tool in self._workflow_suite.tools:
+            if not tool.rerun_shortcut:
+                tool.rerun_shortcut = f'check {tool.name}'
 
     def _get_build_config(
         self,
@@ -214,7 +226,7 @@ class WorkflowsManager:
         for build_type, request in build_driver_requests.items():
             driver = self._build_drivers[build_type]
             response = driver.generate_jobs(
-                self._prepare_driver_request(request)
+                self._prepare_driver_request(request, sanitize=True)
             )
             for job_request, job_response in zip(request.jobs, response.jobs):
                 build_dir = self._base_out_dir / config.name
@@ -255,7 +267,7 @@ class WorkflowsManager:
                 build_recipes.append(
                     BuildRecipe(
                         build_dir=build_dir,
-                        title=config.name,
+                        title=fragment.rerun_shortcut,
                         steps=steps,
                     )
                 )
@@ -264,6 +276,7 @@ class WorkflowsManager:
     def _prepare_driver_request(
         self,
         request: build_driver_pb2.BuildDriverRequest,
+        sanitize: bool,
     ) -> build_driver_pb2.BuildDriverRequest:
         """Prepares a build_driver_pb2.BuildDriverRequest.
 
@@ -278,26 +291,34 @@ class WorkflowsManager:
             A properly prepared copy of the incoming
                 build_driver_pb2.BuildDriverRequest.
         """
-        sanitized = build_driver_pb2.BuildDriverRequest()
+        final_request = build_driver_pb2.BuildDriverRequest()
         for job in request.jobs:
-            sanitized_job = build_driver_pb2.JobRequest()
-            sanitized_job.CopyFrom(job)
+            prepared_job = build_driver_pb2.JobRequest()
+            prepared_job.CopyFrom(job)
             fragment = (
-                sanitized_job.build
-                if sanitized_job.WhichOneof('type') == 'build'
-                else sanitized_job.tool
+                prepared_job.build
+                if prepared_job.WhichOneof('type') == 'build'
+                else prepared_job.tool
             )
             if fragment.WhichOneof('config') == 'use_config':
                 config = self._get_build_config(fragment)
                 fragment.ClearField('use_config')
                 fragment.build_config.CopyFrom(config)
 
-            fragment.ClearField('name')
-            fragment.ClearField('description')
-            fragment.build_config.ClearField('name')
-            fragment.build_config.ClearField('description')
-            sanitized.jobs.append(sanitized_job)
-        return sanitized
+            build_type = fragment.build_config.build_type
+            if build_type in self._extra_build_args:
+                fragment.build_config.args.extend(
+                    self._extra_build_args[build_type]
+                )
+
+            if sanitize:
+                fragment.ClearField('name')
+                fragment.ClearField('description')
+                fragment.ClearField('rerun_shortcut')
+                fragment.build_config.ClearField('name')
+                fragment.build_config.ClearField('description')
+            final_request.jobs.append(prepared_job)
+        return final_request
 
     def program_tool(
         self,
@@ -410,3 +431,53 @@ class WorkflowsManager:
             )
 
         raise TypeError(f'{name} is not a buildable unit')
+
+    def get_unified_driver_request(
+        self, buildable_names: Sequence[str], sanitize: bool = False
+    ) -> build_driver_pb2.BuildDriverRequest:
+        """Creates a BuildDriverRequest for a series of configuration fragments.
+
+        This produces a single, unified view of all the builds and tool
+        invocations that will be launched for the given requested builds/tools.
+
+        Args:
+            buildable_names: A list of build, tool, or group names.
+            sanitize: If true, strips fields that build drivers will not see.
+
+        Returns:
+            A BuildDriverRequest message containing jobs for all the resolved
+            fragments.
+        """
+        resolved_fragments: list[Fragment] = []
+        for name in buildable_names:
+            fragment = self._fragments_by_name.get(name)
+            if isinstance(fragment, workflows_pb2.TaskGroup):
+                for build_name in fragment.builds:
+                    resolved_fragments.append(
+                        self._fragments_by_name[build_name]
+                    )
+                for analyzer_name in fragment.analyzers:
+                    resolved_fragments.append(
+                        self._fragments_by_name[analyzer_name]
+                    )
+            elif isinstance(
+                fragment, (workflows_pb2.Build, workflows_pb2.Tool)
+            ):
+                resolved_fragments.append(fragment)
+            else:
+                raise AssertionError(
+                    f'No build, tool, or group named `{name}` found in this '
+                    'workflow configuration'
+                )
+
+        request = build_driver_pb2.BuildDriverRequest()
+        for fragment in resolved_fragments:
+            if isinstance(fragment, workflows_pb2.Build):
+                request.jobs.append(build_driver_pb2.JobRequest(build=fragment))
+            elif isinstance(fragment, workflows_pb2.Tool):
+                request.jobs.append(build_driver_pb2.JobRequest(tool=fragment))
+            else:
+                raise TypeError(
+                    f'Internal error: `{fragment.name}` is an unexpected type'
+                )
+        return self._prepare_driver_request(request, sanitize=sanitize)

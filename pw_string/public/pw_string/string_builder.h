@@ -35,6 +35,8 @@
 
 namespace pw {
 
+/// @submodule{pw_string,builder}
+
 /// @class StringBuilder
 ///
 /// `pw::StringBuilder` instances are always null-terminated (unless they are
@@ -134,19 +136,11 @@ class StringBuilder {
   /// status remains non-OK until it is cleared with
   /// `pw::StringBuilder::clear()` or `pw::StringBuilder::clear_status()`.
   ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK: No errors have occurred.
-  ///
-  ///    RESOURCE_EXHAUSTED: Output to the ``StringBuilder`` was truncated.
-  ///
-  ///    INVALID_ARGUMENT: ``printf``-style formatting failed.
-  ///
-  ///    OUT_OF_RANGE: An operation outside the buffer was attempted.
-  ///
-  /// @endrst
+  /// @returns
+  /// * @OK: No errors have occurred.
+  /// * @RESOURCE_EXHAUSTED: Output to the `StringBuilder` was truncated.
+  /// * @INVALID_ARGUMENT: `printf`-style formatting failed.
+  /// * @OUT_OF_RANGE: An operation outside the buffer was attempted.
   Status status() const { return static_cast<Status::Code>(status_); }
 
   /// Returns `status()` and `size()` as a `StatusWithSize`.
@@ -399,6 +393,8 @@ class StringBuffer : public StringBuilder {
   char buffer_[kSizeBytes];
 };
 
+/// @}
+
 namespace string_internal {
 
 // Internal code for determining the default size of StringBuffers created with
@@ -448,6 +444,8 @@ auto InitializeStringBuffer(const Args&... args) {
 
 }  // namespace string_internal
 
+/// @submodule{pw_string,builder}
+
 // Makes a StringBuffer with a string version of a series of values. This is
 // useful for creating and initializing a StringBuffer or for conveniently
 // getting a null-terminated string. For example:
@@ -476,5 +474,7 @@ auto MakeString(Args&&... args) {
                         : kBufferSize;
   return string_internal::InitializeStringBuffer<kSize>(args...);
 }
+
+/// @}
 
 }  // namespace pw

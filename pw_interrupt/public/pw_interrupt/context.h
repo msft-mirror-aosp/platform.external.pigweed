@@ -16,10 +16,12 @@
 /// Interrupt context interface
 namespace pw::interrupt {
 
+/// @module{pw_interrupt}
+
 /// @brief Checks if the currently executing code is within an interrupt service
 /// routine handling an interrupt request (IRQ) or non-maskable interrupt (NMI).
 ///
-/// @returns `true` if the the currently executing code is in an interrupt
+/// @returns `true` if the currently executing code is in an interrupt
 /// context. `false` if not.
 bool InInterruptContext();
 

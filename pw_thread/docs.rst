@@ -51,9 +51,7 @@ Examples in C++
 
    using std::literals::chrono_literals::ms;
 
-   void FunctionInvokedByThread() {
-     pw::this_thread::sleep_for(42ms);
-   }
+   void FunctionInvokedByThread() { pw::this_thread::sleep_for(42ms); }
 
    void AnotherFunctionInvokedByThread() {
      pw::this_thread::sleep_until(pw::chrono::SystemClock::now() + 42ms);
@@ -93,9 +91,7 @@ Example in C++
 
    #include "pw_thread/yield.h"
 
-   void FunctionInvokedByThread() {
-     pw::this_thread::yield();
-   }
+   void FunctionInvokedByThread() { pw::this_thread::yield(); }
 
 C
 =
@@ -159,27 +155,7 @@ multiple functions to execute concurrently.
 
 API reference
 =============
-.. doxygentypedef:: pw::Thread
-
-.. doxygenclass:: pw::thread::Thread
-   :members:
-
-.. doxygenclass:: pw::thread::Options
-   :members:
-
-.. doxygentypedef:: pw::ThreadPriority
-
-.. doxygenclass:: pw::thread::internal::Priority
-   :members:
-
-.. doxygenclass:: pw::ThreadAttrs
-   :members:
-
-.. doxygenclass:: pw::ThreadContext
-   :members:
-
-.. doxygenclass:: pw::ThreadStack
-   :members:
+Moved: :doxylink:`pw_thread`
 
 Differences from ``std::thread``
 ================================
@@ -419,9 +395,7 @@ and note that synchronization may be needed).
    };
    Foo foo;
 
-   Thread thread(options, [&foo] {
-     foo.DoBar();
-   });
+   Thread thread(options, [&foo] { foo.DoBar(); });
 
 The legacy ``ThreadCore`` class may also be used to start a thread. This class
 was introduced before ``pw::Function`` was available and should not be used in
@@ -460,11 +434,8 @@ new code.
 -------------------------
 Unit testing with threads
 -------------------------
-.. doxygenclass:: pw::thread::test::TestThreadContext
-   :members:
-
-As an example, the STL :cpp:class:`TestThreadContext` backend implementation in
-``test_thread_context_native.h`` is shown below.
+As an example, the STL :doxylink:`pw::thread::test::TestThreadContext` backend
+implementation in ``test_thread_context_native.h`` is shown below.
 
 .. literalinclude:: ../pw_thread_stl/public/pw_thread_stl/test_thread_context_native.h
    :language: cpp
@@ -589,14 +560,6 @@ currently running thread and produce symbolized thread dumps.
 .. Warning::
   Snapshot integration is a work-in-progress and may see significant API
   changes.
-
---------------
-Thread Checker
---------------
-.. doxygenclass:: pw::ThreadChecker
-   :members:
-.. doxygenclass:: pw::LazyInitThreadChecker
-   :members:
 
 .. toctree::
    :hidden:

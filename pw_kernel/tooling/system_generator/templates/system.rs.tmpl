@@ -12,40 +12,86 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-{% if apps.len() > 0 %}
+{% if apps | length > 0 %}
 pub fn start() {
     use core::ptr::NonNull;
 
     use {{ arch_crate_name }} as arch;
-    use kernel::NullObjectTable;
+    use kernel::__private::foreign_box::{ForeignRc, static_foreign_box};
     use kernel::macro_exports::foreign_box::ForeignBox;
+    use kernel::object::{KernelObject, ObjectTable};
+    use kernel::scheduler::timer::TimerCallback;
 
     type MemoryConfig = arch::MemoryConfig;
+    type K = arch::Arch;
+    let kernel = K {};
 
-{%- for (app_name, app) in apps %}
-    let start_fn_{{app_name}} = {{app.start_fn_address | to_hex}}_usize;
+// Channel handlers are declared first so that initiators can reference them.
+// Unlike other object templates, handlers return a tuple of two ForeignRcs.
+// The first is a `dyn KernelObject<K>` which is suitable for adding to a
+// processes object table.  The second is a `ChannelHandlerObject<K>` which
+// is suitable for creating a `ChannelInitiator` object
+{%- for app_name in apps %}
+    {%- set app = apps[app_name] %}
+    {%- for object_name in app.process.ordered_object_names %}
+    {%- set object = app.process.objects[object_name] %}
+        {% if object.type == "channel_handler" -%}
+            let (
+                object_{{app_name}}_{{object_name | lower}},
+                object_{{app_name}}_{{object_name | lower}}_handler
+            ) = {% include "object_channel_handler" %};
+        {%- endif -%}
+        // Other objects declared later.
+    {%- endfor -%}
+{%- endfor -%}
 
-    static KERNEL_OBJECT_TABLE_{{app_name | uppercase}}: NullObjectTable = NullObjectTable::new();
-    const MEMORY_CONFIG_{{app_name | uppercase }}: MemoryConfig = MemoryConfig::const_new(&[
+{%- for app_name in apps %}
+    {%- set app = apps[app_name] %}
+    let start_fn_{{app_name}} = {{app.start_fn_address | hex}}_usize;
+
+    const MEMORY_CONFIG_{{app_name | upper }}: MemoryConfig = MemoryConfig::const_new(&[
         kernel::MemoryRegion::new(
             kernel::MemoryRegionType::ReadOnlyExecutable,
-            {{app.flash_start_address | to_hex}},
-            {{app.flash_end_address | to_hex}},
+            {{app.flash_start_address | hex}},
+            {{(app.flash_start_address + app.flash_size_bytes) | hex}},
         ),
         kernel::MemoryRegion::new(
             kernel::MemoryRegionType::ReadWriteData,
-            {{app.ram_start_address | to_hex}},
-            {{app.ram_end_address | to_hex}},
+            {{app.ram_start_address | hex}},
+            {{(app.ram_start_address + app.ram_size_bytes) | hex}},
         ),
     ]);
 
+    {%- for object_name in app.process.ordered_object_names %}
+    {%- set object = app.process.objects[object_name] %}
+
+        let object_{{app_name}}_{{object_name | lower}} =
+        {% if object.type == "channel_handler" -%}
+                // Reference to handler object already declared above.
+                object_{{app_name}}_{{object_name | lower}}
+        {% elif object.type == "channel_initiator" -%}
+            {% include "object_channel_initiator" %}
+        {% elif object.type == "ticker" -%}
+            {% include "object_ticker" %}
+        {%- endif -%}
+        ;
+    {%- endfor %}
+
+    let object_table_{{app_name}}: ForeignBox<dyn ObjectTable<K>> = unsafe {
+        static_foreign_box!(
+            [ForeignRc<<K as kernel::Arch>::AtomicUsize, dyn KernelObject<K>>; {{app.process.objects | length}}],
+            [
+            {%- for object_name in app.process.ordered_object_names %}
+                object_{{app_name}}_{{object_name | lower}},
+            {%- endfor -%}
+            ]
+        )
+    };
+
     let process_{{app_name}} = unsafe { kernel::init_non_priv_process!(
         "{{app.process.name}}",
-        MEMORY_CONFIG_{{app_name | uppercase}},
-        // SAFETY: Object table is static lifetime and will always outlive the
-        // foreign box.  Additionally it is never outside of this scope aside from.
-        // within the box.
-        unsafe { ForeignBox::new(NonNull::from_ref(&KERNEL_OBJECT_TABLE_{{app_name | uppercase}})) },
+        MEMORY_CONFIG_{{app_name | upper}},
+        object_table_{{app_name}}
     )};
 
 {%- for thread in app.process.threads -%}
@@ -55,12 +101,12 @@ pub fn start() {
             "{{thread.name}}",
             process_{{app_name}},
             start_fn_{{app_name}},
-            {{app.initial_sp | to_hex}},
+            {{app.initial_sp | hex}},
             {{thread.stack_size_bytes}}
         )
     };
     kernel::start_thread(arch::Arch, thread_{{app_name}}_{{thread_index}});
 {%- endfor -%}
-{%- endfor -%}
+{%- endfor %}
 }
 {% endif %}

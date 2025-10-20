@@ -21,8 +21,9 @@
 #include "pw_log/tokenized_args.h"
 #include "pw_sync/lock_annotations.h"
 
-/// Cooperative async tasks for embedded
 namespace pw::async2 {
+
+/// @submodule{pw_async2,core}
 
 /// Generates a token for use as a task name.
 #define PW_ASYNC_TASK_NAME(name) PW_LOG_TOKEN_EXPR("pw_async2", name)
@@ -65,8 +66,6 @@ class Task : public IntrusiveList<Task>::Item {
   friend class NativeDispatcherBase;
 
  public:
-  Task() = default;
-
   /// Creates a task with the specified name. To generate a name token, use the
   /// ``PW_ASYNC_TASK_NAME`` macro, e.g.
   ///
@@ -75,7 +74,7 @@ class Task : public IntrusiveList<Task>::Item {
   ///   MyTask() : pw::async2::Task(PW_ASYNC_TASK_NAME("MyTask")) {}
   /// };
   /// ```
-  constexpr Task(log::Token name) : name_(name) {}
+  constexpr Task(log::Token name = kDefaultName) : name_(name) {}
 
   Task(const Task&) = delete;
   Task(Task&&) = delete;
@@ -143,6 +142,9 @@ class Task : public IntrusiveList<Task>::Item {
   void Destroy() { DoDestroy(); }
 
  private:
+  static constexpr log::Token kDefaultName =
+      PW_LOG_TOKEN("pw_async2", "(anonymous)");
+
   /// Attempts to deregister this task.
   ///
   /// If the task is currently running, this will return false and the task
@@ -218,7 +220,9 @@ class Task : public IntrusiveList<Task>::Item {
 
   // Optional user-facing name for the task. If set, it will be included in
   // debug logs.
-  log::Token name_ = log::kDefaultToken;
+  log::Token name_;
 };
+
+/// @}
 
 }  // namespace pw::async2

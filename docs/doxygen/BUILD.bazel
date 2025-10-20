@@ -81,6 +81,7 @@ filegroup(
         "//pw_preprocessor:doxygen",
         "//pw_protobuf:doxygen",
         "//pw_random:doxygen",
+        "//pw_result:doxygen",
         "//pw_rpc:doxygen",
         "//pw_span:doxygen",
         "//pw_spi:doxygen",
@@ -131,14 +132,14 @@ filegroup(
 copy_directory(
     name = "_html_2",
     src = ":_html_1",
-    out = "doxygen",
+    out = "cc",
     tags = ["manual"],
 )
 
 sphinx_docs_library(
     name = "html",
     srcs = [":_html_2"],
-    prefix = "doxygen/",
+    prefix = "doxygen/api/",
     tags = ["manual"],
     target_compatible_with = incompatible_with_mcu(),
     visibility = ["//visibility:public"],

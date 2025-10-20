@@ -17,6 +17,7 @@ Finds all existing compile command fragments and merges them into
 platform-specific compilation databases.
 """
 
+import argparse
 import collections
 import json
 import os
@@ -24,13 +25,112 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import List, NamedTuple
 
 # A unique suffix to identify fragments created by our aspect.
 _FRAGMENT_SUFFIX = ".pw_aspect.compile_commands.json"
 
+# Supported architectures for clangd, based on the provided list.
+# TODO(b/442862617): A better way than this than hardcoded list.
+SUPPORTED_MARCH_ARCHITECTURES = {
+    "nocona",
+    "core2",
+    "penryn",
+    "bonnell",
+    "atom",
+    "silvermont",
+    "slm",
+    "goldmont",
+    "goldmont-plus",
+    "tremont",
+    "nehalem",
+    "corei7",
+    "westmere",
+    "sandybridge",
+    "corei7-avx",
+    "ivybridge",
+    "core-avx-i",
+    "haswell",
+    "core-avx2",
+    "broadwell",
+    "skylake",
+    "skylake-avx512",
+    "skx",
+    "cascadelake",
+    "cooperlake",
+    "cannonlake",
+    "icelake-client",
+    "rocketlake",
+    "icelake-server",
+    "tigerlake",
+    "sapphirerapids",
+    "alderlake",
+    "raptorlake",
+    "meteorlake",
+    "arrowlake",
+    "arrowlake-s",
+    "lunarlake",
+    "gracemont",
+    "pantherlake",
+    "sierraforest",
+    "grandridge",
+    "graniterapids",
+    "graniterapids-d",
+    "emeraldrapids",
+    "clearwaterforest",
+    "diamondrapids",
+    "knl",
+    "knm",
+    "k8",
+    "athlon64",
+    "athlon-fx",
+    "opteron",
+    "k8-sse3",
+    "athlon64-sse3",
+    "opteron-sse3",
+    "amdfam10",
+    "barcelona",
+    "btver1",
+    "btver2",
+    "bdver1",
+    "bdver2",
+    "bdver3",
+    "bdver4",
+    "znver1",
+    "znver2",
+    "znver3",
+    "znver4",
+    "znver5",
+    "x86-64",
+    "x86-64-v2",
+    "x86-64-v3",
+    "x86-64-v4",
+}
+
+
+class CompileCommand(NamedTuple):
+    file: str
+    directory: str
+    arguments: List[str]
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--out-dir',
+        '-o',
+        type=Path,
+        help=(
+            'Where to write merged compile commands. By default, outputs are '
+            'written to $BUILD_WORKSPACE_DIRECTORY/.compile_commands'
+        ),
+    )
+    return parser.parse_args()
+
 
 def main() -> int:
     """Script entry point."""
+    args = _parse_args()
     workspace_root = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
     if not workspace_root:
         print(
@@ -48,14 +148,14 @@ def main() -> int:
             encoding="utf-8",
             cwd=workspace_root,
         ).strip()
-        output_path = Path(output_path_str)
+        bazel_output_path = Path(output_path_str)
     except subprocess.CalledProcessError as e:
         print(f"Error getting bazel output_path: {e}", file=sys.stderr)
         return 1
 
-    if not output_path.exists():
+    if not bazel_output_path.exists():
         print(
-            f"Bazel output directory '{output_path}' not found.",
+            f"Bazel output directory '{bazel_output_path}' not found.",
             file=sys.stderr,
         )
         print(
@@ -65,7 +165,7 @@ def main() -> int:
         return 1
 
     # Search for fragments with our unique suffix.
-    all_fragments = list(output_path.rglob(f"*{_FRAGMENT_SUFFIX}"))
+    all_fragments = list(bazel_output_path.rglob(f"*{_FRAGMENT_SUFFIX}"))
 
     if not all_fragments:
         print(
@@ -83,7 +183,9 @@ def main() -> int:
 
     print(f"Found fragments for {len(fragments_by_platform)} platform(s).")
 
-    output_dir = Path(workspace_root) / ".compile_commands"
+    output_dir = args.out_dir
+    if not output_dir:
+        output_dir = Path(workspace_root) / ".compile_commands"
     if output_dir.exists():
         shutil.rmtree(output_dir)
     output_dir.mkdir()
@@ -105,8 +207,19 @@ def main() -> int:
         platform_dir.mkdir()
         merged_json_path = platform_dir / "compile_commands.json"
 
+        processed_commands = []
+        for command_dict in all_commands:
+            cmd = CompileCommand(
+                file=command_dict["file"],
+                directory=command_dict["directory"],
+                arguments=command_dict["arguments"],
+            )
+            resolved_cmd = resolve_bazel_out_paths(cmd, bazel_output_path)
+            filtered_cmd = filter_unsupported_march_args(resolved_cmd)
+            processed_commands.append(filtered_cmd._asdict())
+
         with open(merged_json_path, "w") as f:
-            json.dump(all_commands, f, indent=2)
+            json.dump(processed_commands, f, indent=2)
 
         with open(merged_json_path, "r") as f:
             content = f.read()
@@ -116,6 +229,45 @@ def main() -> int:
 
     print(f"Successfully created compilation databases in: {output_dir}")
     return 0
+
+
+def resolve_bazel_out_paths(
+    command: CompileCommand, bazel_output_path: Path
+) -> CompileCommand:
+    """Replaces bazel-out paths with their real paths."""
+    marker = 'bazel-out/'
+    new_args = []
+
+    for arg in command.arguments:
+        if marker in arg:
+            parts = arg.split(marker, 1)
+            prefix = parts[0]
+            suffix = parts[1]
+            new_path = bazel_output_path.joinpath(*suffix.split('/'))
+            new_arg = prefix + str(new_path)
+            new_args.append(new_arg)
+        else:
+            new_args.append(arg)
+
+    new_file = command.file
+    if command.file.startswith(marker):
+        path_suffix = command.file[len(marker) :]
+        new_file = str(bazel_output_path.joinpath(*path_suffix.split('/')))
+
+    return command._replace(arguments=new_args, file=new_file)
+
+
+def filter_unsupported_march_args(command: CompileCommand) -> CompileCommand:
+    """Removes -march arguments if the arch is not supported by clangd."""
+    new_args = []
+    for arg in command.arguments:
+        if arg.startswith("-march="):
+            arch = arg.split("=", 1)[1]
+            if arch in SUPPORTED_MARCH_ARCHITECTURES:
+                new_args.append(arg)
+        else:
+            new_args.append(arg)
+    return command._replace(arguments=new_args)
 
 
 if __name__ == "__main__":

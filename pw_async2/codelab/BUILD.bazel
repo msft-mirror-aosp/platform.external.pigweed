@@ -13,6 +13,7 @@
 # the License.
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_build:pw_cc_binary.bzl", "pw_cc_binary")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
@@ -37,15 +38,52 @@ pw_cc_binary(
         "vending_machine.h",
     ],
     deps = [
+        ":hardware",
+        ":sensors",
         "//pw_async2:dispatcher",
+        "//pw_async2:pendable",
+        "//pw_async2:poll",
+        "//pw_async2:select",
+        "//pw_async2:system_time_provider",
+        "//pw_async2:time_provider",
+        "//pw_chrono:system_clock",
+        "//pw_containers:inline_async_deque",
         "//pw_log",
+        "//pw_sync:interrupt_spin_lock",
+        "//pw_sync:lock_annotations",
     ],
 )
 
 cc_library(
-    name = "coin_slot",
-    srcs = ["coin_slot.cc"],
-    hdrs = ["coin_slot.h"],
+    name = "hardware",
+    srcs = ["hardware.cc"],
+    hdrs = ["hardware.h"],
+    implementation_deps = [
+        "//pw_assert:check",
+        "//pw_async2:dispatcher",
+        "//pw_log",
+        "//pw_status",
+        "//pw_stream:socket_stream",
+        "//pw_stream:sys_io_stream",
+        "//pw_string:string",
+        "//pw_string:util",
+    ],
+    local_defines = ["PW_ASYNC2_CODELAB_WEBUI=0"],
+    strip_include_prefix = ".",
+    target_compatible_with = incompatible_with_mcu(),
+)
+
+cc_library(
+    name = "sensors",
+    srcs = [
+        "coin_slot.cc",
+        "item_drop_sensor.cc",
+    ],
+    hdrs = [
+        "coin_slot.h",
+        "item_drop_sensor.h",
+    ],
+    strip_include_prefix = ".",
     deps = [
         "//pw_async2:dispatcher",
         "//pw_sync:interrupt_spin_lock",
@@ -57,7 +95,7 @@ pw_cc_test(
     name = "coin_slot_test",
     srcs = ["coin_slot_test.cc"],
     deps = [
-        ":coin_slot",
+        ":sensors",
         "//pw_async2:dispatcher",
         "//pw_async2:pend_func_task",
         "//pw_async2:poll",

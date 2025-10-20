@@ -188,7 +188,6 @@ pw::Status I3cMcuxpressoInitiator::SetStaticAddressList(
 pw::Status I3cMcuxpressoInitiator::DoSetDasa(pw::i2c::Address static_addr) {
   std::array<std::byte, 1> dasa_buffer = {
       static_cast<std::byte>(static_addr.GetAddress() << 1)};
-  PW_LOG_INFO("  sending SETDASA 0x%02x", static_addr.GetAddress());
   PW_TRY(DoTransferCcc(
       I3cCccAction::kWrite, I3cCcc::kSetdasaDirect, static_addr, dasa_buffer));
 
@@ -230,9 +229,6 @@ pw::Status I3cMcuxpressoInitiator::AddAssignedI3cAddress(
                 i3c_assigned_addresses_.end(),
                 address) == i3c_assigned_addresses_.end()) {
     i3c_assigned_addresses_.push_back(address);
-  } else {
-    PW_LOG_WARN("Address was already in i3c_assigned_addresses_: 0x%02x",
-                address.GetAddress());
   }
   return pw::OkStatus();
 }
@@ -242,9 +238,6 @@ void I3cMcuxpressoInitiator::ForgetAssignedAddress(pw::i2c::Address address) {
       i3c_assigned_addresses_.begin(), i3c_assigned_addresses_.end(), address);
   if (to_erase != i3c_assigned_addresses_.end()) {
     i3c_assigned_addresses_.erase(to_erase);
-  } else {
-    PW_LOG_WARN("Request to forget unknown address: 0x%02x",
-                address.GetAddress());
   }
 }
 
@@ -371,6 +364,14 @@ pw::Status I3cMcuxpressoInitiator::DoTransferCcc(I3cCccAction rnw,
                                                  I3cCcc ccc_id,
                                                  pw::i2c::Address address,
                                                  pw::ByteSpan buffer) {
+  // CCC commands are all small packets that should not incur any delay.
+  // Hitting a timeout is unexpected. We set a large delay here so that
+  // any timeout is noticeable.
+  constexpr auto kCccTimeout = std::chrono::seconds(1);
+
+  chrono::SystemClock::time_point kCccDeadline =
+      chrono::SystemClock::TimePointAfterAtLeast(kCccTimeout);
+
   status_t status;
   i3c_master_transfer_t transfer;
 
@@ -397,10 +398,8 @@ pw::Status I3cMcuxpressoInitiator::DoTransferCcc(I3cCccAction rnw,
     transfer.data = nullptr;
     transfer.dataSize = 0;
     transfer.busType = kI3C_TypeI3CSdr;
-    status = I3C_MasterTransferBlocking(base_, &transfer);
-    if (status != kStatus_Success) {
-      return HalStatusToPwStatus(status);
-    }
+
+    PW_TRY(InitiateNonBlockingTransferUntil(kCccDeadline, &transfer));
 
     transfer.flags = kI3C_TransferRepeatedStartFlag;
     transfer.slaveAddress = uint32_t{address.GetSevenBit()};
@@ -410,7 +409,8 @@ pw::Status I3cMcuxpressoInitiator::DoTransferCcc(I3cCccAction rnw,
     transfer.data = buffer.data();
     transfer.dataSize = buffer.size();
     transfer.busType = kI3C_TypeI3CSdr;
-    status |= I3C_MasterTransferBlocking(base_, &transfer);
+
+    return InitiateNonBlockingTransferUntil(kCccDeadline, &transfer);
   }
   return HalStatusToPwStatus(status);
 }

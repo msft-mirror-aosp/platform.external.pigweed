@@ -31,8 +31,7 @@ endianness, and defining byte quantities with clear, standard units.
 
    // Combine data with specified endianness.
    constexpr auto kPacketPrefix = pw::bytes::Concat(
-       kHeader,
-       pw::bytes::CopyInOrder(pw::endian::big, kPayloadId));
+       kHeader, pw::bytes::CopyInOrder(pw::endian::big, kPayloadId));
 
    // kPacketPrefix now contains:
    // {'P', 'W', 'R', 'D', 0x12, 0x34, 0x56, 0x78}
@@ -64,8 +63,8 @@ Check out :ref:`module-pw_bytes-guide` for more code samples.
       Integrate pw_bytes into your project and learn common use cases
 
    .. grid-item-card:: :octicon:`code-square` API reference
-      :link: module-pw_bytes-api
-      :link-type: ref
+      :link: ../api/cc/group__pw__bytes.html
+      :link-type: url
       :class-item: sales-pitch-cta-secondary
 
       Detailed description of the pw_bytes interface
@@ -109,7 +108,6 @@ Rust API
    :hidden:
    :maxdepth: 1
 
-   api
    code_size
    design
    guide

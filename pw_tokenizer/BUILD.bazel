@@ -1,4 +1,4 @@
-# Copyright 2023 The Pigweed Authors
+# Copyright 2025 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -374,19 +374,10 @@ cc_library(
     ],
 )
 
-# Create a shared library for the tokenizer JNI wrapper. The include paths for
-# the JNI headers must be available in the system or provided with the
-# pw_java_native_interface_include_dirs variable.
-filegroup(
-    name = "detokenizer_jni",
-    srcs = [
-        "java/dev/pigweed/tokenizer/detokenizer.cc",
-    ],
-)
-
 filegroup(
     name = "doxygen",
     srcs = [
+        "public/pw_tokenizer/base64.h",
         "public/pw_tokenizer/config.h",
         "public/pw_tokenizer/detokenize.h",
         "public/pw_tokenizer/encode_args.h",

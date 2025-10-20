@@ -274,7 +274,7 @@ this check can be done at compile time.
 .. code-block:: cpp
 
    // This line fails to compile with a static_assert if the database is invalid.
-   constexpr TokenDatabase kDefaultDatabase =  TokenDatabase::Create<kData>();
+   constexpr TokenDatabase kDefaultDatabase = TokenDatabase::Create<kData>();
 
    Detokenizer OpenDatabase(std::string_view path) {
      std::vector<uint8_t> data = ReadWholeFile(path);
@@ -491,8 +491,8 @@ This implementation supports:
 
      - If the precision is specified as ``0``, it is interpreted to mean ``1``.
 
-     - ``e`` formatting is used if the the exponent would be less than ``-4`` or
-       is greater than or equal to the precision.
+     - ``e`` formatting is used if the exponent would be less than ``-4`` or is
+       greater than or equal to the precision.
 
      - Trailing zeros are removed unless the ``#`` flag is set.
 
@@ -508,8 +508,8 @@ This implementation supports:
 
      - If the precision is specified as ``0``, it is interpreted to mean ``1``.
 
-     - ``E`` formatting is used if the the exponent would be less than ``-4`` or
-       is greater than or equal to the precision.
+     - ``E`` formatting is used if the exponent would be less than ``-4`` or is
+       greater than or equal to the precision.
 
      - Trailing zeros are removed unless the ``#`` flag is set.
 

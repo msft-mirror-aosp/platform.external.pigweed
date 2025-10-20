@@ -1,5 +1,48 @@
 # Change Log
 
+## [1.9.9] - 2025-09-05
+
+### Bug Fixes
+
+ - Increase max direct dependencies for provider collector.
+    + This increases the maximum number of direct targets the aspect will
+      evaluate to handle these kinds of large targets.
+
+## [1.9.8] - 2025-09-04
+
+### Features
+
+ - New experimental compile commands generator based on Bazel's
+   [aspects](https://bazel.build/extending/aspects) feature.
+ - The default commands generator is now based on the previous experimental
+   python based generator.
+
+### Bug Fixes
+
+ - Clicking the targets in the status bar now opens the target selection.
+ - Don't parse compile commands for headers.
+
+## [1.9.7] - 2025-08-19
+
+### Bug Fixes
+
+ - Show a message of the correct targets for currently untracked files.
+ - Automatically fix and correct clangd settings if they are incorrect or
+   missing. This ensures code intelligence is always functional for the user.
+ - Remove zxh404.vscode-proto3 as dependency.
+
+## [1.9.6] - 2025-08-01
+
+### Bug Fixes
+
+ - Fix incremental build failures on compile commands generator test.
+   ([b/429233254](https://issuetracker.google.com/b/429233254))
+ - Improve the development guide for running, building, and debugging the
+   VSCode extension.
+ - Fix the clang path when using the fish shell.
+ - Run the compile commands target with the same flags as real bazel
+   invocation. This ensures the artifacts in bazel-bin/ are not cleared.
+
 ## [1.9.5] - 2025-07-07
 
 ### Features

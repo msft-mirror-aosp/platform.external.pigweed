@@ -69,6 +69,7 @@ pw_add_library(pw_containers.flat_map INTERFACE
 pw_add_library(pw_containers._common INTERFACE
   HEADERS
     public/pw_containers/internal/traits.h
+    public/pw_containers/internal/wrap.h
   PUBLIC_INCLUDES
     public
 )
@@ -516,6 +517,7 @@ pw_add_test(pw_containers.inline_var_len_entry_queue_test
     pw_assert
     pw_bytes
     pw_containers.inline_var_len_entry_queue
+    pw_span
 )
 
 pw_add_test(pw_containers.vector_test

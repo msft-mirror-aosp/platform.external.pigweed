@@ -12,7 +12,6 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-build:k_common -c opt
 build:k_common --build_tag_filters=-do_not_build,-kernel_doc_test
 test:k_common --test_tag_filters=-integration,-do_not_build,-do_not_run_test,-kernel_doc_test
 test:k_common --@pigweed//pw_kernel:enable_tests=true
@@ -71,7 +70,7 @@ build:k_lint --@rules_rust//rust/settings:clippy_flags="\
 
 # Enforce rustfmt formatting
 build:k_lint --aspects=@rules_rust//rust:defs.bzl%rustfmt_aspect
-build:k_lint --@rules_rust//rust/settings:rustfmt.toml=//pw_kernel:rustfmt.toml
+build:k_lint --@rules_rust//rust/settings:rustfmt.toml=//:rustfmt.toml
 build:k_lint --output_groups=+rustfmt_checks
 
 # Host target configuration
@@ -108,6 +107,7 @@ common:k_qemu_virt_riscv32 --platforms=//pw_kernel/target/qemu_virt_riscv32:qemu
 run:k_qemu_virt_riscv32 --run_under="//pw_kernel/tooling:qemu \
   --cpu rv32 \
   --machine virt \
+  --semihosting \
   --image "
 test:k_qemu_virt_riscv32 --run_under="//pw_kernel/tooling:qemu \
   --cpu rv32 \

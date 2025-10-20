@@ -13,6 +13,7 @@
 # the License.
 
 load("//pw_build:pw_cc_binary.bzl", "pw_cc_binary")
+load("//pw_unit_test:pw_golden_test.bzl", "pw_golden_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -36,6 +37,25 @@ pw_cc_binary(
     ],
     deps = [
         "//pw_async2:dispatcher",
+        "//pw_async2:pendable",
+        "//pw_async2:poll",
+        "//pw_async2:select",
+        "//pw_async2:system_time_provider",
+        "//pw_async2:time_provider",
+        "//pw_async2/codelab:hardware",
+        "//pw_async2/codelab:sensors",
+        "//pw_chrono:system_clock",
+        "//pw_containers:inline_async_deque",
         "//pw_log",
+        "//pw_sync:interrupt_spin_lock",
+        "//pw_sync:lock_annotations",
     ],
+)
+
+pw_golden_test(
+    name = "test",
+    executable = ":step1",
+    expected = ":step1.expected",
+    # TODO: https://pwbug.dev/441375913 - Make this deterministic and re-enable.
+    tags = ["manual"],
 )

@@ -14,6 +14,7 @@
 #![no_std]
 #![cfg_attr(test, no_main)]
 
+use core::cmp::Ordering;
 use core::marker::PhantomData;
 use core::ptr::NonNull;
 
@@ -23,7 +24,7 @@ pub mod unsafe_list;
 
 pub use unsafe_list::{Adapter, Link, UnsafeList};
 
-pub struct ForeignList<T, A: Adapter> {
+pub struct ForeignList<T, A: Adapter<T>> {
     list: UnsafeList<T, A>,
 }
 
@@ -33,16 +34,16 @@ pub struct ForeignList<T, A: Adapter> {
 // mutation of the node's `Link` pointers are done while the node is in the
 // list. There is no API to get a mutable reference to a node while it is in the
 // list nor directly manipulate its membership or position in the list.
-unsafe impl<T: Send, A: Adapter> Send for ForeignList<T, A> {}
-unsafe impl<T: Sync, A: Adapter> Sync for ForeignList<T, A> {}
+unsafe impl<T: Send, A: Adapter<T>> Send for ForeignList<T, A> {}
+unsafe impl<T: Sync, A: Adapter<T>> Sync for ForeignList<T, A> {}
 
-impl<T, A: Adapter> Default for ForeignList<T, A> {
+impl<T, A: Adapter<T>> Default for ForeignList<T, A> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T, A: Adapter> ForeignList<T, A> {
+impl<T, A: Adapter<T>> ForeignList<T, A> {
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -57,20 +58,16 @@ impl<T, A: Adapter> ForeignList<T, A> {
 
     pub fn push_front(&mut self, element: ForeignBox<T>) {
         let element = element.consume();
-        unsafe { self.list.push_front_unchecked(element.as_ptr()) }
+        unsafe { self.list.push_front_unchecked(element) }
     }
 
     pub fn push_back(&mut self, element: ForeignBox<T>) {
         let element = element.consume();
-        unsafe { self.list.push_back_unchecked(element.as_ptr()) }
+        unsafe { self.list.push_back_unchecked(element) }
     }
 
     pub fn pop_head(&mut self) -> Option<ForeignBox<T>> {
-        unsafe {
-            self.list
-                .pop_head()
-                .map(|element| ForeignBox::new(NonNull::new_unchecked(element)))
-        }
+        unsafe { self.list.pop_head().map(|element| ForeignBox::new(element)) }
     }
 
     pub fn for_each<E, F: FnMut(&T) -> Result<(), E>>(&self, callback: F) -> Result<(), E> {
@@ -88,21 +85,33 @@ impl<T, A: Adapter> ForeignList<T, A> {
     }
 }
 
-impl<T: Ord, A: Adapter> ForeignList<T, A> {
-    pub fn sorted_insert(&mut self, element: ForeignBox<T>) {
+impl<T, A: Adapter<T>> ForeignList<T, A> {
+    pub fn sorted_insert_by_key<F: FnMut(&T) -> K, K: Ord>(
+        &mut self,
+        element: ForeignBox<T>,
+        mut f: F,
+    ) {
+        self.sorted_insert_by(element, move |a, b| f(a).cmp(&f(b)))
+    }
+
+    pub fn sorted_insert_by<F: FnMut(&T, &T) -> Ordering>(
+        &mut self,
+        element: ForeignBox<T>,
+        compare: F,
+    ) {
         let element = element.consume();
-        unsafe { self.list.sorted_insert_unchecked(element.as_ptr()) }
+        unsafe { self.list.sorted_insert_by_unchecked(element, compare) }
     }
 }
 
 /// A key used to remove an element from a [`RandomAccessForeignList`]
-pub struct RandomAccessKey<T, A: Adapter> {
+pub struct RandomAccessKey<T, A: Adapter<T>> {
     // `new()` ensure that this is a valid, well-aligned, pointer to a `T`.
     ptr: NonNull<T>,
     _phantom: PhantomData<A>,
 }
 
-impl<T, A: Adapter> RandomAccessKey<T, A> {
+impl<T, A: Adapter<T>> RandomAccessKey<T, A> {
     /// # Safety
     /// Caller ensures the element is a valid pointer to an instance of T.
     unsafe fn new(element: &mut ForeignBox<T>) -> Self {
@@ -156,11 +165,11 @@ impl<T, A: Adapter> RandomAccessKey<T, A> {
 /// assert_eq!(removed_element.consume(), NonNull::new(&raw mut element2).unwrap());
 /// ```
 ///
-pub struct RandomAccessForeignList<T, A: Adapter> {
+pub struct RandomAccessForeignList<T, A: Adapter<T>> {
     list: ForeignList<T, A>,
 }
 
-impl<T, A: Adapter> RandomAccessForeignList<T, A> {
+impl<T, A: Adapter<T>> RandomAccessForeignList<T, A> {
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -219,23 +228,9 @@ mod tests {
         link: Link,
     }
 
-    impl PartialEq for TestMember {
-        fn eq(&self, other: &Self) -> bool {
-            self.value == other.value
-        }
-    }
-
-    impl Eq for TestMember {}
-
-    impl PartialOrd for TestMember {
-        fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-            Some(self.value.cmp(&other.value))
-        }
-    }
-
-    impl Ord for TestMember {
-        fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-            self.value.cmp(&other.value)
+    impl TestMember {
+        fn get_key(&self) -> u32 {
+            self.value
         }
     }
 
@@ -474,9 +469,18 @@ mod tests {
         };
 
         let mut list = ForeignList::<TestMember, TestAdapter>::new();
-        list.sorted_insert(unsafe { ForeignBox::new_from_ptr(&raw mut element3) });
-        list.sorted_insert(unsafe { ForeignBox::new_from_ptr(&raw mut element2) });
-        list.sorted_insert(unsafe { ForeignBox::new_from_ptr(&raw mut element1) });
+        list.sorted_insert_by_key(
+            unsafe { ForeignBox::new_from_ptr(&raw mut element3) },
+            TestMember::get_key,
+        );
+        list.sorted_insert_by_key(
+            unsafe { ForeignBox::new_from_ptr(&raw mut element2) },
+            TestMember::get_key,
+        );
+        list.sorted_insert_by_key(
+            unsafe { ForeignBox::new_from_ptr(&raw mut element1) },
+            TestMember::get_key,
+        );
         validate_list(&list, &[1, 2, 3])?;
         drain_list(&mut list);
         Ok(())
@@ -498,9 +502,18 @@ mod tests {
         };
 
         let mut list = ForeignList::<TestMember, TestAdapter>::new();
-        list.sorted_insert(unsafe { ForeignBox::new_from_ptr(&raw mut element1) });
-        list.sorted_insert(unsafe { ForeignBox::new_from_ptr(&raw mut element2) });
-        list.sorted_insert(unsafe { ForeignBox::new_from_ptr(&raw mut element3) });
+        list.sorted_insert_by_key(
+            unsafe { ForeignBox::new_from_ptr(&raw mut element1) },
+            TestMember::get_key,
+        );
+        list.sorted_insert_by_key(
+            unsafe { ForeignBox::new_from_ptr(&raw mut element2) },
+            TestMember::get_key,
+        );
+        list.sorted_insert_by_key(
+            unsafe { ForeignBox::new_from_ptr(&raw mut element3) },
+            TestMember::get_key,
+        );
         validate_list(&list, &[1, 2, 3])?;
         drain_list(&mut list);
         Ok(())
@@ -526,10 +539,22 @@ mod tests {
         };
 
         let mut list = ForeignList::<TestMember, TestAdapter>::new();
-        list.sorted_insert(unsafe { ForeignBox::new_from_ptr(&raw mut element2) });
-        list.sorted_insert(unsafe { ForeignBox::new_from_ptr(&raw mut element1) });
-        list.sorted_insert(unsafe { ForeignBox::new_from_ptr(&raw mut element3) });
-        list.sorted_insert(unsafe { ForeignBox::new_from_ptr(&raw mut element2_2) });
+        list.sorted_insert_by_key(
+            unsafe { ForeignBox::new_from_ptr(&raw mut element2) },
+            TestMember::get_key,
+        );
+        list.sorted_insert_by_key(
+            unsafe { ForeignBox::new_from_ptr(&raw mut element1) },
+            TestMember::get_key,
+        );
+        list.sorted_insert_by_key(
+            unsafe { ForeignBox::new_from_ptr(&raw mut element3) },
+            TestMember::get_key,
+        );
+        list.sorted_insert_by_key(
+            unsafe { ForeignBox::new_from_ptr(&raw mut element2_2) },
+            TestMember::get_key,
+        );
         validate_list(&list, &[1, 2, 2, 3])?;
         drain_list(&mut list);
         Ok(())

@@ -36,6 +36,7 @@ class L2capSignalingChannel : public BasicL2capChannel {
                                  AclTransportType transport,
                                  uint16_t fixed_cid);
 
+  L2capSignalingChannel(L2capSignalingChannel&&);
   L2capSignalingChannel& operator=(L2capSignalingChannel&& other);
 
   // Process the payload of a CFrame. Implementations should return true if the
@@ -84,13 +85,11 @@ class L2capSignalingChannel : public BasicL2capChannel {
   // Send L2CAP_FLOW_CONTROL_CREDIT_IND to indicate local endpoint `cid` is
   // capable of receiving a number of additional K-frames (`credits`).
   //
-  // @returns @rst
-  //
-  // .. pw-status-codes::
-  // UNAVAILABLE:   Send could not be queued due to lack of memory in the
-  // client-provided rx_multibuf_allocator (transient error).
-  //  FAILED_PRECONDITION: If channel is not `State::kRunning`.
-  // @endrst
+  // @returns
+  // * @OK: `L2CAP_FLOW_CONTROL_CREDIT_IND` was sent.
+  // * @UNAVAILABLE: Send could not be queued due to lack of memory in the
+  //   client-provided `rx_multibuf_allocator` (transient error).
+  // * @FAILED_PRECONDITION: Channel is not `State::kRunning`.
   Status SendFlowControlCreditInd(
       uint16_t cid,
       uint16_t credits,
@@ -109,7 +108,7 @@ class L2capSignalingChannel : public BasicL2capChannel {
 
   // Get the next Identifier value that should be written to a signaling
   // command and increment the Identifier.
-  uint8_t GetNextIdentifierAndIncrement();
+  uint8_t GetNextIdentifierAndIncrement() PW_LOCKS_EXCLUDED(mutex_);
 
   L2capChannelManager& l2cap_channel_manager_;
 
@@ -152,7 +151,7 @@ class L2capSignalingChannel : public BasicL2capChannel {
   // a command, the Identifier may be recycled if all other Identifiers have
   // subsequently been used."
   // TODO: https://pwbug.dev/382553099 - Synchronize this value with AP host.
-  uint8_t next_identifier_ = 1;
+  uint8_t next_identifier_ PW_GUARDED_BY(mutex_) = 1;
 };
 
 }  // namespace pw::bluetooth::proxy

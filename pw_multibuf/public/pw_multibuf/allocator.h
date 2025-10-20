@@ -22,8 +22,9 @@
 #include "pw_result/result.h"
 #include "pw_sync/mutex.h"
 
-/// Buffer library optimized for zero-copy messaging
 namespace pw::multibuf {
+
+/// @submodule{pw_multibuf,v1}
 
 enum class PW_MULTIBUF_DEPRECATED ContiguityRequirement {
   kAllowDiscontiguous,
@@ -167,23 +168,16 @@ class PW_MULTIBUF_DEPRECATED MultiBufAllocator {
     mem_delegates_.remove(delegate);
   }
 
-  /// Attempts to allocate a ``MultiBuf`` of at least ``min_size`` bytes and at
-  /// most ``desired_size`` bytes.
+  /// Attempts to allocate a `MultiBuf` of at least `min_size` bytes and at most
+  /// `desired_size` bytes.
   ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK: Returns the buffer if the allocation was successful.
-  ///
-  ///    RESOURCE_EXHAUSTED: Insufficient memory is available currently.
-  ///
-  ///    OUT_OF_RANGE: This amount of memory will not become possible to
-  ///    allocate in the future, or this allocator is unable to signal via
-  ///    ``MoreMemoryAvailable`` (this will result in asynchronous allocations
-  ///    failing immediately on OOM).
-  ///
-  /// @endrst
+  /// @returns @Result{the buffer}
+  /// * @OK: Returns the buffer if the allocation was successful.
+  /// * @RESOURCE_EXHAUSTED: Insufficient memory is available currently.
+  /// * @OUT_OF_RANGE: This amount of memory will not become possible to
+  ///   allocate in the future, or this allocator is unable to signal via
+  ///   `MoreMemoryAvailable` (this will result in asynchronous allocations
+  ///   failing immediately on OOM).
   virtual pw::Result<MultiBuf> DoAllocate(
       size_t min_size,
       size_t desired_size,
@@ -196,5 +190,7 @@ class PW_MULTIBUF_DEPRECATED MultiBufAllocator {
   IntrusiveForwardList<MemoryAvailableDelegate> mem_delegates_
       PW_GUARDED_BY(lock_);
 };
+
+/// @}
 
 }  // namespace pw::multibuf

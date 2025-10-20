@@ -37,6 +37,8 @@ class RunHeapFuncTask : public Task {
 
 }  // namespace internal
 
+/// @submodule{pw_async2,alloc}
+
 /// Heap-allocates space for ``func`` and enqueues it to run on ``dispatcher``.
 ///
 /// ``func`` must be a no-argument callable that returns ``void``.
@@ -47,5 +49,7 @@ void EnqueueHeapFunc(Dispatcher& dispatcher, Func&& func) {
   return dispatcher.Post(
       internal::RunHeapFuncTask<Func>::New(std::forward<Func>(func)));
 }
+
+/// @}
 
 }  // namespace pw::async2

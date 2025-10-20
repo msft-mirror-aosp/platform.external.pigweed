@@ -14,25 +14,59 @@
 #![no_main]
 #![no_std]
 
-use pw_tokenizer::tokenize_core_fmt_to_buffer;
-use syscall_user::*;
+use pw_status::{Error, Result};
 use userspace::entry;
+use userspace::syscall::{self, Signals};
+use userspace::time::Instant;
+
+const TICKER_HANDLE: u32 = 0;
+const IPC_HANDLE: u32 = 1;
+
+fn test_uppercase_ipcs() -> Result<()> {
+    for c in 'a'..='z' {
+        let mut send_buf = [0u8; size_of::<char>()];
+        let mut recv_buf = [0u8; size_of::<char>()];
+
+        // Encode the character into `send_buf` and send it over to the handler.
+        c.encode_utf8(&mut send_buf);
+        let len: usize =
+            syscall::channel_transact(IPC_HANDLE, &send_buf, &mut recv_buf, Instant::MAX)?;
+
+        // The handler side always sends 4 bytes to make up a full Rust `char`
+        if len != size_of::<char>() {
+            return Err(Error::OutOfRange);
+        }
+
+        // Log the response character
+        let Ok(upper_c) = u32::from_ne_bytes(recv_buf).try_into() else {
+            return Err(Error::InvalidArgument);
+        };
+        syscall::debug_putc(upper_c)?;
+
+        // Verify that the remote side made the character uppercase.
+        if upper_c != c.to_ascii_uppercase() {
+            return Err(Error::Unknown);
+        }
+    }
+
+    Ok(())
+}
 
 #[entry]
 fn entry() -> ! {
-    // populate the tokenized database
-    let mut buffer = [0u8; 1024];
-    let _ = tokenize_core_fmt_to_buffer!(&mut buffer, "App one tokenized string {}", 1 as i32);
-    loop {
-        for c in 'a'..'z' {
-            const OBJECT_HANDLE: u32 = 0x0;
-            const SIGNAL_MASK: u32 = 0x1;
-            const DEADLINE: u64 = u64::MAX;
+    let ret = test_uppercase_ipcs();
 
-            let _ = SysCall::object_wait(OBJECT_HANDLE, SIGNAL_MASK, DEADLINE);
-            let _ = SysCall::debug_putc(u32::from(c));
-        }
+    // Log that an error occurred so that the app that caused the shutdown is logged.
+    if ret.is_err() {
+        let _ = syscall::debug_putc('!');
     }
+
+    // Wait for as ticker event before shutting down the system.
+    let _ = syscall::object_wait(TICKER_HANDLE, Signals::READABLE, Instant::MAX);
+
+    // Since this is written as a test, shut down with the return status from `main()`.
+    let _ = syscall::debug_shutdown(ret);
+    loop {}
 }
 
 #[panic_handler]

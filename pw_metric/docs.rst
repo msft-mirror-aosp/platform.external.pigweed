@@ -283,9 +283,7 @@ tokenizing the metric and group names.
 
          PW_METRIC(foo, "foo", 15.5f);
 
-         void MyFunc() {
-           foo.Increment();
-         }
+         void MyFunc() { foo.Increment(); }
 
    2. At local function or member function scope:
 
@@ -302,9 +300,7 @@ tokenizing the metric and group names.
       .. code-block:: cpp
 
          struct MyStructy {
-           void DoSomething() {
-             somethings.Increment();
-           }
+           void DoSomething() { somethings.Increment(); }
            // Every instance of MyStructy will have a separate somethings counter.
            PW_METRIC(somethings, "somethings", 0u);
          }
@@ -354,8 +350,8 @@ tokenizing the metric and group names.
 
    .. code-block:: cpp
 
-      #include "pw_metric/metric.h"
       #include "pw_metric/global.h"
+      #include "pw_metric/metric.h"
 
       // No need to coordinate collection of foo and bar; they're autoregistered.
       PW_METRIC_GLOBAL(foo, "foo", 0.2f);
@@ -384,8 +380,8 @@ tokenizing the metric and group names.
 
    .. code-block:: cpp
 
-      #include "pw_metric/metric.h"
       #include "pw_metric/global.h"
+      #include "pw_metric/metric.h"
 
       // No need to coordinate collection of this group; it's globally registered.
       PW_METRIC_GROUP_GLOBAL(legacy_system, "legacy_system");
@@ -428,7 +424,7 @@ hypothetical global ``Uart`` object:
    class Uart {
     public:
      Uart(span<std::byte> rx_buffer, span<std::byte> tx_buffer)
-       : rx_buffer_(rx_buffer), tx_buffer_(tx_buffer) {}
+         : rx_buffer_(rx_buffer), tx_buffer_(tx_buffer) {}
 
      // Send/receive here...
 
@@ -453,13 +449,12 @@ might consider the following approach:
      Uart(span<std::byte> rx_buffer,
           span<std::byte> tx_buffer,
           Group& parent_metrics)
-       : rx_buffer_(rx_buffer),
-         tx_buffer_(tx_buffer) {
-         // PROBLEM! parent_metrics may not be constructed if it's a reference
-         // to a static global.
-         parent_metrics.Add(tx_bytes_);
-         parent_metrics.Add(rx_bytes_);
-      }
+         : rx_buffer_(rx_buffer), tx_buffer_(tx_buffer) {
+       // PROBLEM! parent_metrics may not be constructed if it's a reference
+       // to a static global.
+       parent_metrics.Add(tx_bytes_);
+       parent_metrics.Add(rx_bytes_);
+     }
 
      // Send/receive here which increment tx/rx_bytes.
 
@@ -476,9 +471,7 @@ might consider the following approach:
 
    std::array<std::byte, 512> uart_rx_buffer;
    std::array<std::byte, 512> uart_tx_buffer;
-   Uart uart1(uart_rx_buffer,
-              uart_tx_buffer,
-              uart1_metrics);
+   Uart uart1(uart_rx_buffer, uart_tx_buffer, uart1_metrics);
 
 However, this **is incorrect**, since the ``parent_metrics`` (pointing to
 ``uart1_metrics`` in this case) may not be constructed at the point of
@@ -499,16 +492,14 @@ correctly, even when the objects are allocated globally:
    class Uart {
     public:
      // Note that metrics is not passed in here at all.
-     Uart(span<std::byte> rx_buffer,
-          span<std::byte> tx_buffer)
-       : rx_buffer_(rx_buffer),
-         tx_buffer_(tx_buffer) {}
+     Uart(span<std::byte> rx_buffer, span<std::byte> tx_buffer)
+         : rx_buffer_(rx_buffer), tx_buffer_(tx_buffer) {}
 
-      // Precondition: parent_metrics is already constructed.
-      void Init(Group& parent_metrics) {
-         parent_metrics.Add(tx_bytes_);
-         parent_metrics.Add(rx_bytes_);
-      }
+     // Precondition: parent_metrics is already constructed.
+     void Init(Group& parent_metrics) {
+       parent_metrics.Add(tx_bytes_);
+       parent_metrics.Add(rx_bytes_);
+     }
 
      // Send/receive here which increment tx/rx_bytes.
 
@@ -525,13 +516,11 @@ correctly, even when the objects are allocated globally:
 
    std::array<std::byte, 512> uart_rx_buffer;
    std::array<std::byte, 512> uart_tx_buffer;
-   Uart uart1(uart_rx_buffer,
-              uart_tx_buffer);
+   Uart uart1(uart_rx_buffer, uart_tx_buffer);
 
    void main() {
      // uart1_metrics is guaranteed to be initialized by this point, so it is
-     safe to pass it to Init().
-     uart1.Init(uart1_metrics);
+     safe to pass it to Init().uart1.Init(uart1_metrics);
    }
 
 .. attention::
@@ -550,8 +539,8 @@ work fine:
 
    class PowerSubsystem {
     public:
-      Group& metrics() { return metrics_; }
-      const Group& metrics() const { return metrics_; }
+     Group& metrics() { return metrics_; }
+     const Group& metrics() const { return metrics_; }
 
     private:
      PW_METRIC_GROUP(metrics_, "power");  // Note metrics_ declared first.
@@ -568,8 +557,8 @@ but the following one will not since the group is constructed after the metrics
 
    class PowerSubsystem {
     public:
-      Group& metrics() { return metrics_; }
-      const Group& metrics() const { return metrics_; }
+     Group& metrics() { return metrics_; }
+     const Group& metrics() const { return metrics_; }
 
     private:
      PW_METRIC(metrics_, foo, "foo", 0.2f);
@@ -649,6 +638,20 @@ user-supplied set of on-device metrics via RPC. This facility is intended to
 function from the early stages of device bringup through production in the
 field.
 
+The ``MetricService`` provides two distinct methods for retrieving metrics, each
+suited for different transport characteristics.
+
+``MetricService.Get`` (Server Streaming)
+This method uses a server-streaming RPC to send all registered metrics to the
+caller in batches. This approach is straightforward and works well on reliable,
+synchronous transports where the client is always ready to receive data.
+
+``MetricService.Walk`` (Unary)
+The unary `Walk` RPC offers a client-driven, paginated mechanism. This is
+suitable for asynchronous transports where the server cannot guarantee the
+transport is ready, and for large metric collections that may not fit within a
+transport's MTU. This is the recommended method for metric retrieval.
+
 The metrics are fetched by calling the ``MetricService.Get`` RPC method, which
 streams all registered metrics to the caller in batches (server streaming RPC).
 Batching the returned metrics avoids requiring a large buffer or large RPC MTU.
@@ -684,22 +687,21 @@ For example:
 
 .. code-block:: cpp
 
-   #include "pw_rpc/server.h"
-   #include "pw_metric/metric.h"
    #include "pw_metric/global.h"
+   #include "pw_metric/metric.h"
    #include "pw_metric/metric_service_nanopb.h"
+   #include "pw_rpc/server.h"
 
    // Note: You must customize the RPC server setup; see pw_rpc.
    Channel channels[] = {
-    Channel::Create<1>(&uart_output),
+       Channel::Create<1>(&uart_output),
    };
    Server server(channels);
 
    // Metric service instance, pointing to the global metric objects.
    // This could also point to custom per-product or application objects.
-   pw::metric::MetricService metric_service(
-       pw::metric::global_metrics,
-       pw::metric::global_groups);
+   pw::metric::MetricService metric_service(pw::metric::global_metrics,
+                                            pw::metric::global_groups);
 
    void RegisterServices() {
      server.RegisterService(metric_service);
@@ -749,9 +751,17 @@ metrics. This does not include the RPC service.
 -------------
 Metric Parser
 -------------
-The metric_parser Python Module requests the system metrics via RPC, then parses the
-response while detokenizing the group and metrics names, and returns the metrics
-in a dictionary organized by group and value.
+The ``metric_parser`` Python module provides functions to fetch and parse
+metrics from a device via RPC. It detokenizes the metric and group names and
+returns the data as a nested dictionary.
+
+The module provides two functions corresponding to the server's RPC methods:
+
+* ``get_all_metrics()``: Uses the paginated ``MetricService.Walk`` RPC and
+  handles all client-side pagination logic automatically. This is recommended
+  for asynchronous transports and for fetching large metric sets.
+
+* ``parse_metrics()``: Uses the server-streaming ``MetricService.Get`` RPC.
 
 ----------------
 Design tradeoffs
@@ -833,10 +843,12 @@ Roadmap & Status
   metrics are enabled or disabled at compile time. This may rely on of C++20's
   support for zero-sized members to fully remove the cost.
 
-- **Async RPC** - The current RPC service exports the metrics by streaming
-  them to the client in batches. However, the current solution streams all the
-  metrics to completion; this may block the RPC thread. In the future we will
-  have an async solution where the user is in control of flow priority.
+- **(Completed) Paginated RPC for Asynchronous Transports** - The original
+  server-streaming ``Get`` RPC is unsuitable for asynchronous transports where
+  the server cannot guarantee transport readiness. This has been addressed by
+  the introduction of the ``MetricService.Walk`` unary RPC, which uses a
+  paginated, client-driven approach for reliable metric collection. This
+  pattern also supports large metric sets that exceed the transport MTU.
 
 - **Timer integration** - We would like to add a stopwatch type mechanism to
   time multiple in-flight events.
@@ -853,6 +865,7 @@ Roadmap & Status
   proto structure, where instead of a name or token field, a tag field is
   provided. This could result in elegant export to an easily machine parsable
   and compact representation on the host. We may investigate this in the
+
   future.
 
 - **Safer data structures** - At a cost of 4B per metric and 4B per group, it

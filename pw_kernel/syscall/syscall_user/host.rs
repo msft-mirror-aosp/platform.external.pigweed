@@ -23,17 +23,39 @@ impl SysCallInterface for SysCall {
     }
 
     #[inline(always)]
-    fn debug_noop() -> Result<()> {
+    fn channel_transact(
+        _handle: u32,
+        _send_data: *const u8,
+        _send_len: usize,
+        _recv_data: *mut u8,
+        _recv_len: usize,
+        _deadline: u64,
+    ) -> Result<u32> {
         Err(pw_status::Error::Unimplemented)
     }
 
     #[inline(always)]
-    fn debug_add(_a: u32, _b: u32) -> Result<u32> {
+    fn channel_read(
+        _handle: u32,
+        _offset: usize,
+        _buffer: *mut u8,
+        _buffer_len: usize,
+    ) -> Result<u32> {
+        Err(pw_status::Error::Unimplemented)
+    }
+
+    #[inline(always)]
+    fn channel_respond(_handle: u32, _buffer: *const u8, _buffer_len: usize) -> Result<()> {
         Err(pw_status::Error::Unimplemented)
     }
 
     #[inline(always)]
     fn debug_putc(_a: u32) -> Result<u32> {
+        Err(pw_status::Error::Unimplemented)
+    }
+
+    #[inline(always)]
+    fn debug_shutdown(_a: u32) -> Result<()> {
         Err(pw_status::Error::Unimplemented)
     }
 }

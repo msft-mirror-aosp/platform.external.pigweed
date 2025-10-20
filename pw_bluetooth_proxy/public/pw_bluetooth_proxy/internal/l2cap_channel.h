@@ -43,6 +43,8 @@ class L2capChannelManager;
 class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
  public:
   enum class State {
+    // Channel is new or has been moved from.
+    kUndefined,
     kRunning,
     // Channel is stopped, but the L2CAP connection has not been closed.
     kStopped,
@@ -50,8 +52,7 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
     // HCI_Disconnection_Complete event, L2CAP_DISCONNECTION_RSP packet, or
     // HCI_Reset Command packet; or `ProxyHost` dtor has been called.
     kClosed,
-    // Channel has been moved from and is no longer a valid object.
-    kUndefined,
+
   };
 
   // L2capChannels can be held by a Holder that the channel will provide tx
@@ -156,41 +157,30 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
   /// @param[in] payload The client payload to be sent. Payload will be
   /// destroyed once its data has been used.
   ///
-  /// @returns A StatusWithMultiBuf with one of the statuses below. If status is
-  /// not OK then payload is also returned in StatusWithMultiBuf.
-  ///
-  /// .. pw-status-codes::
-  ///  OK:                  If packet was successfully queued for send.
-  ///  UNAVAILABLE:         If channel could not acquire the resources to queue
-  ///                       the send at this time (transient error). If an
-  ///                       `event_fn` has been provided it will be called with
-  ///                       `L2capChannelEvent::kWriteAvailable` when there is
-  ///                       queue space available again.
-  ///  INVALID_ARGUMENT:    If payload is too large or if payload is not a
-  ///                       contiguous MultiBuf.
-  ///  FAILED_PRECONDITION: If channel is not `State::kRunning`.
-  ///  UNIMPLEMENTED:       If channel does not support Write(MultiBuf).
-  /// @endrst
+  /// @returns A `StatusWithMultiBuf` with one of the statuses below. If status
+  /// is not @OK then payload is also returned in `StatusWithMultiBuf`.
+  /// * @OK: Packet was successfully queued for send.
+  /// * @UNAVAILABLE: Channel could not acquire the resources to queue
+  ///   the send at this time (transient error). If an `event_fn` has been
+  ///   provided it will be called with `L2capChannelEvent::kWriteAvailable`
+  ///   when there is queue space available again.
+  /// * @INVALID_ARGUMENT: Payload is too large or payload is not a contiguous
+  ///   `MultiBuf`.
+  /// * @FAILED_PRECONDITION: Channel is not `State::kRunning`.
+  /// * @UNIMPLEMENTED: Channel does not support `Write(MultiBuf)`.
   // TODO: https://pwbug.dev/388082771 - Plan to eventually move this to
   // ClientChannel.
   StatusWithMultiBuf Write(pw::multibuf::MultiBuf&& payload);
 
   /// Determine if channel is ready to accept one or more Write payloads.
   ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///    OK: Channel is ready to accept one or more Write payloads.
-  ///
-  ///    UNAVAILABLE: Channel does not yet have the resources to queue a Write
-  ///    at this time (transient error). If an `event_fn` has been provided it
-  ///    will be called with `L2capChannelEvent::kWriteAvailable` when there is
-  ///    queue space available again.
-  ///
-  ///    FAILED_PRECONDITION: If channel is not `State::kRunning`.
-  ///
-  /// @endrst
-  ///
+  /// @returns
+  /// * @OK: Channel is ready to accept one or more `Write` payloads.
+  /// * @UNAVAILABLE: Channel does not yet have the resources to queue a Write
+  ///   at this time (transient error). If an `event_fn` has been provided it
+  ///   will be called with `L2capChannelEvent::kWriteAvailable` when there is
+  ///   queue space available again.
+  /// * @FAILED_PRECONDITION: Channel is not `State::kRunning`.
   Status IsWriteAvailable();
 
   // Dequeue a packet if one is available to send.
@@ -249,6 +239,10 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
       uint16_t remote_cid,
       OptionalPayloadReceiveCallback&& payload_from_controller_fn,
       OptionalPayloadReceiveCallback&& payload_from_host_fn);
+
+  // Complete initialization and registration of the channel. Must be called
+  // after ctor for channel to be active.
+  void Init();
 
   // Returns whether or not ACL connection handle & L2CAP channel identifiers
   // are valid parameters for a packet.
@@ -322,7 +316,7 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
   // taking L2capChannelManager channel_mutex_ lock.
   StatusWithMultiBuf WriteLocked(pw::multibuf::MultiBuf&& payload);
 
-  // Pop front buffer. Queue must be nonempty.
+  // Pop front buffer (which will release its memory). Queue must be nonempty.
   void PopFrontPayload() PW_EXCLUSIVE_LOCKS_REQUIRED(tx_mutex_);
 
   // Returns span over front buffer. Queue must be nonempty.
@@ -513,7 +507,7 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
 
   L2capChannelManager& l2cap_channel_manager_;
 
-  State state_;
+  State state_ = State::kUndefined;
 
   // ACL connection handle.
   uint16_t connection_handle_;

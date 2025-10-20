@@ -27,6 +27,7 @@ from pw_presubmit import (
     bazel_checks,
     format_code,
     git_repo,
+    inclusive_language,
     owners_checks,
     source_in_build,
     todo_check,
@@ -75,7 +76,11 @@ SOURCE_FILES_FILTER_GN_EXCLUDE = FileFilter(
         r'\bcodelab',
         r'\bdocs',
         r'\bexamples',
+        r'\bjava/',
+        r'\bjava_jni/',
         r'\bpw_bluetooth_sapphire/fuchsia',
+        r'\bpw_ide/bazel',
+        r'\bpw_kernel',
         # keep-sorted: end
     ),
 )
@@ -441,6 +446,7 @@ INCLUDE_CHECK_EXCEPTIONS = (
     "//pw_fuzzer/examples/fuzztest:metrics_lib",
     "//pw_fuzzer:fuzztest",
     "//pw_fuzzer:fuzztest_stub",
+    "//pw_ide/bazel/compile_commands/test:basic_library_direct_includes",
     "//pw_interrupt_cortex_m:context",
     "//pw_log_fuchsia:pw_log_fuchsia",
     "//pw_log_null:headers",
@@ -558,3 +564,14 @@ def source_in_bazel_build() -> Check:
     return source_in_build.bazel(SOURCE_FILES_FILTER).with_file_filter(
         SOURCE_FILES_FILTER_BAZEL_EXCLUDE
     )
+
+
+inclusive_language_check = inclusive_language.presubmit_check.with_filter(
+    exclude=(
+        r'\bMODULE.bazel.lock$',
+        r'\bgo.sum$',
+        r'\bpackage-lock.json$',
+        r'\bpnpm-lock.yaml$',
+        r'\byarn.lock$',
+    )
+)
