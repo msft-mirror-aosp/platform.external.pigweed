@@ -17,6 +17,7 @@ A self-contained Bazel aspect to generate compile_commands.json fragments.
 NOTE: This functionality may eventually belong in rules_cc. See b/437157251
 """
 
+load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load("@rules_cc//cc:action_names.bzl", "ACTION_NAMES")
 load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cc_toolchain", "use_cc_toolchain")
@@ -27,6 +28,21 @@ CompileCommandsFragmentInfo = provider(
     "Provides the depset of compile command fragment files.",
     fields = {
         "fragments": "A depset of compile_commands.json fragment files.",
+    },
+)
+
+VirtualIncludeMappingInfo = provider(
+    "A single virtual include path mapping",
+    fields = {
+        "real_path": "(string) the real path to the file",
+        "virtual_path": "(string) The virtual path",
+    },
+)
+
+VirtualIncludesInfo = provider(
+    "Provides virtual include path remappings",
+    fields = {
+        "mappings": "(depset[VirtualIncludeMappingInfo]) Virtual include path mappings",
     },
 )
 
@@ -50,9 +66,109 @@ _CPP_COMPILE_EXTS = [
 ]
 _ALL_COMPILE_EXTS = _C_COMPILE_EXTS + _CPP_COMPILE_EXTS
 
+# This must match rules_cc.
+_VIRTUAL_INCLUDES_DIR = "_virtual_includes"
+
+_SHORTEN_VIRTUAL_INCLUDES_FEATURE_NAME = "shorten_virtual_includes"
+
 # This value is somewhat arbitrary. It's roughly associated with the maximum
 # number of direct dependencies any one target may have.
 _MAX_STACK_ITERATIONS = 99999
+
+def _package_path(label):
+    """
+    Returns the execroot-relative path to the specified package.
+
+    Args:
+        label: The label that the returned package path should be extracted
+            from.
+
+    Returns:
+        The execroot-relative path to the specified package.
+    """
+    sibling_repository_layout = label.workspace_root.startswith("../")
+    repository = label.workspace_name
+    package = label.package
+    if repository == "" or sibling_repository_layout:
+        return package
+    return paths.join(paths.join("external", repository), package)
+
+def _get_direct_virtual_includes(ctx, target):
+    if not hasattr(ctx.rule.attr, "strip_include_prefix"):
+        return []
+    label = target.label
+    source_package_path = _package_path(label)
+
+    cc_toolchain = find_cc_toolchain(ctx)
+    feature_configuration = cc_common.configure_features(
+        ctx = ctx,
+        cc_toolchain = cc_toolchain,
+    )
+    shorten_virtual_includes = cc_common.is_enabled(
+        feature_configuration = feature_configuration,
+        feature_name = _SHORTEN_VIRTUAL_INCLUDES_FEATURE_NAME,
+    )
+
+    if shorten_virtual_includes:
+        virtual_includes = paths.join(
+            ctx.bin_dir.path,
+            _VIRTUAL_INCLUDES_DIR,
+            "%x" % hash(paths.join(source_package_path, label.name)),
+        )
+    else:
+        virtual_includes = paths.join(
+            ctx.bin_dir.path,
+            source_package_path,
+            _VIRTUAL_INCLUDES_DIR,
+            label.name,
+        )
+    return [
+        VirtualIncludeMappingInfo(
+            virtual_path = virtual_includes,
+            real_path = paths.join(
+                source_package_path,
+                ctx.rule.attr.strip_include_prefix,
+            ),
+        ),
+    ]
+
+def _remap_virtual_includes(commands, all_virtual_paths):
+    """Replace all virtual includes with their actual path."""
+    # cc_library's strip_include_prefix points to a sandboxed, generated include
+    # path in Bazel's build outputs directory. We replace these with their
+    # canonical paths for a few reasons:
+    #
+    #   * Clicking through to a header and ending up in the build directory
+    #     is unexpected.
+    #   * The generated directories/symlinks must be built before they're valid.
+    #     Since the aspect implicitly builds them, this is sort of irrelevant
+    #     Except...
+    #   * The generated directories disappear if a user runs `bazel clean`.
+    #
+    # The logic to remap virtual include directories is more or less a
+    # reimplementation of the same logic for building these virtual directories
+    # in rules_cc:
+    #
+    # See https://cs.opensource.google/bazel/bazel/+/main:src/main/starlark/builtins_bzl/common/cc/compile/cc_compilation_helper.bzl;l=115-119;drc=075249556b518947c3b533cdf0358709b89db24d
+
+    virtual_path_map = {}
+    for mapping in all_virtual_paths.to_list():
+        virtual_path_map[mapping.virtual_path] = mapping.real_path
+        virtual_path_map["-I" + mapping.virtual_path] = "-I" + mapping.real_path
+        virtual_path_map["-isystem" + mapping.virtual_path] = "-isystem" + mapping.real_path
+
+    rebuilt_commands = []
+    for command in commands:
+        rebuilt_argv = []
+        for arg in command.arguments:
+            rebuilt_argv.append(
+                virtual_path_map[arg] if arg in virtual_path_map else arg,
+            )
+        cmd_dict = {key: getattr(command, key) for key in dir(command)}
+        cmd_dict["arguments"] = rebuilt_argv
+        rebuilt_commands.append(struct(**cmd_dict))
+
+    return rebuilt_commands
 
 def _get_one_compile_command(ctx, src, action):
     """Extracts compile commands associated with the source.
@@ -67,6 +183,11 @@ def _get_one_compile_command(ctx, src, action):
         A single compile commands struct, or None.
     """
     if not src.extension in _ALL_COMPILE_EXTS:
+        return None
+
+    # Don't generate compile commands for arbitrary inputs that aren't
+    # compiled. E.g. sources placed in `extra_compiler_inputs`.
+    if src.path not in action.argv:
         return None
 
     cc_toolchain = find_cc_toolchain(ctx)
@@ -90,59 +211,6 @@ def _get_one_compile_command(ctx, src, action):
         arguments = action.argv,
     )
 
-def _get_one_header_compile_command(ctx, target, hdr):
-    """Collects C/C++ compile commands for the provided target.
-
-    This is slightly more fuzzy than the source file handling since C/C++
-    headers inherently have no canonical argument representation. This rule
-    exposes headers in their C++ form as any dependency of the rule will
-    see them.
-
-    Args:
-        ctx: Rule context.
-        target: The target to extract compile commands from.
-        hdr: The header to generate a compile command for
-
-    Returns:
-        A single compile commands struct, or None.
-    """
-    cc_toolchain = find_cc_toolchain(ctx)
-    feature_configuration = cc_common.configure_features(
-        ctx = ctx,
-        cc_toolchain = cc_toolchain,
-    )
-    compilation_context = target[CcInfo].compilation_context
-    compiler_exec = cc_common.get_tool_for_action(
-        feature_configuration = feature_configuration,
-        action_name = ACTION_NAMES.cpp_compile,
-    )
-    compile_variables = cc_common.create_compile_variables(
-        feature_configuration = feature_configuration,
-        cc_toolchain = cc_toolchain,
-        # user_compile_flags - Omitted since these do not propagate.
-        # source_file - Omitted because passing hdr causes a crash.
-        # output_file - Omitted since this is a header.
-        quote_include_directories = compilation_context.quote_includes,
-        include_directories = compilation_context.includes,
-        system_include_directories = compilation_context.system_includes,
-        preprocessor_defines = compilation_context.defines,
-        framework_include_directories = compilation_context.framework_includes,
-    )
-
-    # Assume all headers will be evaluated from C++.
-    base_argv = list(cc_common.get_memory_inefficient_command_line(
-        feature_configuration = feature_configuration,
-        action_name = ACTION_NAMES.cpp_compile,
-        variables = compile_variables,
-    ))
-    full_argv = [compiler_exec] + base_argv
-
-    return struct(
-        directory = "__WORKSPACE_ROOT__",
-        file = hdr.path,
-        arguments = full_argv,
-    )
-
 def _get_cpp_compile_commands(ctx, target):
     """Collects C/C++ compile commands for the provided target.
 
@@ -158,19 +226,64 @@ def _get_cpp_compile_commands(ctx, target):
 
     commands = []
     for action in target.actions:
+        # Don't try to evaluate anything without arguments. This saves a
+        # considerable amount of CPU cycles.
+        if not action.argv:
+            continue
+
         for src in action.inputs.to_list():
+            # BE CAREFUL when putting logic here, as it's multiplied by
+            # ALL inputs to the sandbox, which is on the order of thousands
+            # of files *per compile action*.
             result = _get_one_compile_command(ctx, src, action)
             if result != None:
                 commands.append(result)
 
-    cc_info = target[CcInfo]
-    for hdr in cc_info.compilation_context.direct_headers:
-        # TODO: https://pwbug.dev/438812970 - Dedupe/remap _virtual_includes.
-        result = _get_one_header_compile_command(ctx, target, hdr)
-        if result != None:
-            commands.append(result)
+    direct_virtual_includes = _get_direct_virtual_includes(ctx, target)
+    transitive_virtual_includes = _collect_fragments(
+        ctx.rule,
+        target.label,
+        VirtualIncludesInfo,
+        lambda virtual_includes: virtual_includes.mappings,
+    )
+    all_virtual_include_mappings = depset(
+        direct = direct_virtual_includes,
+        transitive = transitive_virtual_includes,
+    )
 
-    return commands
+    commands = _remap_virtual_includes(
+        commands,
+        all_virtual_include_mappings,
+    )
+
+    if commands:
+        # Create a JSON fragment file for this specific target, including the
+        # platform name to make it unique. We also add a unique suffix
+        # to distinguish these fragments from files generated by other tools.
+        platform_fragment = ctx.bin_dir.path.split("/")[1]
+
+        fragment_file = ctx.actions.declare_file(
+            "{name}.{platform}.pw_aspect.compile_commands.json".format(
+                name = ctx.label.name,
+                platform = platform_fragment,
+            ),
+        )
+        ctx.actions.write(
+            output = fragment_file,
+            content = json.encode(commands),
+        )
+        return [
+            DefaultInfo(files = depset([fragment_file])),
+            VirtualIncludesInfo(
+                mappings = all_virtual_include_mappings,
+            ),
+        ]
+
+    return [
+        VirtualIncludesInfo(
+            mappings = all_virtual_include_mappings,
+        ),
+    ]
 
 def _collect_fragments(ctx, label, requested_provider, depset_getter):
     """A Generic helper to build a depset from all a transitive dependencies.
@@ -246,11 +359,6 @@ def _collect_fragments(ctx, label, requested_provider, depset_getter):
 def _compile_commands_aspect_impl(target, ctx):
     """Generates a compile_commands.json fragment for a single target."""
 
-    # Create a JSON fragment file for this specific target, including the
-    # platform name to make it unique. We also add a unique suffix
-    # to distinguish these fragments from files generated by other tools.
-    platform_fragment = ctx.bin_dir.path.split("/")[1]
-
     dep_fragments = _collect_fragments(
         ctx.rule,
         target.label,
@@ -258,50 +366,46 @@ def _compile_commands_aspect_impl(target, ctx):
         lambda command_fragment_info: command_fragment_info.fragments,
     )
 
-    commands = _get_cpp_compile_commands(
+    providers = _get_cpp_compile_commands(
         ctx,
         target,
     )
-    if not commands:
-        # No compiled sources, so just forward the transitive fragments.
-        transitive_fragments = depset(
-            transitive = dep_fragments,
-        )
-        return [
-            # Always return the transitive fragments. This ensures that
-            # transitive dependencies chain across targets that do not contain
-            # compile commands.
-            CompileCommandsFragmentInfo(fragments = transitive_fragments),
-            # Always return this OutputGroupInfo, or transitive compile commands
-            # will not be generated if the target itself doesn't emit compile
-            # commands.
-            OutputGroupInfo(pw_cc_compile_commands_fragments = transitive_fragments),
-        ]
+    if type(providers) != type(list()):
+        providers = [providers]
+    default_info = DefaultInfo()
+    for prov in providers:
+        if type(prov) == type(default_info):
+            default_info = prov
 
-    fragment_file = ctx.actions.declare_file(
-        ctx.label.name + "." + platform_fragment + ".pw_aspect.compile_commands.json",
-    )
-    ctx.actions.write(
-        output = fragment_file,
-        content = json.encode(commands),
-    )
-
+    direct_files = None
+    if type(default_info.files) == type(depset()):
+        direct_files = default_info.files.to_list()
     compile_command_fragments = depset(
-        direct = [fragment_file],
+        direct = direct_files,
         transitive = dep_fragments,
     )
 
     return [
+        # Always return the transitive fragments. This ensures that
+        # transitive dependencies chain across targets that do not contain
+        # compile commands.
         CompileCommandsFragmentInfo(fragments = compile_command_fragments),
-        OutputGroupInfo(pw_cc_compile_commands_fragments = compile_command_fragments),
-    ]
+        # Always return this OutputGroupInfo, or transitive compile commands
+        # will not be generated if the target itself doesn't emit compile
+        # commands.
+        OutputGroupInfo(
+            pw_cc_compile_commands_fragments = compile_command_fragments,
+        ),
+    ] + providers
 
 pw_cc_compile_commands_aspect = aspect(
     implementation = _compile_commands_aspect_impl,
     attr_aspects = ["*"],
     fragments = ["cpp"],
     attrs = {
-        "_strict_errors": attr.label(default = "//pw_ide/bazel/compile_commands:strict_errors"),
+        "_strict_errors": attr.label(
+            default = "//pw_ide/bazel/compile_commands:strict_errors",
+        ),
     },
     toolchains = use_cc_toolchain(),
 )

@@ -50,12 +50,8 @@ bazel_dep(name = "rules_nodejs", version = "6.3.0")
 bazel_dep(name = "rules_platform", version = "0.1.0")
 bazel_dep(name = "rules_probe_rs", version = "0.0.6")
 bazel_dep(name = "rules_python", version = "0.40.0")
-bazel_dep(name = "rules_rust", version = "0.62.0")
+bazel_dep(name = "rules_rust", version = "0.65.0")
 bazel_dep(name = "rules_shell", version = "0.4.0")
-
-# LINT.IfChange(emboss)
-bazel_dep(name = "emboss", version = "2024.1017.203246", repo_name = "com_google_emboss")
-# LINT.ThenChange(/pw_package/py/pw_package/packages/emboss.py:emboss)
 
 bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
 bazel_dep(name = "rules_doxygen", version = "2.4.2", dev_dependency = True)
@@ -117,6 +113,17 @@ git_repository(
     commit = "db677011c7363509a288a9fb3bf0a50830bbf791",
     remote = "https://github.com/erenon/bazel_clang_tidy.git",
 )
+
+# TODO: https://github.com/google/emboss/issues/164 - Wire up the emboss repo to
+# BCR. Currently there is an entry contributed by a community member, but it is
+# not up to date.
+# LINT.IfChange(emboss)
+git_repository(
+    name = "com_google_emboss",
+    remote = "https://pigweed.googlesource.com/third_party/github/google/emboss.git",
+    tag = "v2025.1003.000719",
+)
+# LINT.ThenChange(/pw_package/py/pw_package/packages/emboss.py:emboss)
 
 # TODO: b/383856665 - rules_fuchsia requires host_platform. Once this is fixed
 # we can remove this entry.
@@ -232,6 +239,7 @@ crate.from_cargo(
         "thumbv6m-none-eabi",
         "thumbv7m-none-eabi",
         "thumbv8m.main-none-eabihf",
+        "aarch64-unknown-none",
         "riscv32imc-unknown-none-elf",
         "riscv32imac-unknown-none-elf",
     ],
@@ -283,6 +291,8 @@ use_repo(python, "pythons_hub")
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
+    envsubst = ["PIGWEED_PIP_INDEX_URL"],
+    experimental_index_url = "${PIGWEED_PIP_INDEX_URL:-https://pypi.org/simple}",
     hub_name = "pigweed_python_packages",
     python_version = "3.10",
     requirements_darwin = "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_darwin_lock.txt",
@@ -290,6 +300,8 @@ pip.parse(
     requirements_windows = "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_windows_lock.txt",
 )
 pip.parse(
+    envsubst = ["PIGWEED_PIP_INDEX_URL"],
+    experimental_index_url = "${PIGWEED_PIP_INDEX_URL:-https://pypi.org/simple}",
     hub_name = "pigweed_python_packages",
     python_version = "3.11",
     requirements_darwin = "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_darwin_lock.txt",
@@ -297,6 +309,8 @@ pip.parse(
     requirements_windows = "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_windows_lock.txt",
 )
 pip.parse(
+    envsubst = ["PIGWEED_PIP_INDEX_URL"],
+    experimental_index_url = "${PIGWEED_PIP_INDEX_URL:-https://pypi.org/simple}",
     hub_name = "pigweed_python_packages",
     python_version = "3.12",
     requirements_darwin = "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_darwin_lock.txt",
@@ -461,6 +475,14 @@ workspace_and_buildfile(
     dev_dependency = True,
 )
 
+local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "local_repository")
+
+local_repository(
+    name = "pw_cc_compile_commands_test_external",
+    dev_dependency = True,
+    path = "pw_ide/bazel/compile_commands/test/external_repo",
+)
+
 # Doxygen setup
 # =============
 
@@ -526,7 +548,7 @@ use_repo(npm, "npm")
 
 # Setup Fuchsia SDK.
 # ==================
-FUCHSIA_SDK_VERSION = "version:29.20250807.5.1"
+FUCHSIA_SDK_VERSION = "version:29.20250930.4.1"
 
 cipd_repository(
     name = "fuchsia_sdk",

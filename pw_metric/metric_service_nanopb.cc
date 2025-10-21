@@ -21,7 +21,7 @@
 #include "pw_assert/check.h"
 #include "pw_containers/vector.h"
 #include "pw_metric/metric.h"
-#include "pw_metric_private/metric_walker.h"
+#include "pw_metric/metric_walker.h"
 #include "pw_span/span.h"
 
 namespace pw::metric {
@@ -58,9 +58,9 @@ void WriteMetricToResponse(const Metric& metric,
 
 // A MetricWriter for the legacy, streaming Get RPC. It writes metrics to a
 // nanopb struct and flushes the batch when it's full.
-class NanopbMetricWriter : public virtual internal::MetricWriter {
+class NanopbStreamingMetricWriter : public virtual MetricWriter {
  public:
-  NanopbMetricWriter(
+  NanopbStreamingMetricWriter(
       MetricService::ServerWriter<pw_metric_proto_MetricResponse>&
           response_writer)
       : response_(pw_metric_proto_MetricResponse_init_zero),
@@ -102,7 +102,7 @@ class NanopbMetricWriter : public virtual internal::MetricWriter {
 
 // A UnaryMetricWriter that populates a nanopb WalkResponse struct. This writer
 // is used by the ResumableMetricWalker to fill a page of metrics.
-class NanopbUnaryMetricWriter : public internal::UnaryMetricWriter {
+class NanopbUnaryMetricWriter : public UnaryMetricWriter {
  public:
   explicit NanopbUnaryMetricWriter(pw_metric_proto_WalkResponse& response)
       : response_(response) {}
@@ -148,8 +148,8 @@ void MetricService::Get(
     const pw_metric_proto_MetricRequest& /* request */,
     ServerWriter<pw_metric_proto_MetricResponse>& response) {
   // For now, ignore the request and just stream all the metrics back.
-  NanopbMetricWriter writer(response);
-  internal::MetricWalker walker(writer);
+  NanopbStreamingMetricWriter writer(response);
+  MetricWalker walker(writer);
 
   // This will stream all the metrics in the span of this Get() method call.
   // This will have the effect of blocking the RPC thread until all the metrics
@@ -176,7 +176,7 @@ Status MetricService::Walk(const pw_metric_proto_WalkRequest& request,
 
   response = pw_metric_proto_WalkResponse_init_zero;
   NanopbUnaryMetricWriter writer(response);
-  internal::ResumableMetricWalker walker(writer);
+  ResumableMetricWalker walker(writer);
 
   Result<uint64_t> result = walker.Walk(
       metrics_,

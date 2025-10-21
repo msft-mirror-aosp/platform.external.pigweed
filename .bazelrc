@@ -156,7 +156,7 @@ test:tsan --test_tag_filters=-integration,-notsan,-do_not_build,-do_not_run_test
 common:msan --//pw_toolchain/host_clang:msan
 # TODO: https://github.com/bazelbuild/bazel/issues/7322 - We need to repeat the
 # -integration because the test_tag_filters flag does not accumulate.
-test:msan --test_tag_filters=-integration,-notsan,-do_not_build,-do_not_run_test,-kernel
+test:msan --test_tag_filters=-integration,-nomsan,-do_not_build,-do_not_run_test,-kernel
 
 # Include libFuzzer build configurations.
 import %workspace%/pw_fuzzer/libfuzzer.bazelrc
@@ -265,6 +265,10 @@ common:remote_cache --remote_upload_local_results=false
 # (e.g. to recover from cache poisoning). We've used the current date in
 # YYYYMMDD format in the past.
 common --remote_default_exec_properties=cache-silo-key=20240918
+
+# Sets the credential helper script to generate an auth token when connecting
+# to the us-python.pkg.dev pypi repository.
+common --credential_helper=us-python.pkg.dev=%workspace%/pw_build/cred_helper.sh
 
 # Configs for experimental //pw_kernel
 import %workspace%/pw_kernel/kernel.bazelrc

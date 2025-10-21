@@ -22,12 +22,6 @@ Enviro+ sensors.
 ----------------------------------
 Flash the factory app to your Pico
 ----------------------------------
-.. warning::
-
-   The factory workflow currently does not work with the Pico 2.
-   See :bug:`382073705`. If you're using a Pico 2, skip ahead to
-   :ref:`showcase-sense-tutorial-bazel_cloud`.
-
 #. Flash the ``factory`` binary to your Pico.
 
    .. tab-set::
@@ -40,7 +34,7 @@ Flash the factory app to your Pico
             .. tab-item:: Pico 1 (RP2040)
 
                In **Bazel Build Targets** expand **//apps/factory**, then
-               right-click **:flash (native_binary)**, then select **Run
+               right-click **:flash_rp2040 (native_binary)**, then select **Run
                target**.
 
             .. tab-item:: Pico 2 (RP2350)

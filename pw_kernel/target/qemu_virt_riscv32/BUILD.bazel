@@ -16,7 +16,9 @@ load("@rules_rust//rust:defs.bzl", "rust_library")
 load("//pw_build:merge_flags.bzl", "flags_from_dict")
 load("//pw_kernel:flags.bzl", "KERNEL_DEVICE_COMMON_FLAGS")
 load("//pw_kernel/target/qemu_virt_riscv32:defs.bzl", "TARGET_COMPATIBLE_WITH")
-load("//pw_kernel/tooling:system_linker_script.bzl", "system_linker_script")
+load("//pw_kernel/tooling:target_linker_script.bzl", "target_linker_script")
+
+package(default_visibility = [":__subpackages__"])
 
 platform(
     name = "qemu_virt_riscv32",
@@ -33,42 +35,29 @@ platform(
     flags = flags_from_dict(
         KERNEL_DEVICE_COMMON_FLAGS | {
             "//pw_kernel/config:kernel_config": ":config",
-            "//pw_kernel/subsys/console:console_backend": ":console",
+            "//pw_kernel/subsys/console:console_backend": "//pw_kernel/subsys/console:console_backend_semihosting",
         },
     ),
-    visibility = [":__subpackages__"],
 )
 
 constraint_value(
     name = "target_qemu_virt_riscv32",
     constraint_setting = "//pw_kernel/target:target",
-    visibility = [":__subpackages__"],
 )
 
 rust_library(
     name = "entry",
     srcs = ["entry.rs"],
+    edition = "2024",
     tags = ["kernel"],
     target_compatible_with = TARGET_COMPATIBLE_WITH,
-    visibility = [":__subpackages__"],
     deps = [
+        ":config",
+        ":uart",
         "//pw_kernel/arch/riscv:arch_riscv",
+        "//pw_kernel/drivers/uart/uart_16550:uart_16550_config",
         "//pw_kernel/kernel",
         "@rust_crates//:riscv-rt",
-    ],
-)
-
-rust_library(
-    name = "console",
-    srcs = ["console.rs"],
-    crate_name = "console_backend",
-    tags = ["kernel"],
-    target_compatible_with = TARGET_COMPATIBLE_WITH,
-    deps = [
-        "//pw_kernel/arch/riscv:arch_riscv",
-        "//pw_kernel/kernel",
-        "//pw_kernel/lib/pw_status",
-        "@rust_crates//:embedded-io",
     ],
 )
 
@@ -76,23 +65,28 @@ rust_library(
     name = "config",
     srcs = ["config.rs"],
     crate_name = "kernel_config",
+    edition = "2024",
     tags = ["kernel"],
     target_compatible_with = TARGET_COMPATIBLE_WITH,
     deps = [
         "//pw_kernel/config:kernel_config_interface",
+        "//pw_kernel/drivers/uart/uart_16550:uart_16550_config",
     ],
+)
+
+alias(
+    name = "uart",
+    actual = "//pw_kernel/drivers/uart/uart_16550",
 )
 
 filegroup(
     name = "linker_script_template",
-    srcs = ["system.ld.tmpl"],
-    visibility = [":__subpackages__"],
+    srcs = ["target.ld.tmpl"],
 )
 
-system_linker_script(
+target_linker_script(
     name = "linker_script",
     system_config = "//pw_kernel/target:system_config_file",
     tags = ["kernel"],
     template = ":linker_script_template",
-    visibility = [":__subpackages__"],
 )

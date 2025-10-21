@@ -21,4 +21,10 @@ config PIGWEED_I2C
   help
     Link the library allowing I2C instantiation for Zephyr drivers.
 
+config PIGWEED_I2C_RESPONDER
+  bool "Link the responder implementation for Zephyr"
+  help
+    Append the pw_i2c_zephyr.responder API to Zephyr so it can be used in any
+    Zephyr libraries.
+
 endmenu

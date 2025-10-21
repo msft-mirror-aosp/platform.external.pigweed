@@ -57,6 +57,12 @@ class WorkflowsManagerTest(unittest.TestCase):
                     build_type='fake_build_type',
                 )
             ],
+            output_specs=[
+                workflows_pb2.OutputGroupSpec(
+                    name='output_1',
+                    glob_patterns=['one*'],
+                ),
+            ],
             tools=[
                 workflows_pb2.Tool(
                     name='my_tool',
@@ -65,11 +71,18 @@ class WorkflowsManagerTest(unittest.TestCase):
                         build_type='fake_build_type',
                     ),
                     target='//my_tool',
+                    use_output=['output_1'],
                 ),
                 workflows_pb2.Tool(
                     name='tool_with_shared_config',
                     use_config='shared_config',
                     target='//another_tool',
+                    output_spec=[
+                        workflows_pb2.OutputGroupSpec(
+                            name='output_2',
+                            glob_patterns=['two*'],
+                        ),
+                    ],
                 ),
                 workflows_pb2.Tool(
                     name='analyzer_tool',
@@ -79,6 +92,7 @@ class WorkflowsManagerTest(unittest.TestCase):
                         build_type='fake_build_type',
                     ),
                     target='//my_tool',
+                    use_output=['output_1'],
                 ),
                 workflows_pb2.Tool(
                     name='analyzer_friendly_tool',
@@ -168,6 +182,22 @@ class WorkflowsManagerTest(unittest.TestCase):
         self.assertEqual(len(recipe.steps), 1)
         step = recipe.steps[0]
         self.assertEqual(step.command, ['fake_executable', 'fake_arg'])
+
+    def test_program_tool_with_forwarded_args(self):
+        """Test that program_tool forwards arguments correctly."""
+        manager = WorkflowsManager(
+            self.workflow_suite,
+            self.build_drivers,
+            self.working_dir,
+            self.base_out_dir,
+            self.project_root,
+        )
+        with patch.object(
+            manager, '_create_build_recipes', return_value=[]
+        ) as mock_create:
+            manager.program_tool('my_tool', ['--forwarded'])
+            mock_create.assert_called_once()
+            self.assertEqual(mock_create.call_args[0][1], ['--forwarded'])
 
     def test_program_tool_not_a_tool_raises_error(self):
         """Test that TypeError is raised for non-tool fragments."""

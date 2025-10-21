@@ -64,6 +64,7 @@ pw_facade("dispatcher") {
     "public/pw_async2/context.h",
     "public/pw_async2/dispatcher.h",
     "public/pw_async2/dispatcher_base.h",
+    "public/pw_async2/future.h",
     "public/pw_async2/lock.h",
     "public/pw_async2/task.h",
     "public/pw_async2/waker.h",
@@ -146,6 +147,36 @@ pw_test("pendable_test") {
     ":poll",
   ]
   sources = [ "pendable_test.cc" ]
+}
+
+pw_test("future_test") {
+  enable_if = pw_async2_DISPATCHER_BACKEND != ""
+  deps = [
+    ":dispatcher",
+    ":pend_func_task",
+    ":poll",
+  ]
+  sources = [ "future_test.cc" ]
+}
+
+pw_source_set("value_future") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_async2/value_future.h" ]
+  public_deps = [
+    ":dispatcher",
+    ":poll",
+  ]
+}
+
+pw_test("value_future_test") {
+  enable_if = pw_async2_DISPATCHER_BACKEND != ""
+  deps = [
+    ":dispatcher",
+    ":pend_func_task",
+    ":poll",
+    ":value_future",
+  ]
+  sources = [ "value_future_test.cc" ]
 }
 
 pw_source_set("pend_func_task") {
@@ -410,13 +441,18 @@ pw_test("join_test") {
   deps = [
     ":dispatcher",
     ":join",
+    ":value_future",
   ]
+  negative_compilation_tests = true
 }
 
 pw_source_set("select") {
   public = [ "public/pw_async2/select.h" ]
   public_configs = [ ":public_include_path" ]
-  public_deps = [ ":dispatcher" ]
+  public_deps = [
+    ":dispatcher",
+    "$dir_pw_containers:optional_tuple",
+  ]
 }
 
 pw_test("select_test") {
@@ -426,6 +462,7 @@ pw_test("select_test") {
     ":dispatcher",
     ":pendable",
     ":select",
+    ":value_future",
   ]
 }
 
@@ -445,6 +482,47 @@ pw_test("cancellable_task_test") {
     dir_pw_function,
   ]
   sources = [ "cancellable_task_test.cc" ]
+}
+
+pw_source_set("channel") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_async2/channel.h" ]
+  public_deps = [
+    ":dispatcher",
+    ":poll",
+    "$dir_pw_allocator",
+    "$dir_pw_containers:dynamic_deque",
+    "$dir_pw_sync:interrupt_spin_lock",
+  ]
+}
+
+pw_test("channel_test") {
+  enable_if = pw_async2_DISPATCHER_BACKEND != ""
+  sources = [ "channel_test.cc" ]
+  deps = [
+    ":channel",
+    ":dispatcher",
+    ":pend_func_task",
+    ":poll",
+    "$dir_pw_allocator:testing",
+    "$dir_pw_containers:vector",
+  ]
+}
+
+if (pw_toolchain_CXX_STANDARD >= pw_toolchain_STANDARD.CXX20) {
+  pw_test("channel_coro_test") {
+    enable_if = pw_async2_DISPATCHER_BACKEND != ""
+    sources = [ "channel_coro_test.cc" ]
+    deps = [
+      ":channel",
+      ":coro",
+      ":coro_or_else_task",
+      ":dispatcher",
+      ":poll",
+      "$dir_pw_allocator:testing",
+      "$dir_pw_containers:vector",
+    ]
+  }
 }
 
 pw_test_group("tests") {

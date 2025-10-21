@@ -66,6 +66,7 @@ filegroup(
         "//pw_hex_dump:doxygen",
         "//pw_i2c:doxygen",
         "//pw_i2c_linux:doxygen",
+        "//pw_i2c_zephyr:doxygen",
         "//pw_interrupt:doxygen",
         "//pw_json:doxygen",
         "//pw_kvs:doxygen",
@@ -157,6 +158,14 @@ sphinx_docs_library(
     name = "xml",
     srcs = [":_xml"],
     prefix = "_doxygen/",
+    tags = ["manual"],
+    target_compatible_with = incompatible_with_mcu(),
+    visibility = ["//visibility:public"],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = ["modules.h"],
     tags = ["manual"],
     target_compatible_with = incompatible_with_mcu(),
     visibility = ["//visibility:public"],

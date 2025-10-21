@@ -12,7 +12,7 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_metric_private/metric_walker.h"
+#include "pw_metric/metric_walker.h"
 
 #include <cinttypes>
 #include <optional>
@@ -25,7 +25,7 @@
 #include "pw_status/status.h"
 #include "pw_status/try.h"
 
-namespace pw::metric::internal {
+namespace pw::metric {
 
 // Private implementation of ScopedName. Exists to safely push/pop parent groups
 // from the explicit stack during a metric walk.
@@ -113,4 +113,4 @@ Status ResumableMetricWalker::RecursiveWalkHelper(
   return OkStatus();
 }
 
-}  // namespace pw::metric::internal
+}  // namespace pw::metric

@@ -358,17 +358,23 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     return;
   }
-  const provider = new WebviewProvider(context.extensionUri);
-
-  context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(
-      WebviewProvider.viewType,
-      provider,
-    ),
-  );
 
   logger.info('Extension loaded');
   logger.info('');
+
+  // Default to experimental aspects compile commands generator
+  const config = vscode.workspace.getConfiguration('pigweed');
+  const experimentalCompileCommands = config.inspect(
+    'experimentalCompileCommands',
+  );
+
+  if (
+    experimentalCompileCommands?.workspaceValue === undefined &&
+    experimentalCompileCommands?.globalValue === undefined
+  ) {
+    await settings.experimentalCompileCommands(true);
+    logger.info('Defaulting `experimentalCompileCommands` to true.');
+  }
 
   const useBazel = await shouldSupportBazel();
   const useCmake = await shouldSupportCmake();
@@ -438,6 +444,23 @@ export async function activate(context: vscode.ExtensionContext) {
     settingsFileWatcher: new SettingsFileWatcher(),
     targetStatusBarItem: new TargetStatusBarItem(),
   });
+
+  const provider = new WebviewProvider(
+    context.extensionUri,
+    clangdActiveFilesCache,
+  );
+
+  refreshManager.on(async () => {
+    await provider.refresh();
+    return OK;
+  }, 'didRefresh');
+
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      WebviewProvider.viewType,
+      provider,
+    ),
+  );
 
   disposer.add(new ClangdFileWatcher(clangdActiveFilesCache));
   disposer.add(new InactiveFileDecorationProvider(clangdActiveFilesCache));

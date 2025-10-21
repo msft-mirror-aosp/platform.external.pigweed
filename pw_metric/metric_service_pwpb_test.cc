@@ -14,8 +14,12 @@
 
 #include "pw_metric/metric_service_pwpb.h"
 
+#include <limits>
+#include <vector>
+
 #include "pw_bytes/span.h"
-#include "pw_log/log.h"
+#include "pw_function/function.h"
+#include "pw_metric/pwpb_metric_writer.h"
 #include "pw_metric_proto/metric_service.pwpb.h"
 #include "pw_protobuf/decoder.h"
 #include "pw_protobuf/encoder.h"
@@ -24,7 +28,9 @@
 #include "pw_rpc/raw/test_method_context.h"
 #include "pw_rpc/test_helpers.h"
 #include "pw_span/span.h"
+#include "pw_stream/memory_stream.h"
 #include "pw_unit_test/framework.h"
+#include "pw_unit_test/status_macros.h"
 
 namespace pw::metric {
 namespace {
@@ -50,7 +56,7 @@ size_t SumMetricInts(ConstByteSpan serialized_path) {
     switch (decoder.FieldNumber()) {
       case static_cast<uint32_t>(proto::pwpb::Metric::Fields::kAsInt): {
         uint32_t metric_value;
-        EXPECT_EQ(OkStatus(), decoder.ReadUint32(&metric_value));
+        PW_TEST_EXPECT_OK(decoder.ReadUint32(&metric_value));
         metrics_sum += metric_value;
       }
     }
@@ -66,7 +72,7 @@ size_t GetMetricsSum(ConstByteSpan serialized_metric_buffer) {
       case static_cast<uint32_t>(
           proto::pwpb::MetricResponse::Fields::kMetrics): {
         ConstByteSpan metric_buffer;
-        EXPECT_EQ(OkStatus(), decoder.ReadBytes(&metric_buffer));
+        PW_TEST_EXPECT_OK(decoder.ReadBytes(&metric_buffer));
         metrics_sum += SumMetricInts(metric_buffer);
       }
     }
@@ -88,7 +94,7 @@ TEST(MetricService, EmptyGroupAndNoMetrics) {
   ctx{root.metrics(), root.children()};
   ctx.call({});
   EXPECT_TRUE(ctx.done());
-  EXPECT_EQ(OkStatus(), ctx.status());
+  PW_TEST_EXPECT_OK(ctx.status());
 
   // No metrics should be in the response.
   EXPECT_EQ(0u, ctx.responses().size());
@@ -105,7 +111,7 @@ TEST(MetricService, OneGroupOneMetric) {
   ctx{root.metrics(), root.children()};
   ctx.call({});
   EXPECT_TRUE(ctx.done());
-  EXPECT_EQ(OkStatus(), ctx.status());
+  PW_TEST_EXPECT_OK(ctx.status());
 
   // One metric should be in the response.
   EXPECT_EQ(1u, ctx.responses().size());
@@ -129,7 +135,7 @@ TEST(MetricService, OneGroupFiveMetrics) {
   ctx{root.metrics(), root.children()};
   ctx.call({});
   EXPECT_TRUE(ctx.done());
-  EXPECT_EQ(OkStatus(), ctx.status());
+  PW_TEST_EXPECT_OK(ctx.status());
 
   // Two metrics should be in the response.
   EXPECT_EQ(2u, ctx.responses().size());
@@ -161,7 +167,7 @@ TEST(MetricService, NestedGroupFiveMetrics) {
   ctx{root.metrics(), root.children()};
   ctx.call({});
   EXPECT_TRUE(ctx.done());
-  EXPECT_EQ(OkStatus(), ctx.status());
+  PW_TEST_EXPECT_OK(ctx.status());
 
   // Two metrics should be in the response.
   EXPECT_EQ(2u, ctx.responses().size());
@@ -201,7 +207,7 @@ TEST(MetricService, NestedGroupsWithBatches) {
   ctx{root.metrics(), root.children()};
   ctx.call({});
   EXPECT_TRUE(ctx.done());
-  EXPECT_EQ(OkStatus(), ctx.status());
+  PW_TEST_EXPECT_OK(ctx.status());
 
   // The response had to be split into four parts; check that they have the
   // appropriate sizes.
@@ -241,7 +247,7 @@ TEST(MetricService, MaxDepth4) {
   ctx{global_metrics, global_groups};
   ctx.call({});
   EXPECT_TRUE(ctx.done());
-  EXPECT_EQ(OkStatus(), ctx.status());
+  PW_TEST_EXPECT_OK(ctx.status());
 
   // Verify the response
   EXPECT_EQ(1u, ctx.responses().size());
@@ -257,14 +263,14 @@ TEST(MetricService, MaxDepth4) {
 // would appear in a WalkResponse. This is critical for setting up deterministic
 // pagination tests.
 size_t GetEncodedMetricSize(const Metric& metric, const Vector<Token>& path) {
-  // A packed repeated fixed32 field (like token_path) is encoded on the wire
-  // identically to a bytes field. First, calculate the size of the payload.
-  const size_t token_path_payload_size = path.size() * sizeof(uint32_t);
+  // 1) Calculate the size of the *nested* Metric message's payload.
+  size_t metric_payload_size = 0;
 
-  // Now, calculate the total size of the token_path field within the Metric
-  // message, including its tag and length prefix.
-  size_t metric_payload_size = protobuf::SizeOfDelimitedField(
-      proto::pwpb::Metric::Fields::kTokenPath, token_path_payload_size);
+  // The 'token_path' field is written as REPEATED (not packed).
+  // Size = (tag + fixed32_value) * num_tokens
+  metric_payload_size +=
+      path.size() *
+      protobuf::SizeOfFieldFixed32(proto::pwpb::Metric::Fields::kTokenPath);
 
   if (metric.is_float()) {
     metric_payload_size +=
@@ -274,8 +280,8 @@ size_t GetEncodedMetricSize(const Metric& metric, const Vector<Token>& path) {
         proto::pwpb::Metric::Fields::kAsInt, metric.as_int());
   }
 
-  // Calculate the size of the entire Metric message when encoded as a field
-  // within the WalkResponse.
+  // 2) Calculate the size of the *entire* nested Metric message, including
+  // its tag and length prefix, as a field in the parent WalkResponse.
   return protobuf::SizeOfDelimitedField(
       proto::pwpb::WalkResponse::Fields::kMetrics, metric_payload_size);
 }
@@ -306,9 +312,9 @@ TEST(MetricService, Walk) {
   // Manually encode the request.
   std::array<std::byte, 32> request_buffer;
   proto::pwpb::WalkRequest::MemoryEncoder request_encoder(request_buffer);
-  ASSERT_EQ(OkStatus(), request_encoder.Write({}));
+  PW_TEST_ASSERT_OK(request_encoder.Write({}));
   ctx.call(request_encoder);
-  EXPECT_EQ(OkStatus(), ctx.status());
+  PW_TEST_EXPECT_OK(ctx.status());
 
   // Manually decode and iterate over the response.
   protobuf::Decoder decoder(ctx.response());
@@ -323,7 +329,7 @@ TEST(MetricService, Walk) {
         total_metrics++;
         break;
       case proto::pwpb::WalkResponse::Fields::kDone:
-        ASSERT_EQ(decoder.ReadBool(&done), OkStatus());
+        PW_TEST_ASSERT_OK(decoder.ReadBool(&done));
         break;
       case proto::pwpb::WalkResponse::Fields::kCursor:
         has_cursor = true;
@@ -373,9 +379,9 @@ TEST(MetricService, WalkWithPagination) {
   for (int i = 0; i < 5; ++i) {  // Loop to prevent infinite loops from bugs.
     std::array<std::byte, 32> request_buffer;
     proto::pwpb::WalkRequest::MemoryEncoder request_encoder(request_buffer);
-    ASSERT_EQ(OkStatus(), request_encoder.Write({.cursor = cursor}));
+    PW_TEST_ASSERT_OK(request_encoder.Write({.cursor = cursor}));
     ctx.call(request_encoder);
-    EXPECT_EQ(OkStatus(), ctx.status());
+    PW_TEST_EXPECT_OK(ctx.status());
 
     total_metrics += CountMetricsInWalkResponse(ctx.response());
 
@@ -389,10 +395,10 @@ TEST(MetricService, WalkWithPagination) {
         case proto::pwpb::WalkResponse::Fields::kMetrics:
           break;  // Already counted
         case proto::pwpb::WalkResponse::Fields::kDone:
-          ASSERT_EQ(decoder.ReadBool(&done), OkStatus());
+          PW_TEST_ASSERT_OK(decoder.ReadBool(&done));
           break;
         case proto::pwpb::WalkResponse::Fields::kCursor:
-          ASSERT_EQ(decoder.ReadUint64(&cursor), OkStatus());
+          PW_TEST_ASSERT_OK(decoder.ReadUint64(&cursor));
           break;
         default:
           break;
@@ -418,7 +424,7 @@ TEST(MetricService, WalkWithInvalidCursor) {
 
   std::array<std::byte, 32> request_buffer;
   proto::pwpb::WalkRequest::MemoryEncoder request_encoder(request_buffer);
-  ASSERT_EQ(OkStatus(), request_encoder.Write({.cursor = 12345}));
+  PW_TEST_ASSERT_OK(request_encoder.Write({.cursor = 12345}));
 
   ctx.call(request_encoder);
   EXPECT_EQ(Status::NotFound(), ctx.status());
@@ -449,16 +455,16 @@ TEST(MetricService, WalkWithStaleCursorAfterMutation) {
     // First page.
     std::array<std::byte, 32> request_buffer;
     proto::pwpb::WalkRequest::MemoryEncoder request_encoder(request_buffer);
-    ASSERT_EQ(OkStatus(), request_encoder.Write({}));
+    PW_TEST_ASSERT_OK(request_encoder.Write({}));
     ctx.call(request_encoder);
-    ASSERT_EQ(OkStatus(), ctx.status());
+    PW_TEST_ASSERT_OK(ctx.status());
 
     protobuf::Decoder decoder(ctx.response());
     bool found_cursor = false;
     while (decoder.Next().ok()) {
       if (decoder.FieldNumber() ==
           static_cast<uint32_t>(proto::pwpb::WalkResponse::Fields::kCursor)) {
-        ASSERT_EQ(OkStatus(), decoder.ReadUint64(&response_cursor));
+        PW_TEST_ASSERT_OK(decoder.ReadUint64(&response_cursor));
         found_cursor = true;
       }
     }
@@ -477,7 +483,7 @@ TEST(MetricService, WalkWithStaleCursorAfterMutation) {
 
     std::array<std::byte, 32> request_buffer;
     proto::pwpb::WalkRequest::MemoryEncoder request_encoder(request_buffer);
-    ASSERT_EQ(OkStatus(), request_encoder.Write({.cursor = response_cursor}));
+    PW_TEST_ASSERT_OK(request_encoder.Write({.cursor = response_cursor}));
     ctx.call(request_encoder);
 
     // This call must fail because the metric at the cursor address is gone.
@@ -520,9 +526,9 @@ TEST(MetricService, WalkPaginatesCorrectlyWhenPageIsFull) {
   // m1 because of intrusive list order).
   std::array<std::byte, 32> request_buffer;
   proto::pwpb::WalkRequest::MemoryEncoder request_encoder(request_buffer);
-  ASSERT_EQ(OkStatus(), request_encoder.Write({}));
+  PW_TEST_ASSERT_OK(request_encoder.Write({}));
   ctx.call(request_encoder);
-  ASSERT_EQ(OkStatus(), ctx.status());
+  PW_TEST_ASSERT_OK(ctx.status());
 
   protobuf::Decoder decoder(ctx.response());
   size_t metric_count = 0;
@@ -535,11 +541,11 @@ TEST(MetricService, WalkPaginatesCorrectlyWhenPageIsFull) {
     }
     if (decoder.FieldNumber() ==
         static_cast<uint32_t>(proto::pwpb::WalkResponse::Fields::kCursor)) {
-      ASSERT_EQ(OkStatus(), decoder.ReadUint64(&cursor));
+      PW_TEST_ASSERT_OK(decoder.ReadUint64(&cursor));
     }
     if (decoder.FieldNumber() ==
         static_cast<uint32_t>(proto::pwpb::WalkResponse::Fields::kDone)) {
-      ASSERT_EQ(OkStatus(), decoder.ReadBool(&done));
+      PW_TEST_ASSERT_OK(decoder.ReadBool(&done));
     }
   }
 
@@ -559,7 +565,7 @@ TEST(MetricService, WalkWithMaxDepth) {
   PW_RAW_TEST_METHOD_CONTEXT(MetricService, Walk)
   ctx{root.metrics(), root.children()};
   ctx.call({});
-  EXPECT_EQ(OkStatus(), ctx.status());
+  PW_TEST_EXPECT_OK(ctx.status());
 }
 
 #if GTEST_HAS_DEATH_TEST
@@ -576,6 +582,511 @@ TEST(MetricService, WalkWithMaxDepthExceeded) {
   EXPECT_DEATH_IF_SUPPORTED(static_cast<void>(ctx.call({})), ".*");
 }
 #endif  // GTEST_HAS_DEATH_TEST
+
+//
+// PwpbMetricWriter Tests
+//
+
+TEST(PwpbMetricWriter, BasicWalk) {
+  PW_METRIC_GROUP(root, "/");
+  PW_METRIC(root, a, "a", 123u);
+  PW_METRIC(root, b, "b", 456.0f);
+  PW_METRIC_GROUP(inner, "inner");
+  PW_METRIC(inner, x, "x", 789u);
+  root.Add(inner);
+
+  std::array<std::byte, 256> encode_buffer;
+  // Use WalkResponse as a mock parent message for testing the writer.
+  proto::pwpb::WalkResponse::MemoryEncoder parent_encoder(encode_buffer);
+
+  // Set limit to more than total metrics.
+  size_t metric_limit = 5;
+
+  PwpbMetricWriter writer(
+      parent_encoder,
+      static_cast<uint32_t>(proto::pwpb::WalkResponse::Fields::kMetrics),
+      metric_limit);
+
+  MetricWalker walker(writer);
+
+  Status walk_status = walker.Walk(root);
+  PW_TEST_ASSERT_OK(walk_status);
+
+  // The walk finished, so the status is OK.
+  EXPECT_EQ(metric_limit, 2u);
+  EXPECT_EQ(CountMetricsInWalkResponse(
+                pw::span(parent_encoder.data(), parent_encoder.size())),
+            3u);
+}
+
+TEST(PwpbMetricWriter, StopsAtMetricLimit) {
+  PW_METRIC_GROUP(root, "/");
+  PW_METRIC(root, a, "a", 123u);
+  PW_METRIC(root, b, "b", 456.0f);
+  PW_METRIC(root, x, "x", 789u);
+
+  std::array<std::byte, 256> encode_buffer;
+  proto::pwpb::WalkResponse::MemoryEncoder parent_encoder(encode_buffer);
+
+  // Set limit to less than total metrics.
+  size_t metric_limit = 2;
+
+  PwpbMetricWriter writer(
+      parent_encoder,
+      static_cast<uint32_t>(proto::pwpb::WalkResponse::Fields::kMetrics),
+      metric_limit);
+
+  MetricWalker walker(writer);
+
+  // The writer will return ResourceExhausted when the limit hits 0, which
+  // stops the walker.
+  Status walk_status = walker.Walk(root);
+  ASSERT_EQ(Status::ResourceExhausted(), walk_status);
+
+  // Verify the limit was reached and the correct number of metrics were
+  // written.
+  EXPECT_EQ(metric_limit, 0u);
+  EXPECT_EQ(CountMetricsInWalkResponse(
+                pw::span(parent_encoder.data(), parent_encoder.size())),
+            2u);
+}
+
+TEST(PwpbMetricWriter, StopsAtBufferLimit) {
+  PW_METRIC_GROUP(root, "/");
+  PW_METRIC(root, a, "a", 1u);
+  PW_METRIC(root, b, "b", 2u);
+  PW_METRIC(root, c, "c", 3u);
+
+  Vector<Token, 2> path_c;
+  path_c.push_back(root.name());
+  path_c.push_back(c.name());
+
+  Vector<Token, 2> path_b;
+  path_b.push_back(root.name());
+  path_b.push_back(b.name());
+
+  Vector<Token, 2> path_a;
+  path_a.push_back(root.name());
+  path_a.push_back(a.name());
+
+  // Calculate the on-wire size of each metric as a repeated field.
+  const size_t size_of_c = GetEncodedMetricSize(c, path_c);
+  const size_t size_of_b = GetEncodedMetricSize(b, path_b);
+  const size_t size_of_a = GetEncodedMetricSize(a, path_a);
+
+  // All metrics have 2 tokens and a 1-byte int, so they should be equal.
+  ASSERT_EQ(size_of_c, size_of_b);
+  ASSERT_EQ(size_of_b, size_of_a);
+
+  // We must also reserve space for the largest non-metric field that the parent
+  // (WalkResponse) might write after the walk.
+  constexpr size_t kWalkResponseOverhead =
+      protobuf::SizeOfFieldUint64(proto::pwpb::WalkResponse::Fields::kCursor);
+
+  // Our buffer needs to fit:
+  // - The WalkResponse's non-metric field overhead
+  // - Exactly 2 metrics (c and b)
+  const size_t kSmallBufferSize = kWalkResponseOverhead + size_of_c + size_of_b;
+
+  ASSERT_LT(kSmallBufferSize,
+            (kWalkResponseOverhead + size_of_c + size_of_b + size_of_a));
+
+  std::vector<std::byte> encode_buffer(kSmallBufferSize);
+  proto::pwpb::WalkResponse::MemoryEncoder parent_encoder(encode_buffer);
+
+  // Set a high limit so that the buffer is the constraint.
+  size_t metric_limit = 10;
+
+  PwpbMetricWriter writer(
+      parent_encoder,
+      static_cast<uint32_t>(proto::pwpb::WalkResponse::Fields::kMetrics),
+      metric_limit);
+
+  MetricWalker walker(writer);
+
+  Status walk_status = walker.Walk(root);
+  ASSERT_EQ(Status::ResourceExhausted(), walk_status);
+
+  // Verify that the metric limit was NOT the cause of the stop.
+  // The walker will write 2 metrics (c and b) and stop before writing 'a'.
+  EXPECT_EQ(metric_limit, 8u);
+  size_t metrics_written = CountMetricsInWalkResponse(
+      pw::span(parent_encoder.data(), parent_encoder.size()));
+  EXPECT_GT(metrics_written, 0u);
+  EXPECT_LT(metrics_written, 3u);
+  EXPECT_EQ(metrics_written, 2u);
+}
+
+// Tests that the buffer limit is the constraint when the metric limit is
+// set to "no limit" (i.e., SIZE_MAX).
+TEST(PwpbMetricWriter, StopsAtBufferLimitWhenMetricLimitIsMax) {
+  PW_METRIC_GROUP(root, "/");
+  PW_METRIC(root, a, "a", 1u);
+  PW_METRIC(root, b, "b", 2u);
+  PW_METRIC(root, c, "c", 3u);
+
+  Vector<Token, 2> path_c;
+  path_c.push_back(root.name());
+  path_c.push_back(c.name());
+
+  Vector<Token, 2> path_b;
+  path_b.push_back(root.name());
+  path_b.push_back(b.name());
+
+  Vector<Token, 2> path_a;
+  path_a.push_back(root.name());
+  path_a.push_back(a.name());
+
+  const size_t size_of_c = GetEncodedMetricSize(c, path_c);
+  const size_t size_of_b = GetEncodedMetricSize(b, path_b);
+  const size_t size_of_a = GetEncodedMetricSize(a, path_a);
+  ASSERT_EQ(size_of_c, size_of_b);
+  ASSERT_EQ(size_of_b, size_of_a);
+
+  constexpr size_t kWalkResponseOverhead =
+      protobuf::SizeOfFieldUint64(proto::pwpb::WalkResponse::Fields::kCursor);
+
+  // Set buffer size to fit exactly 2 metrics and overhead.
+  const size_t kSmallBufferSize = kWalkResponseOverhead + size_of_c + size_of_b;
+  std::vector<std::byte> encode_buffer(kSmallBufferSize);
+  proto::pwpb::WalkResponse::MemoryEncoder parent_encoder(encode_buffer);
+
+  // Set a "no limit" metric limit.
+  size_t metric_limit = std::numeric_limits<size_t>::max();
+
+  PwpbMetricWriter writer(
+      parent_encoder,
+      static_cast<uint32_t>(proto::pwpb::WalkResponse::Fields::kMetrics),
+      metric_limit);
+
+  MetricWalker walker(writer);
+
+  Status walk_status = walker.Walk(root);
+  ASSERT_EQ(Status::ResourceExhausted(), walk_status);
+
+  // Verify that the metric limit was NOT the cause of the stop.
+  // The walker wrote 2 metrics (c and b) and decremented the limit.
+  EXPECT_EQ(metric_limit, std::numeric_limits<size_t>::max() - 2);
+  EXPECT_EQ(CountMetricsInWalkResponse(
+                pw::span(parent_encoder.data(), parent_encoder.size())),
+            2u);
+}
+
+// Tests that the walker correctly does nothing (and returns OK) when
+// walking a metric tree that has no metrics.
+TEST(PwpbMetricWriter, WalksEmptyRoot) {
+  PW_METRIC_GROUP(root, "/");
+  PW_METRIC_GROUP(inner, "empty_child");
+  root.Add(inner);
+
+  std::array<std::byte, 256> encode_buffer;
+  proto::pwpb::WalkResponse::MemoryEncoder parent_encoder(encode_buffer);
+
+  size_t metric_limit = 5;
+  PwpbMetricWriter writer(
+      parent_encoder,
+      static_cast<uint32_t>(proto::pwpb::WalkResponse::Fields::kMetrics),
+      metric_limit);
+  MetricWalker walker(writer);
+
+  Status walk_status = walker.Walk(root);
+  PW_TEST_ASSERT_OK(walk_status);
+
+  // No metrics were written, so limit is unchanged.
+  EXPECT_EQ(metric_limit, 5u);
+  EXPECT_EQ(CountMetricsInWalkResponse(
+                pw::span(parent_encoder.data(), parent_encoder.size())),
+            0u);
+}
+
+// Tests that if a single metric is larger than the buffer, the walk
+// immediately stops with RESOURCE_EXHAUSTED and writes 0 metrics.
+TEST(PwpbMetricWriter, StopsWhenSingleMetricIsTooLarge) {
+  PW_METRIC_GROUP(root, "/");
+  PW_METRIC(root, a, "a_metric_with_a_name", 1u);
+
+  // Calculate the true size of this metric.
+  Vector<Token, 2> path_a;
+  path_a.push_back(root.name());
+  path_a.push_back(a.name());
+  const size_t size_of_a = GetEncodedMetricSize(a, path_a);
+  ASSERT_GT(size_of_a, 10u);
+
+  // Create a buffer that is smaller than that single metric.
+  const size_t kTooSmallBufferSize = size_of_a - 1;
+  std::vector<std::byte> encode_buffer(kTooSmallBufferSize);
+  proto::pwpb::WalkResponse::MemoryEncoder parent_encoder(encode_buffer);
+
+  size_t metric_limit = 10;
+  PwpbMetricWriter writer(
+      parent_encoder,
+      static_cast<uint32_t>(proto::pwpb::WalkResponse::Fields::kMetrics),
+      metric_limit);
+  MetricWalker walker(writer);
+
+  // The first call to Write() should fail.
+  Status walk_status = walker.Walk(root);
+  ASSERT_EQ(Status::ResourceExhausted(), walk_status);
+
+  // No metrics were written, limit is unchanged.
+  EXPECT_EQ(metric_limit, 10u);
+  EXPECT_EQ(CountMetricsInWalkResponse(
+                pw::span(parent_encoder.data(), parent_encoder.size())),
+            0u);
+}
+
+// Tests that the sizing logic is correct for mixed float and int value types.
+TEST(PwpbMetricWriter, WalksWithMixedTypesAndExactBuffer) {
+  PW_METRIC_GROUP(root, "/");
+  // Walk order will be: float_metric, int_metric
+  PW_METRIC(root, int_metric, "int_metric", 123u);
+  PW_METRIC(root, float_metric, "float_metric", 456.0f);
+
+  Vector<Token, 2> path_int;
+  path_int.push_back(root.name());
+  path_int.push_back(int_metric.name());
+  const size_t size_of_int = GetEncodedMetricSize(int_metric, path_int);
+
+  Vector<Token, 2> path_float;
+  path_float.push_back(root.name());
+  path_float.push_back(float_metric.name());
+  const size_t size_of_float = GetEncodedMetricSize(float_metric, path_float);
+
+  // This test relies on the float (fixed32) being larger than the int (varint).
+  // (e.g., int_metric=123u takes 2 bytes; float takes 5 bytes).
+  ASSERT_GT(size_of_float, size_of_int);
+
+  // We must also reserve space for the largest non-metric field.
+  constexpr size_t kWalkResponseOverhead =
+      protobuf::SizeOfFieldUint64(proto::pwpb::WalkResponse::Fields::kCursor);
+
+  // Create a buffer that fits exactly these two metrics and overhead.
+  const size_t kExactBufferSize =
+      size_of_float + size_of_int + kWalkResponseOverhead;
+
+  std::vector<std::byte> encode_buffer(kExactBufferSize);
+  proto::pwpb::WalkResponse::MemoryEncoder parent_encoder(encode_buffer);
+
+  size_t metric_limit = 10;
+  PwpbMetricWriter writer(
+      parent_encoder,
+      static_cast<uint32_t>(proto::pwpb::WalkResponse::Fields::kMetrics),
+      metric_limit);
+  MetricWalker walker(writer);
+
+  Status walk_status = walker.Walk(root);
+  PW_TEST_ASSERT_OK(walk_status);
+
+  // 2 metrics were written.
+  EXPECT_EQ(metric_limit, 8u);
+  EXPECT_EQ(CountMetricsInWalkResponse(
+                pw::span(parent_encoder.data(), parent_encoder.size())),
+            2u);
+}
+
+//
+// PwpbStreamingMetricWriter Tests
+//
+
+// A test stream::Writer that executes a callback before forwarding writes to
+// an internal MemoryWriter. This is used to deterministically simulate a race
+// condition.
+class HookingWriter : public stream::NonSeekableWriter {
+ public:
+  HookingWriter(ByteSpan buffer, Function<void()>&& hook)
+      : memory_writer_(buffer), hook_(std::move(hook)) {}
+
+  ConstByteSpan WrittenData() const { return memory_writer_.WrittenData(); }
+
+ private:
+  Status DoWrite(ConstByteSpan data) override {
+    if (first_write_ && hook_) {
+      first_write_ = false;
+      hook_();
+    }
+    // Forward the write to the internal MemoryWriter.
+    return memory_writer_.Write(data);
+  }
+
+  stream::MemoryWriter memory_writer_;
+  Function<void()> hook_;
+  bool first_write_ = true;
+};
+
+TEST(PwpbStreamingMetricWriter, WriteIsAtomic) {
+  PW_METRIC_GROUP(root, "/");
+  constexpr uint32_t kInitialValue = 123u;
+  constexpr uint32_t kUpdatedValue = 999u;
+  PW_METRIC(root, atomic_metric, "atomic", kInitialValue);
+
+  std::array<std::byte, 256> encode_buffer;
+  HookingWriter writer_with_hook(encode_buffer, [&] {
+    // This hook executes after the sizing pass of WriteNestedMessage but
+    // before the writing pass has completed. We change the metric value here
+    // to attempt to trigger the race condition.
+    atomic_metric.Set(kUpdatedValue);
+  });
+  proto::pwpb::WalkResponse::StreamEncoder parent_encoder(writer_with_hook, {});
+
+  PwpbStreamingMetricWriter writer(
+      parent_encoder,
+      static_cast<uint32_t>(proto::pwpb::WalkResponse::Fields::kMetrics));
+
+  MetricWalker walker(writer);
+  PW_TEST_ASSERT_OK(walker.Walk(root));
+  PW_TEST_ASSERT_OK(parent_encoder.status());
+
+  // Verify that the in-memory metric was updated by the hook, but the
+  // original value was encoded.
+  // 1) The metric's in-memory value should be the new value from the hook.
+  EXPECT_EQ(atomic_metric.value(), kUpdatedValue);
+
+  // 2) The encoded value is the original value, proving that `WriteContext`
+  //    captured the value before it was modified by the hook.
+  protobuf::Decoder decoder(writer_with_hook.WrittenData());
+  bool metric_found = false;
+  while (decoder.Next().ok()) {
+    if (decoder.FieldNumber() ==
+        static_cast<uint32_t>(proto::pwpb::WalkResponse::Fields::kMetrics)) {
+      ConstByteSpan metric_bytes;
+      PW_TEST_ASSERT_OK(decoder.ReadBytes(&metric_bytes));
+
+      protobuf::Decoder metric_decoder(metric_bytes);
+      PW_TEST_ASSERT_OK(metric_decoder.Next());  // Path
+      PW_TEST_ASSERT_OK(metric_decoder.Next());  // Value
+
+      uint32_t value;
+      PW_TEST_ASSERT_OK(metric_decoder.ReadUint32(&value));
+      EXPECT_EQ(value, kInitialValue);
+      metric_found = true;
+    }
+  }
+  EXPECT_TRUE(metric_found);
+}
+
+TEST(PwpbStreamingMetricWriter, BasicWalk) {
+  PW_METRIC_GROUP(root, "/");
+  PW_METRIC(root, a, "a", 123u);
+  PW_METRIC(root, b, "b", 456.0f);
+  PW_METRIC_GROUP(inner, "inner");
+  PW_METRIC(inner, x, "x", 789u);
+  root.Add(inner);
+
+  std::array<std::byte, 256> encode_buffer;
+  stream::MemoryWriter memory_writer(encode_buffer);
+  // Use WalkResponse as a mock parent message for testing the writer.
+  // This must be a StreamEncoder, not a MemoryEncoder, to test the streaming
+  // use case. The MemoryWriter is just for capturing the output.
+  proto::pwpb::WalkResponse::StreamEncoder parent_encoder(memory_writer, {});
+
+  PwpbStreamingMetricWriter writer(
+      parent_encoder,
+      static_cast<uint32_t>(proto::pwpb::WalkResponse::Fields::kMetrics));
+
+  MetricWalker walker(writer);
+
+  Status walk_status = walker.Walk(root);
+  PW_TEST_ASSERT_OK(walk_status);
+  PW_TEST_ASSERT_OK(parent_encoder.status());
+
+  EXPECT_EQ(CountMetricsInWalkResponse(memory_writer.WrittenData()), 3u);
+}
+
+TEST(PwpbStreamingMetricWriter, StopsAtMetricLimit) {
+  PW_METRIC_GROUP(root, "/");
+  PW_METRIC(root, a, "a", 123u);
+  PW_METRIC(root, b, "b", 456.0f);
+  PW_METRIC(root, c, "c", 789u);
+
+  std::array<std::byte, 256> encode_buffer;
+  stream::MemoryWriter memory_writer(encode_buffer);
+  proto::pwpb::WalkResponse::StreamEncoder parent_encoder(memory_writer, {});
+
+  size_t metric_limit = 2;
+  PwpbStreamingMetricWriter writer(
+      parent_encoder,
+      static_cast<uint32_t>(proto::pwpb::WalkResponse::Fields::kMetrics),
+      metric_limit);
+
+  MetricWalker walker(writer);
+
+  Status walk_status = walker.Walk(root);
+  ASSERT_EQ(Status::ResourceExhausted(), walk_status);
+  PW_TEST_ASSERT_OK(parent_encoder.status());
+
+  EXPECT_EQ(CountMetricsInWalkResponse(memory_writer.WrittenData()), 2u);
+}
+
+TEST(PwpbStreamingMetricWriter, StopsWhenStreamIsFull) {
+  PW_METRIC_GROUP(root, "/");
+  PW_METRIC(root, a, "a", 1u);
+  PW_METRIC(root, b, "b", 2u);
+
+  // Create a buffer that can only hold one metric.
+  constexpr size_t kSmallBufferSize = 16;
+  std::array<std::byte, kSmallBufferSize> encode_buffer;
+  stream::MemoryWriter memory_writer(encode_buffer);
+  proto::pwpb::WalkResponse::StreamEncoder parent_encoder(memory_writer, {});
+
+  PwpbStreamingMetricWriter writer(
+      parent_encoder,
+      static_cast<uint32_t>(proto::pwpb::WalkResponse::Fields::kMetrics));
+
+  MetricWalker walker(writer);
+
+  Status walk_status = walker.Walk(root);
+
+  // The walker is expected to stop and propagate the RESOURCE_EXHAUSTED status
+  // from the writer when the underlying stream reports an error (e.g., is
+  // full).
+  ASSERT_EQ(Status::ResourceExhausted(), walk_status);
+  ASSERT_EQ(Status::ResourceExhausted(), parent_encoder.status());
+
+  EXPECT_EQ(CountMetricsInWalkResponse(memory_writer.WrittenData()), 1u);
+}
+
+TEST(PwpbStreamingMetricWriter, WalksEmptyMetricTree) {
+  PW_METRIC_GROUP(root, "/");
+  PW_METRIC_GROUP(inner, "empty_child");
+  root.Add(inner);
+
+  std::array<std::byte, 256> encode_buffer;
+  stream::MemoryWriter memory_writer(encode_buffer);
+  proto::pwpb::WalkResponse::StreamEncoder parent_encoder(memory_writer, {});
+
+  PwpbStreamingMetricWriter writer(
+      parent_encoder,
+      static_cast<uint32_t>(proto::pwpb::WalkResponse::Fields::kMetrics));
+  MetricWalker walker(writer);
+
+  Status walk_status = walker.Walk(root);
+  PW_TEST_ASSERT_OK(walk_status);
+  PW_TEST_ASSERT_OK(parent_encoder.status());
+
+  EXPECT_EQ(memory_writer.bytes_written(), 0u);
+}
+
+TEST(PwpbStreamingMetricWriter, StopsWithZeroMetricLimit) {
+  PW_METRIC_GROUP(root, "/");
+  PW_METRIC(root, a, "a", 123u);
+
+  std::array<std::byte, 256> encode_buffer;
+  stream::MemoryWriter memory_writer(encode_buffer);
+  proto::pwpb::WalkResponse::StreamEncoder parent_encoder(memory_writer, {});
+
+  size_t metric_limit = 0;
+  PwpbStreamingMetricWriter writer(
+      parent_encoder,
+      static_cast<uint32_t>(proto::pwpb::WalkResponse::Fields::kMetrics),
+      metric_limit);
+  MetricWalker walker(writer);
+
+  Status walk_status = walker.Walk(root);
+  ASSERT_EQ(Status::ResourceExhausted(), walk_status);
+  PW_TEST_ASSERT_OK(parent_encoder.status());
+
+  EXPECT_EQ(memory_writer.bytes_written(), 0u);
+}
 
 }  // namespace
 }  // namespace pw::metric

@@ -47,6 +47,15 @@ pw_add_library(pw_containers.algorithm INTERFACE
     public
 )
 
+pw_add_library(pw_containers.bitset INTERFACE
+  HEADERS
+    public/pw_containers/bitset.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_third_party.fuchsia.stdcompat
+)
+
 pw_add_library(pw_containers.filtered_view INTERFACE
   HEADERS
     public/pw_containers/filtered_view.h
@@ -85,6 +94,7 @@ pw_add_library(pw_containers._deque_common INTERFACE
     pw_assert
     pw_containers._common
     pw_span
+    pw_third_party.fuchsia.stdcompat
 )
 
 pw_add_library(pw_containers.async_count_and_capacity INTERFACE
@@ -191,11 +201,33 @@ pw_add_test(pw_containers.ptr_iterator_test
     pw_containers
 )
 
+pw_add_test(pw_containers.bitset_test
+  SOURCES
+    bitset_test.cc
+  PRIVATE_DEPS
+    pw_compilation_testing._pigweed_only_negative_compilation
+    pw_containers.bitset
+    pw_unit_test.constexpr
+  GROUPS
+    modules
+    pw_containers
+)
+
 pw_add_library(pw_containers._raw_storage INTERFACE
   HEADERS
     public/pw_containers/internal/raw_storage.h
   PUBLIC_INCLUDES
     public
+)
+
+pw_add_library(pw_containers.storage INTERFACE
+  HEADERS
+    public/pw_containers/storage.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_allocator
+    pw_containers.algorithm
 )
 
 pw_add_library(pw_containers._test_helpers STATIC
@@ -220,19 +252,63 @@ pw_add_library(pw_containers.to_array INTERFACE
     public
 )
 
+pw_add_library(pw_containers.generic_var_len_entry_queue STATIC
+  HEADERS
+    public/pw_containers/internal/generic_var_len_entry_queue.h
+    public/pw_containers/internal/var_len_entry.h
+    public/pw_containers/internal/var_len_entry_iterator.h
+    public/pw_containers/internal/var_len_entry_queue_iterator.h
+  PUBLIC_INCLUDES
+    public
+  SOURCES
+    var_len_entry.cc
+    var_len_entry_queue_iterator.cc
+  PUBLIC_DEPS
+    pw_assert.assert
+    pw_bytes
+    pw_containers._common
+    pw_containers.algorithm
+    pw_preprocessor
+    pw_span
+    pw_span.cast
+    pw_varint
+)
+
+pw_add_library(pw_containers.generic_var_len_entry_queue_testing INTERFACE
+  HEADERS
+    public/pw_containers/test/generic_var_len_entry_queue_testing.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_unit_test
+)
+
 pw_add_library(pw_containers.inline_var_len_entry_queue STATIC
   HEADERS
     public/pw_containers/inline_var_len_entry_queue.h
   PUBLIC_INCLUDES
     public
-  PUBLIC_DEPS
-    pw_containers._raw_storage
-    pw_varint
-    pw_toolchain.constexpr_tag
-  PRIVATE_DEPS
-    pw_assert
   SOURCES
-    inline_var_len_entry_queue.c
+    inline_var_len_entry_queue.cc
+  PUBLIC_DEPS
+    pw_bytes
+    pw_containers.generic_var_len_entry_queue
+    pw_containers._raw_storage
+    pw_preprocessor
+    pw_span
+    pw_toolchain.constexpr_tag
+    pw_varint
+)
+
+pw_add_library(pw_containers.var_len_entry_queue INTERFACE
+  HEADERS
+    public/pw_containers/var_len_entry_queue.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_containers.generic_var_len_entry_queue
+    pw_containers._raw_storage
+    pw_span
 )
 
 pw_add_library(pw_containers.vector INTERFACE
@@ -369,6 +445,17 @@ pw_add_library(pw_containers.intrusive_set INTERFACE
     pw_containers.aa_tree
 )
 
+pw_add_library(pw_containers.optional_tuple INTERFACE
+  HEADERS
+    public/pw_containers/optional_tuple.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_containers.bitset
+    pw_polyfill
+    pw_third_party.fuchsia.stdcompat
+)
+
 pw_add_test(pw_containers.algorithm_test
   SOURCES
     algorithm_test.cc
@@ -499,11 +586,61 @@ pw_add_test(pw_containers.raw_storage_test
     pw_containers
 )
 
+pw_add_test(pw_containers.storage_test
+  SOURCES
+    storage_test.cc
+  PRIVATE_DEPS
+    pw_containers.storage
+    pw_unit_test.constexpr
+  GROUPS
+    modules
+    pw_containers
+)
+
 pw_add_test(pw_containers.to_array_test
   SOURCES
     to_array_test.cc
   PRIVATE_DEPS
     pw_containers.to_array
+  GROUPS
+    modules
+    pw_containers
+)
+
+pw_add_test(pw_containers.var_len_entry_test
+  SOURCES
+    var_len_entry_test.cc
+  PRIVATE_DEPS
+    pw_containers.generic_var_len_entry_queue
+    pw_containers.var_len_entry_queue
+    pw_bytes
+    pw_unit_test.constexpr
+  GROUPS
+    modules
+    pw_containers
+)
+
+pw_add_test(pw_containers.var_len_entry_iterator_test
+  SOURCES
+    var_len_entry_iterator_test.cc
+  PRIVATE_DEPS
+    pw_containers.generic_var_len_entry_queue
+    pw_containers.var_len_entry_queue
+    pw_bytes
+    pw_unit_test.constexpr
+  GROUPS
+    modules
+    pw_containers
+)
+
+pw_add_test(pw_containers.var_len_entry_queue_iterator_test
+  SOURCES
+    var_len_entry_queue_iterator_test.cc
+  PRIVATE_DEPS
+    pw_containers.generic_var_len_entry_queue
+    pw_containers.var_len_entry_queue
+    pw_bytes
+    pw_unit_test.constexpr
   GROUPS
     modules
     pw_containers
@@ -516,7 +653,19 @@ pw_add_test(pw_containers.inline_var_len_entry_queue_test
   PRIVATE_DEPS
     pw_assert
     pw_bytes
+    pw_containers.generic_var_len_entry_queue_testing
     pw_containers.inline_var_len_entry_queue
+    pw_span
+)
+
+pw_add_test(pw_containers.var_len_entry_queue_test
+  SOURCES
+    var_len_entry_queue_test.cc
+  PRIVATE_DEPS
+    pw_assert
+    pw_containers.generic_var_len_entry_queue
+    pw_containers.generic_var_len_entry_queue_testing
+    pw_containers.var_len_entry_queue
     pw_span
 )
 
@@ -643,6 +792,20 @@ pw_add_test(pw_containers.intrusive_item_test
     pw_containers.intrusive_multimap
     pw_containers.intrusive_set
     pw_containers.intrusive_multiset
+  GROUPS
+    modules
+    pw_containers
+)
+
+pw_add_test(pw_containers.optional_tuple_test
+  SOURCES
+    optional_tuple_test.cc
+  PRIVATE_DEPS
+    pw_compilation_testing._pigweed_only_negative_compilation
+    pw_containers._test_helpers
+    pw_containers.optional_tuple
+    pw_polyfill
+    pw_unit_test.constexpr
   GROUPS
     modules
     pw_containers

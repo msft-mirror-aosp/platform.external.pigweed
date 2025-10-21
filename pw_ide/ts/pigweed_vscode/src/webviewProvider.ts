@@ -12,11 +12,20 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+import path from 'path';
+import fs from 'fs';
 import * as vscode from 'vscode';
 import { checkExtensionsAndGetStatus } from './extensionManagement';
+import { restartClangd, setTargetWithClangd } from './clangd';
+import { initBazelClangdPath } from './clangd/bazel';
 import logging, { output } from './logging';
 import { getSettingsData } from './configParsing';
 import getCipdReport from './clangd/report';
+import { availableTargets } from './clangd/paths';
+import {
+  ClangdActiveFilesCache,
+  parseForSourceFiles,
+} from './clangd/activeFilesCache';
 import { existsSync } from 'fs';
 import {
   createBazelInterceptorFile,
@@ -28,75 +37,87 @@ import { spawn } from 'child_process';
 
 import { getReliableBazelExecutable } from './bazel';
 import { settings, workingDir } from './settings/vscode';
-import { saveLastBazelCommand } from './clangd/compileCommandsGenerator';
+import { CDB_FILE_DIR, LAST_BAZEL_COMMAND_FILE_NAME } from './clangd/paths';
+
+function saveLastBazelCommand(
+  cwd: string,
+  bazelCmd: string,
+  logger?: LoggerUI,
+) {
+  try {
+    const compileCommandsDir = path.join(cwd, CDB_FILE_DIR);
+    if (!fs.existsSync(compileCommandsDir)) {
+      fs.mkdirSync(compileCommandsDir, { recursive: true });
+    }
+    const filePath = path.join(
+      compileCommandsDir,
+      LAST_BAZEL_COMMAND_FILE_NAME,
+    );
+    fs.writeFileSync(filePath, bazelCmd, 'utf-8');
+    logger?.addStdout(
+      `Saved last bazel command to ${CDB_FILE_DIR}/${LAST_BAZEL_COMMAND_FILE_NAME}.`,
+    );
+  } catch (e: any) {
+    logger?.addStderr('Failed to save last bazel command: ' + e.toString());
+  }
+}
 
 function spawnAsync(
   command: string,
   args: string[],
   cwd: string,
-  logger: LoggerUI,
+  logger?: LoggerUI,
+  bazelBinary?: string,
 ): Promise<number> {
   return new Promise((resolve) => {
-    logger.addStdout(`Running command: ${command} ${args.join(' ')}\n`);
-    const child = spawn(command, args, { cwd });
+    bazelBinary = getReliableBazelExecutable();
+    logger?.addStdout(`Running command: ${command} ${args.join(' ')}\n`);
+    const env = bazelBinary
+      ? {
+          ...process.env,
+          PATH: `${path.dirname(bazelBinary)}:${process.env?.PATH || ''}`,
+          BAZELISK_SKIP_WRAPPER: '1',
+        }
+      : process.env;
+    const child = spawn(command, args, { cwd, env });
 
-    child.stdout.on('data', (data) => logger.addStdout(data.toString()));
-    child.stderr.on('data', (data) => logger.addStderr(data.toString()));
+    child.stdout.on('data', (data) => logger?.addStdout(data.toString()));
+    child.stderr.on('data', (data) => logger?.addStderr(data.toString()));
     child.on('close', (code) => resolve(code ?? -1));
   });
 }
 
-async function generateAspectCompileCommands(
+export async function generateAspectCompileCommands(
   bazelBinary: string,
   buildCmd: string,
   cwd: string,
-  logger: LoggerUI,
+  logger?: LoggerUI,
 ) {
   // Aspect-based generator
-  logger.addStdout('Cleaning old compile commands...\n');
-  let exitCode = await spawnAsync(
+  logger?.addStdout('Building with compile commands aspect...\n');
+  const exitCode = await spawnAsync(
     bazelBinary,
-    ['run', '@pigweed//pw_ide/bazel:clean_compile_commands'],
+    [
+      'run',
+      '@pigweed//pw_ide/bazel:update_compile_commands',
+      '--',
+      '--',
+      'build',
+      buildCmd,
+    ],
     cwd,
     logger,
+    bazelBinary,
   );
 
   if (exitCode !== 0) {
-    logger.addStderr('Clean command failed, continuing...\n');
-  }
-
-  logger.addStdout('Building with compile commands aspect...\n');
-  const aspect =
-    '--aspects=@pigweed//pw_ide/bazel/compile_commands:defs.bzl%compile_commands_aspect';
-  const outputGroups = '--output_groups=+compile_commands_fragments';
-  exitCode = await spawnAsync(
-    bazelBinary,
-    ['build', aspect, outputGroups, buildCmd],
-    cwd,
-    logger,
-  );
-
-  if (exitCode !== 0) {
-    logger.finishWithError(`❌ Bazel build failed with exit code ${exitCode}.`);
-    return;
-  }
-
-  logger.addStdout('Updating compile commands...\n');
-  exitCode = await spawnAsync(
-    bazelBinary,
-    ['run', '@pigweed//pw_ide/bazel:update_compile_commands'],
-    cwd,
-    logger,
-  );
-
-  if (exitCode !== 0) {
-    logger.finishWithError(
-      `❌ Update command failed with exit code ${exitCode}.`,
+    logger?.finishWithError(
+      `❌ Updating compile commands failed with exit code ${exitCode}.`,
     );
     return;
   }
 
-  logger.finish('✅ Compile commands generated successfully.');
+  logger?.finish('✅ Compile commands generated successfully.');
   saveLastBazelCommand(cwd, `build ${buildCmd}`, logger);
 }
 
@@ -161,7 +182,16 @@ export class WebviewProvider implements vscode.WebviewViewProvider {
 
   private _view?: vscode.WebviewView;
 
-  constructor(private readonly _extensionUri: vscode.Uri) {}
+  constructor(
+    private readonly _extensionUri: vscode.Uri,
+    private readonly _activeFilesCache: ClangdActiveFilesCache,
+  ) {}
+
+  public async refresh() {
+    if (this._view) {
+      await this.sendCipdReport();
+    }
+  }
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
@@ -199,7 +229,13 @@ export class WebviewProvider implements vscode.WebviewViewProvider {
           break;
         }
         case 'restartClangd': {
-          vscode.commands.executeCommand('clangd.restart');
+          await restartClangd();
+          break;
+        }
+        case 'retryClangdPath': {
+          output.show();
+          await initBazelClangdPath();
+          await this.sendCipdReport();
           break;
         }
         case 'openExtension': {
@@ -270,6 +306,34 @@ export class WebviewProvider implements vscode.WebviewViewProvider {
         case 'refreshCompileCommandsManually': {
           const buildCmd = data.data;
           await executeRefreshCompileCommandsManually(buildCmd);
+          break;
+        }
+        case 'openDocs': {
+          vscode.env.openExternal(
+            vscode.Uri.parse('https://pigweed.dev/pw_ide/guide/vscode/'),
+          );
+          break;
+        }
+        case 'fileBug': {
+          vscode.env.openExternal(
+            vscode.Uri.parse('https://issues.pigweed.dev/issues?q=status:open'),
+          );
+          break;
+        }
+        case 'selectTarget': {
+          const targetName = data.data;
+          const targets = await availableTargets();
+          const target = targets.find((t) => t.name === targetName);
+
+          if (target) {
+            await setTargetWithClangd(
+              target,
+              this._activeFilesCache.writeToSettings,
+            );
+          }
+
+          await this.sendCipdReport();
+          break;
         }
       }
     });
@@ -281,10 +345,31 @@ export class WebviewProvider implements vscode.WebviewViewProvider {
     if (!pathForBazelBuildInterceptor) return;
     const bazelInterceptorExists = existsSync(pathForBazelBuildInterceptor);
     const experimentalCompileCommands = settings.experimentalCompileCommands();
+
+    const targets = await availableTargets();
+    const lastBuildPlatformCount = targets.length;
+
+    let activeFileCount = 0;
+    if (report.targetSelected) {
+      const selectedTarget = targets.find(
+        (t) => t.name === report.targetSelected,
+      );
+      if (selectedTarget) {
+        const files = await parseForSourceFiles(selectedTarget);
+        activeFileCount = files.size;
+      }
+    }
+
     report = {
       ...report,
       isBazelInterceptorEnabled: bazelInterceptorExists,
       experimentalCompileCommands,
+      lastBuildPlatformCount,
+      activeFileCount,
+      availableTargets: targets.map((t) => ({
+        name: t.name,
+        displayName: t.displayName,
+      })),
     };
     logging.info('getCipdReport reported: ' + JSON.stringify(report));
     this._view?.webview.postMessage({

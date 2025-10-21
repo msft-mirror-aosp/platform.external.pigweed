@@ -17,9 +17,9 @@
 #include "pw_bluetooth/l2cap_frames.emb.h"
 #include "pw_bluetooth_proxy/basic_l2cap_channel.h"
 #include "pw_bluetooth_proxy/direction.h"
+#include "pw_bluetooth_proxy/internal/multibuf.h"
 #include "pw_bluetooth_proxy/l2cap_status_delegate.h"
 #include "pw_containers/vector.h"
-#include "pw_multibuf/allocator.h"
 #include "pw_sync/lock_annotations.h"
 #include "pw_sync/mutex.h"
 
@@ -29,21 +29,21 @@ namespace pw::bluetooth::proxy {
 // channels or LE-U signaling channels.
 //
 // Write and Read payloads are L2CAP signal commands.
-class L2capSignalingChannel : public BasicL2capChannel {
+class L2capSignalingChannel final : public BasicL2capChannel {
  public:
-  explicit L2capSignalingChannel(L2capChannelManager& l2cap_channel_manager,
-                                 uint16_t connection_handle,
-                                 AclTransportType transport,
-                                 uint16_t fixed_cid);
+  static L2capSignalingChannel Create(
+      L2capChannelManager& l2cap_channel_manager,
+      uint16_t connection_handle,
+      AclTransportType transport);
 
   L2capSignalingChannel(L2capSignalingChannel&&);
   L2capSignalingChannel& operator=(L2capSignalingChannel&& other);
 
-  // Process the payload of a CFrame. Implementations should return true if the
-  // CFrame was consumed by the channel. Otherwise, return false and the PDU
-  // containing this CFrame will be forwarded on by the ProxyHost.
-  virtual bool OnCFramePayload(Direction direction,
-                               pw::span<const uint8_t> cframe_payload) = 0;
+  // Process the payload of a CFrame. Returns true if the CFrame was consumed by
+  // the channel. Otherwise, returns false and the PDU containing this CFrame
+  // will be forwarded on by the ProxyHost.
+  bool OnCFramePayload(Direction direction,
+                       pw::span<const uint8_t> cframe_payload);
 
   // Process an individual signaling command.
   //
@@ -88,29 +88,11 @@ class L2capSignalingChannel : public BasicL2capChannel {
   // @returns
   // * @OK: `L2CAP_FLOW_CONTROL_CREDIT_IND` was sent.
   // * @UNAVAILABLE: Send could not be queued due to lack of memory in the
-  //   client-provided `rx_multibuf_allocator` (transient error).
+  //   client-provided `multibuf_allocator` (transient error).
   // * @FAILED_PRECONDITION: Channel is not `State::kRunning`.
-  Status SendFlowControlCreditInd(
-      uint16_t cid,
-      uint16_t credits,
-      multibuf::MultiBufAllocator& multibuf_allocator);
-
- protected:
-  // Process a C-frame.
-  //
-  // Returns false if the C-frame is to be forwarded on to the Bluetooth host,
-  // either because the command is not directed towards a channel managed by
-  // `L2capChannelManager` or because the C-frame is invalid and should be
-  // handled by the Bluetooth host.
-  bool DoHandlePduFromController(pw::span<uint8_t> cframe) override;
-
-  bool HandlePduFromHost(pw::span<uint8_t> cframe) override;
-
-  // Get the next Identifier value that should be written to a signaling
-  // command and increment the Identifier.
-  uint8_t GetNextIdentifierAndIncrement() PW_LOCKS_EXCLUDED(mutex_);
-
-  L2capChannelManager& l2cap_channel_manager_;
+  Status SendFlowControlCreditInd(uint16_t cid,
+                                  uint16_t credits,
+                                  MultiBufAllocator& multibuf_allocator);
 
  private:
   struct PendingConnection {
@@ -132,6 +114,26 @@ class L2capSignalingChannel : public BasicL2capChannel {
   // The maximum number of pending L2CAP configuration (inbound/outbound ).
   static constexpr size_t kMaxPendingConfigurations =
       2 * kMaxPendingConnections;
+
+  explicit L2capSignalingChannel(L2capChannelManager& l2cap_channel_manager,
+                                 uint16_t connection_handle,
+                                 AclTransportType transport);
+
+  // Process a C-frame.
+  //
+  // Returns false if the C-frame is to be forwarded on to the Bluetooth host,
+  // either because the command is not directed towards a channel managed by
+  // `L2capChannelManager` or because the C-frame is invalid and should be
+  // handled by the Bluetooth host.
+  bool DoHandlePduFromController(pw::span<uint8_t> cframe) override;
+
+  bool HandlePduFromHost(pw::span<uint8_t> cframe) override;
+
+  // Get the next Identifier value that should be written to a signaling
+  // command and increment the Identifier.
+  uint8_t GetNextIdentifierAndIncrement() PW_LOCKS_EXCLUDED(mutex_);
+
+  L2capChannelManager& l2cap_channel_manager_;
 
   // TODO(b/405190891): Properly clean-up pending_connections_ and
   // pending_configurations_

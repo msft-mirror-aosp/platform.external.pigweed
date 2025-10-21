@@ -348,8 +348,6 @@ To do more complex testing, such as on-device testing:
 
 Create event handlers
 =====================
-.. _//pw_unit_test/public/pw_unit_test/event_handler.h: https://cs.opensource.google/pigweed/pigweed/+/main:pw_unit_test/public/pw_unit_test/event_handler.h
-
 The ``pw::unit_test::EventHandler`` class defines the interface through which
 ``pw_unit_test:light`` communicates the results of its test runs. If you're
 using a :ref:`custom main function <module-pw_unit_test-main>` you need to
@@ -362,7 +360,7 @@ Predefined event handlers
 Pigweed provides some standard event handlers to simplify the process of
 getting started with ``pw_unit_test:light``. All event handlers provide for
 GoogleTest-style output using the shared
-:doxylink:`GoogleTestStyleEventHandler
+:cc:`GoogleTestStyleEventHandler
 <pw::unit_test::GoogleTestStyleEventHandler>` base. Example output:
 
 .. code-block::
@@ -391,11 +389,9 @@ GoogleTest-style output using the shared
 
 Run a subset of test suites
 ===========================
-.. _//pw_unit_test/light_public_overrides/pw_unit_test/framework_backend.h: https://cs.opensource.google/pigweed/pigweed/+/main:pw_unit_test/light_public_overrides/pw_unit_test/framework_backend.h
-
 To run only a subset of registered test suites, use the
 ``pw::unit_test::SetTestSuitesToRun`` function. See
-`//pw_unit_test/light_public_overrides/pw_unit_test/framework_backend.h`_.
+:cs:`pw_unit_test/light_public_overrides/pw_unit_test/framework_backend.h`.
 
 This is useful when you've got a lot of test suites bundled up into a
 :ref:`single test binary <module-pw_unit_test-main>` and you only need
@@ -421,12 +417,98 @@ skipped when :ref:`using upstream GoogleTest <module-pw_unit_test-upstream>`:
        }),
    )
 
+Constexpr unit tests
+====================
+The :cc:`PW_CONSTEXPR_TEST` macro defines a test that is executed both at
+compile time in a ``static_assert`` and as a regular GoogleTest-style
+``TEST()``. This offers the advantages of compile-time testing in a structured,
+familiar API, without sacrificing anything from GoogleTest-style tests. The
+framework uses the standard GoogleTest macros at run time, and is compatible
+with GoogleTest or Pigweed's ``pw_unit_test:light`` framework.
+
+To create a ``constexpr`` test:
+
+#. Include ``"pw_unit_test/constexpr.h"`` alongside the test framework
+   (``"pw_unit_test/framework.h"`` or ``"gtest/gtest.h"``).
+#. Use the macro :cc:`PW_CONSTEXPR_TEST` instead of ``TEST``. Note that the
+   function body is passed as the third argument to the macro.
+#. Use the familiar GoogleTest macros, but with a ``PW_TEST_`` prefix. For
+   example:
+
+   - ``EXPECT_TRUE`` → ``PW_TEST_EXPECT_TRUE``
+   - ``EXPECT_EQ`` → ``PW_TEST_EXPECT_EQ``
+   - ``ASSERT_STREQ`` → ``PW_TEST_ASSERT_STREQ``
+   - etc.
+
+The result is a familiar-looking unit test that executes both at compile-time
+and run-time.
+
+.. literalinclude:: constexpr_test.cc
+   :language: cpp
+   :start-after: [pw_unit_test-constexpr]
+   :end-before: [pw_unit_test-constexpr]
+
+Why run tests at compile time?
+------------------------------
+- Cross-compile and execute tests without having to flash them to a device.
+- Ensure ``constexpr`` functions can actually be evaluated at compile time.
+  For example, function templates may be marked as ``constexpr``, even if they
+  do not support constant evaluation when instantiated.
+- Catch undefined behavior, out-of-bounds access, and other issues during
+  compilation on any platform, without needing to run sanitizers.
+
+Why execute the tests at run time at all?
+-----------------------------------------
+.. block-submission: disable
+
+- Code may run differently at compile time and execution, particularly when
+  ``std::is_constant_evaluated`` or ``if consteval`` are used.
+- Error messages are much better at run time. :cc:`PW_CONSTEXPR_TEST` makes it
+  simple to temporarily disable compile time tests and see the rich
+  GoogleTest-like output (see :ref:`SKIP_CONSTEXPR_TESTS_DONT_SUBMIT
+  <module-pw_unit_test-constexpr-skip>`).
+- Tools like code coverage only work for code that is executed normally.
+
+:cc:`PW_CONSTEXPR_TEST` uses ``cpp20::is_constant_evaluated()`` from
+``stdcompat``. If the compiler does not support ``is_constant_evaluated``, only
+the regular GoogleTest version will run. Note that compiler support is
+independent of the C++ standard in use.
+
+.. _module-pw_unit_test-constexpr-skip:
+
+Temporarily skip ``constexpr`` tests to see GoogleTest output
+-------------------------------------------------------------
+Define the ``SKIP_CONSTEXPR_TESTS_DONT_SUBMIT`` macro to temporarily disable the
+``constexpr`` portion of subsequent :cc:`PW_CONSTEXPR_TEST` tests. Use this to
+view GoogleTest output, which is usually more informative than the compiler's
+``constexpr`` test failure output.
+
+.. block-submission: enable
+
+Defines of this macro should never be submitted. If a test shouldn't run at
+compile time, use a plain ``TEST()``.
+
+.. literalinclude:: constexpr_test.cc
+   :language: cpp
+   :start-after: [pw_unit_test-constexpr-skip]
+   :end-before: [pw_unit_test-constexpr-skip]
+
+.. _module-pw_unit_test-constexpr-if-compiler:
+
+Limit ``constexpr`` tests to a specific compiler
+------------------------------------------------
+Due to differences in compilers and their maintainers interpretation of the C++
+standard, there may be cases when an expression can be constant evaluated with
+some compilers but not others. In these cases, you can restrict the
+``constexpr`` portion of a :cc:`PW_CONSTEXPR_TEST` test by using either
+:cc:`PW_CONSTEXPR_TEST_IF_CLANG` or :cc:`PW_CONSTEXPR_TEST_IF_GCC`.
+
 .. _module-pw_unit_test-static:
 
 Run tests in static libraries
 =============================
 To run tests in a static library, use the
-:doxylink:`PW_UNIT_TEST_LINK_FILE_CONTAINING_TEST` macro.
+:cc:`PW_UNIT_TEST_LINK_FILE_CONTAINING_TEST` macro.
 
 Linkers usually ignore tests through static libraries (i.e. ``.a`` files)
 because test registration relies on the test instance's static constructor
@@ -441,16 +523,16 @@ Use upstream GoogleTest
 To use the upstream GoogleTest backend (``pw_unit_test:googletest``) instead
 of the default backend:
 
-.. _GoogleTestHandlerAdapter: https://cs.opensource.google/pigweed/pigweed/+/main:pw_unit_test/public/pw_unit_test/googletest_handler_adapter.h
-
 1. Clone the GoogleTest repository into your project. See
    :ref:`module-pw_third_party_googletest`.
 
 2. :ref:`Create a custom main function <module-pw_unit_test-main>`.
 
-3. Combine `GoogleTestHandlerAdapter`_ with a :ref:`predefined event
-   handler <module-pw_unit_test-predefined-event-handlers>` to enable your
-   ``main`` function to work with upstream GoogleTest without modification.
+3. Combine :cs:`GoogleTestHandlerAdapter
+   <main:pw_unit_test/public/pw_unit_test/googletest_handler_adapter.h>`
+   with a :ref:`predefined event handler
+   <module-pw_unit_test-predefined-event-handlers>` to enable your ``main``
+   function to work with upstream GoogleTest without modification.
 
    .. code-block:: c++
 
@@ -480,10 +562,8 @@ produced output.
 
 To set up a serial test runner in Python:
 
-.. _//pw_unit_test/py/pw_unit_test/serial_test_runner.py: https://cs.opensource.google/pigweed/pigweed/+/main:pw_unit_test/py/pw_unit_test/serial_test_runner.py
-
 1. Implement a ``SerialTestingDevice`` class for your device. See
-   `//pw_unit_test/py/pw_unit_test/serial_test_runner.py`_.
+   :cs:`pw_unit_test/py/pw_unit_test/serial_test_runner.py`.
 2. Configure your device code to wait to run unit tests until
    ``DEFAULT_TEST_START_CHARACTER`` is sent over the serial connection.
 
@@ -491,11 +571,9 @@ To set up a serial test runner in Python:
 
 Run tests over RPC
 ==================
-.. _//pw_unit_test/pw_unit_test_proto/unit_test.proto: https://cs.opensource.google/pigweed/pigweed/+/main:pw_unit_test/pw_unit_test_proto/unit_test.proto
-
 ``pw_unit_test`` provides an RPC service which runs unit tests on demand and
 streams the results back to the client. The service is defined in
-`//pw_unit_test/pw_unit_test_proto/unit_test.proto`_.
+:cs:`pw_unit_test/pw_unit_test_proto/unit_test.proto`.
 
 The RPC service is primarily intended for use with the default
 ``pw_unit_test:light`` backend. It has some support for the upstream GoogleTest
@@ -594,7 +672,7 @@ In GN and CMake, directly run the
 -----------------
 C++ API reference
 -----------------
-Moved: :doxylink:`pw_unit_test`
+Moved: :cc:`pw_unit_test`
 
 .. _module-pw_unit_test-py:
 
@@ -662,6 +740,9 @@ See also :ref:`module-pw_unit_test-helpers`.
 ``pw_cc_test`` is a wrapper for `cc_test`_ that provides some defaults, such as
 a dependency on ``@pigweed//pw_unit_test:main``. It supports and passes through
 all the arguments recognized by ``cc_test``.
+
+``pw_cc_test`` also supports negative compilation (NC) testing. Pass ``has_nc_test = True`` to enable NC
+tests. See :ref:`module-pw_compilation_testing` for details.
 
 .. _module-pw_unit_test-bazel-args:
 

@@ -41,6 +41,7 @@ from pw_presubmit import (
     module_owners,
     npm_presubmit,
     pigweed_local_presubmit,
+    pw_internal_namespace,
     python_checks,
     shell_checks,
     source_in_build,
@@ -165,11 +166,6 @@ def _gn_platform_build_check_targets() -> Sequence[str]:
     # TODO: b/315998985 - Add docs back to Mac ARM build.
     if sys.platform != 'darwin' or platform.machine() != 'arm64':
         build_targets.append('docs')
-
-    # C headers seem to be missing when building with pw_minimal_cpp_stdlib, so
-    # skip it on Windows.
-    if sys.platform != 'win32':
-        build_targets.append('build_with_pw_minimal_cpp_stdlib')
 
     # TODO: b/234645359 - Re-enable on Windows when compatibility tests build.
     if sys.platform != 'win32':
@@ -1136,6 +1132,7 @@ OTHER_CHECKS = (
     module_owners.presubmit_check(),
     npm_presubmit.npm_test,
     npm_presubmit.vscode_test,
+    pw_internal_namespace.pw_internal_namespace,
     pw_transfer_integration_test,
     python_checks.diff_upstream_python_constraints,
     python_checks.update_upstream_python_constraints,
@@ -1192,11 +1189,6 @@ _LINTFORMAT = pigweed_local_presubmit.QUICK + (
 
 LINTFORMAT = (
     _LINTFORMAT,
-    # This check is excluded from _LINTFORMAT because it's not quick: it issues
-    # a bazel query that pulls in all of Pigweed's external dependencies
-    # (https://stackoverflow.com/q/71024130/1224002). These are cached, but
-    # after a roll it can be quite slow.
-    upstream_checks.source_in_bazel_build(),
     python_checks.check_python_versions,
     python_checks.gn_python_lint,
 )

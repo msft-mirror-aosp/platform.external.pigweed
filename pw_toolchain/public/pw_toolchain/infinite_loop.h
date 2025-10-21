@@ -13,36 +13,28 @@
 // the License.
 #pragma once
 
+// This header is DEPRECATED. Please include "pw_toolchain/busy_wait_forever.h"
+// instead.
+
+#include "pw_toolchain/busy_wait_forever.h"
+
 #ifdef __cplusplus
 
 namespace pw {
 
-/// @module{pw_toolchain}
-
-/// Loops infinitely. Call as `pw_InfiniteLoop()` in C.
-///
-/// Infinite loops without side effects are undefined behavior. Use
-/// `pw::InfiniteLoop` in place of an empty `while (true) {}` or `for (;;) {}`.
-[[noreturn]] inline void InfiniteLoop() {
-  while (true) {
-    asm volatile("");
-  }
+[[noreturn,
+  deprecated("Renamed; call pw::BusyWaitForever() from "
+             "pw_toolchain/busy_wait_forever.h instead")]] inline void
+InfiniteLoop() {
+  BusyWaitForever();
 }
 
 }  // namespace pw
-
-// pw_InfiniteLoop is the C name for pw::InfiniteLoop. Only use this alias for
-// code that must compile in C and C++.
-[[noreturn]] inline void pw_InfiniteLoop() { ::pw::InfiniteLoop(); }
 
 #else
 
 #include "pw_preprocessor/compiler.h"
 
-PW_NO_RETURN static inline void pw_InfiniteLoop(void) {
-  while (1) {
-    __asm__ volatile("");
-  }
-}
+PW_NO_RETURN static inline void pw_InfiniteLoop(void) { pw_BusyWaitForever(); }
 
 #endif  // __cplusplus

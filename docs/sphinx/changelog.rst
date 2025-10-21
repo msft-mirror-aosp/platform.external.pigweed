@@ -1140,9 +1140,9 @@ Nov 27, 2024
 ------------
 Highlights (Nov 15, 2024 to Nov 27, 2024):
 
-* **pw_allocator updates**: The :doxylink:`BucketBase
+* **pw_allocator updates**: The :cc:`BucketBase
   <pw::allocator::internal::BucketBase>` class has been refactored to be more
-  flexible and the :doxylink:`Block <pw_allocator_block>` API has been
+  flexible and the :cc:`Block <pw_allocator_block>` API has been
   refactored to support static polymorphism.
 
 .. _docs-changelog-2024-11-27-Modules:
@@ -1160,7 +1160,7 @@ Changes:
 
 * ``BestFitBlockAllocator`` was renamed to ``BestFitAllocator`` and
   ``WorstFitBlockAllocator`` was renamed to ``WorstFitAllocator``. These
-  classes have been refactored to use :doxylink:`buckets
+  classes have been refactored to use :cc:`buckets
   <pw_allocator_bucket>`. Commit: `Refactor best- and worst-fit
   allocators to use buckets <https://pwrev.dev/234817>`__.
 
@@ -1168,12 +1168,12 @@ Changes:
 
 * ``FirstFitBlockAllocator``, ``LastFitBlockAllocator``, and
   ``DualFirstFitBlockAllocator`` were merged into a single class:
-  :doxylink:`FirstFitAllocator <pw::allocator::FirstFitAllocator>`. Commit:
+  :cc:`FirstFitAllocator <pw::allocator::FirstFitAllocator>`. Commit:
   `Refactor first fit allocators <https://pwrev.dev/234816>`__.
 
 .. 3bfdac7a7826a4e2a1dc7a7174fd8d6276546c26
 
-* The :doxylink:`BucketBase <pw::allocator::internal::BucketBase>` class has
+* The :cc:`BucketBase <pw::allocator::internal::BucketBase>` class has
   been refactored to be more flexible. Commit: `Refactor Bucket
   <https://pwrev.dev/234815>`__.
 
@@ -1191,7 +1191,7 @@ Changes:
 
 .. 6417a523b06e03dce3453e96c3a1bec6ab511768
 
-* The :doxylink:`block API <pw_allocator_block>` has been
+* The :cc:`block API <pw_allocator_block>` has been
   refactored to support static polymorphism. Commit: `Add static
   polymorphism to Block <https://pwrev.dev/232214>`__.
 
@@ -6266,8 +6266,6 @@ Pico SDK
 ------------
 Jun 13, 2024
 ------------
-.. _bootstrap.fish: https://cs.opensource.google/pigweed/pigweed/+/main:bootstrap.fish
-
 Highlights (May 30, 2024 to Jun 13, 2024):
 
 * **pw_allocator support in pw_mallc**: ``pw_malloc`` now supports
@@ -6279,7 +6277,7 @@ Highlights (May 30, 2024 to Jun 13, 2024):
   a binary executable and produces a file with all ELF headers removed.
 * **Improved Fish shell support**: The ``pw`` and ``pw build``
   commands now support `Fish <https://fishshell.com/>`__ shell completion.
-  The new `bootstrap.fish`_ script demonstrates how to bootstrap a Pigweed
+  The new :cs:`bootstrap.fish` script demonstrates how to bootstrap a Pigweed
   project from a Fish shell and makes it easier for Fish users to contribute
   to upstream Pigweed.
 * **More informative modules index**: The :ref:`modules index <docs-module-guides>`
@@ -6621,7 +6619,7 @@ pw_docgen
 
 pw_env_setup
 ------------
-The new `bootstrap.fish`_ script demonstrates how to bootstrap a Pigweed
+The new :cs:`bootstrap.fish` script demonstrates how to bootstrap a Pigweed
 project from a Fish shell and makes it easier for Fish users to contribute
 to upstream Pigweed.
 
@@ -8570,7 +8568,7 @@ Docs
 The new :ref:`docs-quickstart-zephyr` shows you how to set up a C++-based
 Zephyr project that's ready to use Pigweed. The API references for all
 functions or methods that return a set of ``pw_status`` codes have been
-refactored for consistency. The :ref:`docs-style-doxygen` has been revamped.
+refactored for consistency. The :ref:`style-doxygen` has been revamped.
 
 * `Add pw_status table for API references
   <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/202739>`__
@@ -8632,7 +8630,7 @@ Modules
 
 pw_allocator
 ------------
-The new :doxylink:`pw::allocator::Capabilities` API lets derived allocators
+The new :cc:`pw::allocator::Capabilities` API lets derived allocators
 describe what optional features they support. ``pw::Allocator::GetLayout()``
 has begun to be deprecated and replaced by ``pw::Allocator::GetRequestedLayout``,
 ``pw::Allocator::GetUsableLayout()``, and ``pw::Allocator::GetAllocatedLayout()``
@@ -9251,11 +9249,9 @@ Modules
 
 pw_allocator
 ------------
-.. _//pw_allocator/examples: https://cs.opensource.google/pigweed/pigweed/+/main:pw_allocator/examples
-
 The :ref:`module-pw_allocator` docs have been revamped. Code examples from
 the docs are now extracted from complete examples that are built and tested
-alongside the rest of the main Pigweed repo; see `//pw_allocator/examples`_.
+alongside the rest of the main Pigweed repo; see :cs:`pw_allocator/examples`.
 
 * `Improve size report accuracy
   <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/196492>`__
@@ -11627,8 +11623,9 @@ pw_containers
 
 pw_digital_io
 -------------
-`pw::digital_io::Polarity <https://cs.opensource.google/pigweed/pigweed/+/main:pw_digital_io/public/pw_digital_io/polarity.h>`_
-was added to make it easier for backends to map logical levels to physical levels.
+The :cs:`Polarity <main:pw_digital_io/public/pw_digital_io/polarity.h>` class
+was added to make it easier for backends to map logical levels to physical
+levels.
 
 * `Add helper Polarity enum
   <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/185435>`__
@@ -12896,8 +12893,8 @@ There's been a concerted effort to reduce ``pw_transfer`` test flakiness.
 
 pw_unit_test
 ------------
-The :doxylink:`Expectations <pw_unit_test_expectations>` and
-:doxylink:`Assertions <pw_unit_test_assertions>` APIs were documented. Support
+The :cc:`Expectations <pw_unit_test_expectations>` and
+:cc:`Assertions <pw_unit_test_assertions>` APIs were documented. Support
 for GoogleTest's ``ASSERT_OK_AND_ASSIGN``, ``StatusIs``, and ``IsOkAndHolds``
 was added.
 
@@ -14833,9 +14830,9 @@ The ``pw_system.device.Device`` Python class can now be used as a
 pw_tokenizer
 ------------
 ``pw_tokenizer`` now has Rust support. The ``pw_tokenizer`` C++ config API
-is now documented at :doxylink:`pw_tokenizer_config` and
+is now documented at :cc:`pw_tokenizer_config` and
 the C++ token database API is now documented at
-:doxylink:`pw_tokenizer_database`. When creating a token
+:cc:`pw_tokenizer_database`. When creating a token
 database, parent directories are now automatically created if they don't
 already exist. ``PrefixedMessageDecoder`` has been renamed to
 ``NestedMessageDecoder``.

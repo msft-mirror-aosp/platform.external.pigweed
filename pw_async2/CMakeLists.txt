@@ -52,6 +52,7 @@ pw_add_facade(pw_async2.dispatcher STATIC
     public/pw_async2/context.h
     public/pw_async2/dispatcher.h
     public/pw_async2/dispatcher_base.h
+    public/pw_async2/future.h
     public/pw_async2/lock.h
     public/pw_async2/task.h
     public/pw_async2/waker.h
@@ -112,6 +113,35 @@ pw_add_test(pw_async2.pendable_test
     pendable_test.cc
   PRIVATE_DEPS
     pw_async2.pendable
+)
+
+pw_add_test(pw_async2.future_test
+  SOURCES
+    future_test.cc
+  PRIVATE_DEPS
+    pw_async2.dispatcher
+    pw_async2.pend_func_task
+    pw_async2.poll
+)
+
+pw_add_library(pw_async2.value_future INTERFACE
+  HEADERS
+    public/pw_async2/value_future.h
+  PUBLIC_DEPS
+    pw_async2.dispatcher
+    pw_async2.poll
+  PUBLIC_INCLUDES
+    public
+)
+
+pw_add_test(pw_async2.value_future_test
+  SOURCES
+    value_future_test.cc
+  PRIVATE_DEPS
+    pw_async2.dispatcher
+    pw_async2.pend_func_task
+    pw_async2.poll
+    pw_async2.value_future
 )
 
 pw_add_library(pw_async2.pend_func_task INTERFACE
@@ -390,6 +420,8 @@ pw_add_test(pw_async2.join_test
   PRIVATE_DEPS
     pw_async2.dispatcher
     pw_async2.join
+    pw_async2.value_future
+    pw_compilation_testing._pigweed_only_negative_compilation
   GROUPS
     modules
     pw_async2
@@ -400,6 +432,7 @@ pw_add_library(pw_async2.select INTERFACE
     public/pw_async2/select.h
   PUBLIC_DEPS
     pw_async2.dispatcher
+    pw_containers.optional_tuple
 )
 
 pw_add_test(pw_async2.select_test
@@ -409,6 +442,7 @@ pw_add_test(pw_async2.select_test
     pw_async2.dispatcher
     pw_async2.pendable
     pw_async2.select
+    pw_async2.value_future
   GROUPS
     modules
     pw_async2
@@ -433,5 +467,45 @@ pw_add_test(pw_async2.cancellable_task_test
     pw_async2.poll
     pw_function
 )
+
+pw_add_library(pw_async2.channel INTERFACE
+  HEADERS
+    public/pw_async2/channel.h
+  PUBLIC_DEPS
+    pw_async2.dispatcher
+    pw_async2.poll
+    pw_allocator
+    pw_containers.dynamic_deque
+    pw_sync.interrupt_spin_lock
+  PUBLIC_INCLUDES
+    public
+)
+
+pw_add_test(pw_async2.channel_test
+  SOURCES
+    channel_test.cc
+  PRIVATE_DEPS
+    pw_async2.channel
+    pw_async2.dispatcher
+    pw_async2.pend_func_task
+    pw_async2.poll
+    pw_allocator.testing
+    pw_containers.vector
+)
+
+if("cxx_std_20" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
+  pw_add_test(pw_async2.channel_coro_test
+    SOURCES
+      channel_coro_test.cc
+    PRIVATE_DEPS
+      pw_async2.channel
+      pw_async2.coro
+      pw_async2.coro_or_else_task
+      pw_async2.dispatcher
+      pw_async2.poll
+      pw_allocator.testing
+      pw_containers.vector
+  )
+endif()
 
 add_subdirectory(examples)

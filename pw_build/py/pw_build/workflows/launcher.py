@@ -14,7 +14,6 @@
 """A CLI tool for running tools, builds, and more from a workflows.json file."""
 
 import argparse
-from collections import defaultdict
 from collections.abc import Callable, Sequence
 import json
 import logging
@@ -23,12 +22,13 @@ from pathlib import Path
 import sys
 from typing import NoReturn
 
-from google.protobuf import json_format, message, text_format
+from google.protobuf import json_format
 from pw_build import project_builder
 from pw_build.proto import workflows_pb2
 from pw_build.workflows.bazel_driver import BazelBuildDriver
+from pw_build.workflows.describe import Describe
 from pw_build.workflows.manager import WorkflowsManager
-from pw_cli import multitool
+from pw_cli import multitool, argument_types
 from pw_config_loader import find_config
 
 _LOG = logging.getLogger(__name__)
@@ -161,15 +161,6 @@ class _WorkflowGroupPlugin(multitool.MultitoolPlugin):
         return builder.run_builds()
 
 
-def _extra_arg_handler(arg: str) -> tuple[str, str]:
-    """An argparse argument type for foo_build=--bar argument handling."""
-    assert (
-        '=' in arg
-    ), f'Invalid argument: `{arg}`, must be of the form BUILD_TYPE=--flag'
-    parts = arg.split('=', 1)
-    return parts[0], parts[1]
-
-
 class WorkflowsCli(multitool.MultitoolCli):
     """A CLI entry point for launching project-specific workflows."""
 
@@ -218,105 +209,14 @@ class WorkflowsCli(multitool.MultitoolCli):
         parser.add_argument(
             '--extra-arg',
             '-X',
-            nargs='*',
-            metavar='build_type=--argument',
-            type=_extra_arg_handler,
+            action=argument_types.DictOfListsAction,
+            metavar=('BUILD_TYPE', 'ARGUMENT'),
             help=(
                 'Forwards additional arguments to all builds of the specified '
                 'build type. These are always injected at the end of the '
                 'configuration-specific list of arguments.'
             ),
         )
-
-    def _dump_textproto(self, plugin_args: Sequence[str]) -> int:
-        parser = argparse.ArgumentParser(
-            description=(
-                'Describes subsets or expanded views of the current '
-                'workflows configuration.'
-            ),
-        )
-        parser.add_argument(
-            'name',
-            nargs='+',
-            default=None,
-            help=(
-                'The name of a build, tool, group, or build configuration to '
-                'inspect. By default, this will emit the requested items as '
-                'TextProto.'
-            ),
-        )
-        parser.add_argument(
-            '--dump-build-requests',
-            nargs='?',
-            metavar='FILE_PATH',
-            const=sys.stdout,
-            type=argparse.FileType('w'),
-            help=(
-                'Emits all build driver requests produced by the requested '
-                'items as a TextProto BuildDriverRequest message.'
-            ),
-        )
-        args = parser.parse_args(plugin_args)
-        if self.config is None:
-            print('Config is empty')
-            return 0
-        if not args.name:
-            print(self.dump_config())
-        elif args.dump_build_requests:
-            print(
-                self.dump_build_request(args.name),
-                file=args.dump_build_requests,
-            )
-        else:
-            for name in args.name:
-                print(self.dump_fragment(name))
-        return 0
-
-    def dump_config(self) -> str:
-        """Dumps the entire config in a human-readable format."""
-        if self.config is None:
-            return ''
-
-        return text_format.MessageToBytes(self.config).decode()
-
-    def dump_build_request(self, names: Sequence[str]) -> str:
-        """Dumps the unified build driver request for this config fragment."""
-        assert self._workflows is not None
-        return text_format.MessageToBytes(
-            self._workflows.get_unified_driver_request(names, sanitize=False)
-        ).decode()
-
-    def dump_fragment(self, fragment_name: str) -> str:
-        """Dumps a fragment of the config in a human-readable format."""
-        if not fragment_name:
-            raise ValueError('Invalid empty fragment name')
-        dump: message.Message | None = None
-
-        if self.config is not None:
-            for conf in self.config.configs:
-                if conf.name == fragment_name:
-                    dump = conf
-                    break
-            for tool in self.config.tools:
-                if tool.name == fragment_name:
-                    dump = tool
-                    break
-                if tool.build_config.name == fragment_name:
-                    dump = tool.build_config
-                    break
-            for build in self.config.builds:
-                if build.name == fragment_name:
-                    dump = build
-                    break
-            for group in self.config.groups:
-                if group.name == fragment_name:
-                    dump = group
-                    break
-        if dump is None:
-            raise ValueError(
-                f'Could not find any config fragment named `{fragment_name}`'
-            )
-        return text_format.MessageToBytes(dump).decode()
 
     def _launch_analyzer(self, args: Sequence[str]) -> int:
         if self._workflows is None:
@@ -349,6 +249,9 @@ class WorkflowsCli(multitool.MultitoolCli):
             )
         )
 
+    def describe(self) -> Describe:
+        return Describe(config=self.config, workflows=self._workflows)
+
     def _builtin_plugins(self) -> list[multitool.MultitoolPlugin]:
         return [
             _BuiltinPlugin(
@@ -359,7 +262,7 @@ class WorkflowsCli(multitool.MultitoolCli):
             _BuiltinPlugin(
                 name='describe',
                 description='Describe a build, tool, or group',
-                callback=self._dump_textproto,
+                callback=self.describe().dump,
             ),
             _BuiltinPlugin(
                 name='check',
@@ -374,11 +277,6 @@ class WorkflowsCli(multitool.MultitoolCli):
         if not self.config:
             self.config = self._load_config_from()
 
-        extra_args_by_type = defaultdict(list)
-        if args.extra_arg:
-            for build_type, arg in args.extra_arg:
-                extra_args_by_type[build_type].append(arg)
-
         self._workflows = WorkflowsManager(
             self.config,
             {
@@ -386,7 +284,7 @@ class WorkflowsCli(multitool.MultitoolCli):
             },
             working_dir=Path.cwd(),
             base_out_dir=args.output_dir,
-            extra_build_args=extra_args_by_type,
+            extra_build_args=args.extra_arg,
         )
 
         all_plugins = []

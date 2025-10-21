@@ -28,7 +28,7 @@ std::optional<H4PacketWithH4> GattNotifyChannel::GenerateNextTxPacket() {
     return std::nullopt;
   }
 
-  ConstByteSpan attribute_value = GetFrontPayloadSpan();
+  const FlatConstMultiBuf& attribute_value = GetFrontPayload();
 
   std::optional<uint16_t> max_l2cap_payload_size = MaxL2capPayloadSize();
   // This should have been caught during Write.
@@ -69,8 +69,7 @@ std::optional<H4PacketWithH4> GattNotifyChannel::GenerateNextTxPacket() {
 
   att_notify->attribute_opcode().Write(emboss::AttOpcode::ATT_HANDLE_VALUE_NTF);
   att_notify->attribute_handle().Write(attribute_handle_);
-  PW_CHECK(
-      TryToCopyToEmbossStruct(att_notify->attribute_value(), attribute_value));
+  MultiBufAdapter::Copy(att_notify->attribute_value(), attribute_value);
   PW_CHECK(att_notify->Ok());
 
   // All content has been copied from the front payload, so release it.
@@ -80,7 +79,7 @@ std::optional<H4PacketWithH4> GattNotifyChannel::GenerateNextTxPacket() {
 }
 
 Status GattNotifyChannel::DoCheckWriteParameter(
-    pw::multibuf::MultiBuf& payload) {
+    const FlatConstMultiBuf& payload) {
   std::optional<uint16_t> max_l2cap_payload_size = MaxL2capPayloadSize();
   if (!max_l2cap_payload_size) {
     PW_LOG_ERROR("Tried to write before LE_Read_Buffer_Size processed.");
@@ -107,9 +106,13 @@ pw::Result<GattNotifyChannel> GattNotifyChannel::Create(
     uint16_t connection_handle,
     uint16_t attribute_handle,
     ChannelEventCallback&& event_fn) {
-  if (!AreValidParameters(/*connection_handle=*/connection_handle,
-                          /*local_cid=*/kAttributeProtocolCID,
-                          /*remote_cid=*/kAttributeProtocolCID)) {
+  if (!AreValidParameters(
+          /*connection_handle=*/connection_handle,
+          /*local_cid=*/
+          static_cast<uint16_t>(emboss::L2capFixedCid::LE_U_ATTRIBUTE_PROTOCOL),
+          /*remote_cid=*/
+          static_cast<uint16_t>(
+              emboss::L2capFixedCid::LE_U_ATTRIBUTE_PROTOCOL))) {
     return pw::Status::InvalidArgument();
   }
   if (attribute_handle == 0) {
@@ -133,8 +136,10 @@ GattNotifyChannel::GattNotifyChannel(L2capChannelManager& l2cap_channel_manager,
           /*rx_multibuf_allocator*/ nullptr,
           /*connection_handle=*/connection_handle,
           /*transport=*/AclTransportType::kLe,
-          /*local_cid=*/kAttributeProtocolCID,
-          /*remote_cid=*/kAttributeProtocolCID,
+          /*local_cid=*/
+          static_cast<uint16_t>(emboss::L2capFixedCid::LE_U_ATTRIBUTE_PROTOCOL),
+          /*remote_cid=*/
+          static_cast<uint16_t>(emboss::L2capFixedCid::LE_U_ATTRIBUTE_PROTOCOL),
           /*payload_from_controller_fn=*/nullptr,
           /*payload_from_host_fn=*/nullptr,
           /*event_fn=*/std::move(event_fn)),

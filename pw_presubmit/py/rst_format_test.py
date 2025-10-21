@@ -19,6 +19,8 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from format_testing_utils import CapturingToolRunner
+from pw_build.runfiles_manager import RunfilesManager
 from pw_presubmit.format.rst import RstFormatter
 
 # Setup paths to test data
@@ -27,12 +29,44 @@ _RST_TEST_FILE = _TEST_DATA_DIR / 'rst_test_data.rst'
 _RST_GOLDEN_FILE = _TEST_DATA_DIR / 'rst_test_data_golden.rst'
 
 
+FORMATTED_CPP = """\
+.. code-block:: cpp
+
+   // clang-format off
+   constexpr int kMyMatrix[] = {
+       100,  23,   0,
+         0, 542,  38,
+         1,   2, 201,
+   };
+   // clang-format on
+
+   int SomeFunction(int x) {
+     PW_ASSERT(x < 9);
+     return kMyMatrix[x];
+   }
+"""
+
+
 class RstFormatterTest(unittest.TestCase):
     """Tests for the RstFormatter."""
 
     maxDiff = None
 
     def setUp(self):
+        self.runfiles = RunfilesManager()
+        self.runfiles.add_bazel_tool(
+            'clang-format',
+            'llvm_toolchain.clang_format',
+            exclusive=True,
+        )
+        self.runfiles.add_bootstrapped_tool(
+            'clang-format',
+            'clang-format',
+            from_shell_path=True,
+        )
+        self.tool_runner = CapturingToolRunner(
+            {'clang-format': self.runfiles['clang-format']}
+        )
         self.tempdir = tempfile.TemporaryDirectory()
         self.test_file = Path(self.tempdir.name) / 'test.rst'
 
@@ -40,7 +74,7 @@ class RstFormatterTest(unittest.TestCase):
         self.tempdir.cleanup()
 
     def _run_formatter(self, content: str) -> str:
-        formatter = RstFormatter()
+        formatter = RstFormatter(tool_runner=self.tool_runner)
         self.test_file.write_text(content)
         formatter.format_file(self.test_file)
         return self.test_file.read_text()
@@ -51,7 +85,7 @@ class RstFormatterTest(unittest.TestCase):
         if os.name == 'nt':
             return
 
-        formatter = RstFormatter()
+        formatter = RstFormatter(tool_runner=self.tool_runner)
         result = formatter.format_file_in_memory(
             _RST_TEST_FILE, _RST_TEST_FILE.read_bytes()
         )
@@ -77,7 +111,8 @@ class RstFormatterTest(unittest.TestCase):
             (
                 '.. code-block:: cpp',
                 '  int main() {',
-                '    return 0;',
+                '    int x = 0;',
+                '    return x;',
                 '  }',
             )
         )
@@ -86,12 +121,33 @@ class RstFormatterTest(unittest.TestCase):
                 '.. code-block:: cpp',
                 '',
                 '   int main() {',
-                '     return 0;',
+                '     int x = 0;',
+                '     return x;',
                 '   }',
                 '',
             )
         )
         self.assertEqual(expected, self._run_formatter(original))
+
+    def test_code_block_reformat_cpp(self):
+        self.assertEqual(FORMATTED_CPP, self._run_formatter(FORMATTED_CPP))
+
+    def test_code_block_reformat_cpp_repeatedly(self):
+        original = '\n'.join(
+            (
+                '.. code-block:: cpp',
+                '',
+                '   int main() {',
+                '     if (true) {',
+                '       return 0;',
+                '     }',
+                '',
+                '     return 1;',
+                '   }',
+                '',
+            )
+        )
+        self.assertEqual(original, self._run_formatter(original))
 
     def test_code_block_with_options(self):
         original = '\n'.join(
@@ -110,9 +166,7 @@ class RstFormatterTest(unittest.TestCase):
                 '.. code-block:: cpp',
                 '   :caption: My Caption',
                 '',
-                '   int main() {',
-                '     return 0;',
-                '   }',
+                '   int main() { return 0; }',
                 '',
             )
         )

@@ -28,6 +28,7 @@ RISCV_DEPS = [
 rust_library(
     name = "kernel",
     srcs = [
+        "interrupt.rs",
         "lib.rs",
         "memory.rs",
         "object.rs",
@@ -36,7 +37,9 @@ rust_library(
         "object/ticker.rs",
         "panic.rs",
         "scheduler.rs",
+        "scheduler/algorithm.rs",
         "scheduler/locks.rs",
+        "scheduler/priority.rs",
         "scheduler/thread.rs",
         "scheduler/timer.rs",
         "sync.rs",
@@ -54,6 +57,7 @@ rust_library(
             "std_panic_handler",
         ],
     }),
+    edition = "2024",
     proc_macro_deps = [
         "@rust_crates//:paste",
     ] + select({
@@ -70,11 +74,12 @@ rust_library(
         "//pw_kernel/lib/pw_assert",
         "//pw_kernel/lib/pw_atomic",
         "//pw_kernel/lib/pw_cast",
-        "//pw_kernel/lib/pw_status",
         "//pw_kernel/lib/regs",
         "//pw_kernel/lib/time",
+        "//pw_kernel/subsys/console",
         "//pw_kernel/syscall:syscall_defs",
         "//pw_log/rust:pw_log",
+        "//pw_status/rust:pw_status",
         "@rust_crates//:bitflags",
     ] + select({
         "@platforms//cpu:armv8-m": CORTEX_M_DEPS,

@@ -12,26 +12,29 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 load("@rules_rust//rust:defs.bzl", "rust_binary")
-load("//pw_kernel/tooling:app_linker_script.bzl", "app_linker_script")
+load("//pw_kernel/tooling:app_package.bzl", "app_package")
 
 rust_binary(
     name = "two",
     srcs = [
         "main.rs",
     ],
+    edition = "2024",
     tags = ["kernel"],
     visibility = ["//visibility:public"],
     deps = [
-        ":linker_script",
-        "//pw_kernel/lib/pw_status",
+        ":app_two",
         "//pw_kernel/syscall:syscall_user",
         "//pw_kernel/userspace",
+        "//pw_log/rust:pw_log",
+        "//pw_status/rust:pw_status",
     ],
 )
 
-app_linker_script(
-    name = "linker_script",
+app_package(
+    name = "app_two",
     app_name = "two",
+    edition = "2024",
     system_config = "//pw_kernel/target:system_config_file",
     tags = ["kernel"],
 )

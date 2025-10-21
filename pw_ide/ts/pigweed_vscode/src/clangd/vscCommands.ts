@@ -13,6 +13,7 @@
 // the License.
 
 import * as vscode from 'vscode';
+import { cpus } from 'os';
 import { ClangdActiveFilesCache } from './activeFilesCache';
 import { clangdPath as bazelClangdPath } from './bazel';
 import {
@@ -91,6 +92,7 @@ export async function setTargetWithClangd(
 
   const { update: updatePath } = stringSettingFor('path', 'clangd');
   const { update: updateArgs } = settingFor<string[]>('arguments', 'clangd');
+  const cores = cpus().length;
 
   // These updates all happen asynchronously, and we want to make sure they're
   // all done before we trigger a clangd restart.
@@ -101,11 +103,12 @@ export async function setTargetWithClangd(
       '--query-driver=**',
       '--header-insertion=never',
       '--background-index',
+      '-j=' + Math.max(1, Math.round(cores / 4)),
     ]),
     settingsFileWriter(target.name),
   ]);
   // Restart the clangd server so it picks up the new setting.
-  vscode.commands.executeCommand('clangd.restart');
+  await restartClangd();
 }
 
 /** Show a checkmark next to the item if it's the current setting. */
@@ -208,7 +211,7 @@ export async function disableInactiveFileCodeIntelligence(
   await settings.disableInactiveFileCodeIntelligence(true);
   didChangeClangdConfig.fire();
   await activeFilesCache.writeToSettings(settings.codeAnalysisTarget());
-  await vscode.commands.executeCommand('clangd.restart');
+  await restartClangd();
 }
 
 export async function enableInactiveFileCodeIntelligence(
@@ -218,5 +221,10 @@ export async function enableInactiveFileCodeIntelligence(
   await settings.disableInactiveFileCodeIntelligence(false);
   didChangeClangdConfig.fire();
   await activeFilesCache.writeToSettings();
+  await restartClangd();
+}
+
+export async function restartClangd(): Promise<void> {
+  logger.warn(`Restarting clangd.`);
   await vscode.commands.executeCommand('clangd.restart');
 }

@@ -23,7 +23,7 @@ The remainder of this document refers to the newer, "v2" version.
 Sequences of multiple buffers
 -----------------------------
 A MultiBuf instance manages a sequence of memory buffers using a
-:doxylink:`pw::DynamicDeque` of :ref:`module-pw_multibuf-concepts-entries`. This
+:cc:`pw::DynamicDeque` of :ref:`module-pw_multibuf-concepts-entries`. This
 deque stores metadata about each memory region, or "chunk" rather than the data
 itself. For each chunk, a series of entries tracks the memory address and
 different views into it.
@@ -44,8 +44,8 @@ move part of it to a different MultiBuf instance, as this would create
 ambiguous ownership.
 
 These operations seamlessly integrate different memory management strategies by
-handling various data types, including  MultiBuf, :doxylink:`pw::UniquePtr`,
-:doxylink:`pw::SharedPtr`, and ``ByteSpan``.
+handling various data types, including  MultiBuf, :cc:`pw::UniquePtr`,
+:cc:`pw::SharedPtr`, and ``ByteSpan``.
 
 -------------
 Virtual spans
@@ -65,9 +65,10 @@ of a dereferenced iterator to define a range can lead memory corruption!
 
 For efficient bulk data transfer, the MultiBuf type provides ``CopyTo`` and
 ``CopyFrom`` methods, which are optimized to handle the scatter-gather nature of
-the buffer. The range of chunks can also be accessed using the ``Chunks`` and
-``ConstChunks`` methods. Each of these can provide ``ChunkIterator`` objects
-that can be used to iterate over the contiguous spans of memory.
+the buffer. The range of :cc:`Chunks <pw::multibuf::Chunks>` can also be
+accessed using the ``Chunks`` and ``ConstChunks`` methods. Each of these can
+provide ``ChunkIterator`` objects that can be used to iterate over the
+contiguous spans of memory.
 
 For accessing smaller regions of data, such as protocol headers, the ``Get``
 and ``Visit`` methods are preferred. These methods intelligently avoid data
@@ -77,7 +78,7 @@ memory. Only if the range spans multiple, non-contiguous chunks will the data be
 copied into a user-provided buffer. This allows for efficient, zero-copy access
 in the common case while still correctly handling fragmented data.
 
-.. _module-pw_multibuf-design-infallibe:
+.. _module-pw_multibuf-design-infallible:
 
 --------------------
 Infallible operation
@@ -108,28 +109,30 @@ simply use methods like  ``Insert`` and ``PushBack`` infallibly.
 ----------
 Properties
 ----------
-The :doxylink:`BasicMultiBuf <pw::BasicMultiBuf>` class template uses
-:doxylink:`MultiBufProperty <pw::MultiBufProperty>` template parameters to
-define the capabilities of a MultiBuf interface. This creates a compile-time
-system for specifying behavior. The core properties are:
+The :cc:`BasicMultiBuf <pw::BasicMultiBuf>` class template uses
+:cc:`Property <pw::multibuf::Property>` template parameters to define the
+capabilities of a MultiBuf interface. This creates a compile-time system for
+specifying behavior. The core properties are:
 
 - ``kConst``: The data within the buffer is read-only.
 - ``kLayerable``: The buffer supports adding and removing hierarchical
   :ref:`module-pw_multibuf-concepts-layers` of the data.
 - ``kObservable``: The buffer can notify a registered
-  :doxylink:`pw::MultiBufObserver` of changes.
+  :cc:`pw::multibuf::Observer` of changes.
 
-:doxylink:`GenericMultiBuf <pw::multibuf_impl::GenericMultiBuf>` privately
+:cc:`GenericMultiBuf <pw::multibuf::internal::GenericMultiBuf>` privately
 inherits from all valid combinations of ``BasicMultiBuf<...kProperties>``. This
 design allows any ``BasicMultiBuf`` reference to be safely ``static_cast`` to a
 ``GenericMultiBuf`` reference, which holds the actual state (the deque,
 observer, etc.). This ``GenericMultiBuf`` can in turn be cast to any other
-compatible ``BasicMultiBuf`` interface.
+compatible ``BasicMultiBuf`` interface. This pattern is the same as the one used
+in :ref:`module-pw_channel`, and is referred to as an
+:ref:`module-pw_channel-design-hourglass_inheritance_pattern`.
 
 To create a concrete objects, use an
-:doxylink:`Instance <pw::multibuf_impl::Instance>` templated on one of the
-aliases of a specific ``BasicMultiBuf`` specialization (e.g.,
-:doxylink:`pw::TrackedMultiBuf`). The ``Instance`` class wraps a
+:cc:`Instance <pw::multibuf::internal::Instance>` templated on one of the
+aliases of a specific ``BasicMultiBuf`` specialization
+(e.g., :cc:`pw::TrackedMultiBuf`). The ``Instance`` class wraps a
 ``GenericMultiBuf`` member.
 
 A key feature of this design is seamless and safe convertibility. An
@@ -139,13 +142,13 @@ conversion is valid.
 
 kConst
 ======
-The :doxylink:`kConst <pw::MultiBufProperty>` property signifies that the
-underlying byte data held by the MultiBuf type is immutable. When this property
-is present, methods that would modify the data, such as the ``CopyFrom`` or the
-non-const ``operator[]`` methods, are disabled at compile time.
+The :cc:`kConst <pw::multibuf::Property>` property signifies that the underlying
+byte data held by the MultiBuf type is immutable. When this property is present,
+methods that would modify the data, such as the ``CopyFrom`` or the non-const
+``operator[]`` methods, are disabled at compile time.
 
 It is important to distinguish this from an immutable *structure*. A
-:doxylink:`pw::ConstMultiBuf` can still be structurally modified. Operations
+:cc:`pw::ConstMultiBuf` can still be structurally modified. Operations
 like the ``Insert``, ``Remove``, ``PushBack``, or ``AddLayer`` methods are still
 permitted, as they only change the metadata that defines the sequence and view
 of the :ref:`module-pw_multibuf-concepts-chunks`, not the content of the memory
@@ -154,16 +157,16 @@ chunks themselves.
 This property provides a guarantee of data integrity similar to
 ``const``-correctness in C++. Any MultiBuf type that is not ``kConst`` can be
 safely and implicitly converted to its ``kConst`` equivalent (e.g.,
-:doxylink:`pw::MultiBuf` to :doxylink:`pw::ConstMultiBuf`). This allows
+:cc:`pw::MultiBuf` to :cc:`pw::ConstMultiBuf`). This allows
 functions that only need to read data to accept a ``kConst`` version, preventing
 accidental modification, while callers can freely pass mutable buffers to them.
 The reverse conversion, from ``kConst`` to mutable, is disallowed.
 
 kLayerable
 ==========
-The :doxylink:`kLayerable <pw::MultiBufProperty>` property enables a MultiBuf
-type to manage a stack of views, or :ref:`module-pw_multibuf-concepts-layers`.
-Each layer represents a subspan of the layer beneath it, effectively creating a
+The :cc:`kLayerable <pw::multibuf::Property>` property enables a MultiBuf type
+to manage a stack of views, or :ref:`module-pw_multibuf-concepts-layers`. Each
+layer represents a subspan of the layer beneath it, effectively creating a
 narrower, more specific view of the underlying memory without any data copying.
 
 For example, a MultiBuf instance might initially represent a full Ethernet
@@ -182,8 +185,8 @@ buffers.
 
 kObservable
 ===========
-A MultiBuf with the :doxylink:`kObservable <pw::MultiBufProperty>` property can
-have a :doxylink:`pw::MultiBufObserver` registered via the ``set_observer``
+A MultiBuf with the :cc:`kObservable <pw::multibuf::Property>` property can have
+a :cc:`Observer <pw::multibuf::Observer>` registered via the ``set_observer``
 method. This observer will be notified of structural changes to the buffer.
 Whenever bytes or :ref:`module-pw_multibuf-concepts-layers` are added or removed
 (e.g., through the ``Insert``, ``Remove``, ``AddLayer``, ``PopLayer``, or

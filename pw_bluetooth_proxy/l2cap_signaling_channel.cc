@@ -17,31 +17,50 @@
 #include <mutex>
 #include <optional>
 
+#include "pw_assert/check.h"
 #include "pw_bluetooth/emboss_util.h"
 #include "pw_bluetooth/l2cap_frames.emb.h"
 #include "pw_bluetooth_proxy/direction.h"
 #include "pw_bluetooth_proxy/internal/l2cap_channel_manager.h"
 #include "pw_bluetooth_proxy/internal/l2cap_coc_internal.h"
+#include "pw_bluetooth_proxy/internal/multibuf.h"
 #include "pw_bluetooth_proxy/l2cap_channel_common.h"
 #include "pw_bytes/span.h"
 #include "pw_log/log.h"
-#include "pw_multibuf/allocator.h"
 #include "pw_span/cast.h"
 #include "pw_status/status.h"
 
 namespace pw::bluetooth::proxy {
 
+namespace {
+uint16_t ChannelIdForTransport(AclTransportType transport) {
+  if (transport == AclTransportType::kBrEdr) {
+    return cpp23::to_underlying(emboss::L2capFixedCid::ACL_U_SIGNALING);
+  }
+  return cpp23::to_underlying(emboss::L2capFixedCid::LE_U_SIGNALING);
+}
+}  // namespace
+
+L2capSignalingChannel L2capSignalingChannel::Create(
+    L2capChannelManager& l2cap_channel_manager,
+    uint16_t connection_handle,
+    AclTransportType transport) {
+  L2capSignalingChannel channel(
+      l2cap_channel_manager, connection_handle, transport);
+  channel.Init();
+  return channel;
+}
+
 L2capSignalingChannel::L2capSignalingChannel(
     L2capChannelManager& l2cap_channel_manager,
     uint16_t connection_handle,
-    AclTransportType transport,
-    uint16_t fixed_cid)
+    AclTransportType transport)
     : BasicL2capChannel(l2cap_channel_manager,
                         /*rx_multibuf_allocator=*/nullptr,
                         /*connection_handle=*/connection_handle,
                         /*transport*/ transport,
-                        /*local_cid=*/fixed_cid,
-                        /*remote_cid=*/fixed_cid,
+                        /*local_cid=*/ChannelIdForTransport(transport),
+                        /*remote_cid=*/ChannelIdForTransport(transport),
                         /*payload_from_controller_fn=*/nullptr,
                         /*payload_from_host_fn=*/nullptr,
                         /*event_fn=*/nullptr),
@@ -68,6 +87,60 @@ L2capSignalingChannel& L2capSignalingChannel::operator=(
   next_identifier_ = std::exchange(other.next_identifier_, 0);
 
   return *this;
+}
+
+bool L2capSignalingChannel::OnCFramePayload(
+    Direction direction, pw::span<const uint8_t> cframe_payload) {
+  std::optional<bool> any_commands_consumed;
+
+  do {
+    auto cmd = emboss::MakeL2capSignalingCommandView(cframe_payload.data(),
+                                                     cframe_payload.size());
+    if (!cmd.Ok()) {
+      PW_LOG_WARN(
+          "Remaining buffer is too small for L2CAP command. So will forward "
+          "without processing.");
+
+      // TODO: https://pwbug.dev/379172336 - Handle partially consumed
+      // signaling command packets.
+      if (any_commands_consumed.value_or(false)) {
+        PW_LOG_ERROR("Forwarding partially consumed C-frame");
+      }
+      return false;
+    }
+
+    bool current_command_consumed = HandleL2capSignalingCommand(direction, cmd);
+
+    // TODO: https://pwbug.dev/379172336 - Handle partially consumed signaling
+    // command packets.
+    if (any_commands_consumed.has_value() &&
+        *any_commands_consumed != current_command_consumed) {
+      PW_LOG_ERROR(
+          "Wasn't able to consume all commands, but don't yet support "
+          "passing on some of them");
+    }
+
+    any_commands_consumed = current_command_consumed;
+
+    cframe_payload = cframe_payload.subspan(cmd.SizeInBytes());
+
+    // LE C-frames contain one signaling packet, while BR/EDR C-frames can
+    // contain multiple.
+  } while (transport() == AclTransportType::kBrEdr && !cframe_payload.empty());
+
+  if (!cframe_payload.empty()) {
+    PW_LOG_WARN("Received C-frame with extra bytes, forwarding to host");
+
+    // TODO: https://pwbug.dev/379172336 - Handle partially consumed signaling
+    // command packets.
+    if (any_commands_consumed.value_or(false)) {
+      PW_LOG_ERROR("Forwarding partially consumed C-frame");
+    }
+    return false;
+  }
+
+  PW_CHECK(any_commands_consumed.has_value());
+  return any_commands_consumed.value();
 }
 
 bool L2capSignalingChannel::DoHandlePduFromController(
@@ -429,30 +502,27 @@ bool L2capSignalingChannel::HandleFlowControlCreditInd(
 }
 
 Status L2capSignalingChannel::SendFlowControlCreditInd(
-    uint16_t cid,
-    uint16_t credits,
-    multibuf::MultiBufAllocator& multibuf_allocator) {
+    uint16_t cid, uint16_t credits, MultiBufAllocator& multibuf_allocator) {
   if (cid == 0) {
     PW_LOG_ERROR("Tried to send signaling packet on invalid CID 0x0.");
     return Status::InvalidArgument();
   }
 
-  std::optional<pw::multibuf::MultiBuf> command =
-      multibuf_allocator.AllocateContiguous(
-          emboss::L2capFlowControlCreditInd::IntrinsicSizeInBytes());
+  std::optional<FlatMultiBufInstance> command = MultiBufAdapter::Create(
+      multibuf_allocator,
+      emboss::L2capFlowControlCreditInd::IntrinsicSizeInBytes());
   if (!command.has_value()) {
     PW_LOG_ERROR(
         "btproxy: SendFlowControlCreditInd unable to allocate command buffer "
-        "from provided multibuf_allocator. cid: %#x, credits: %#x",
+        "from provided allocator. cid: %#x, credits: %#x",
         cid,
         credits);
     return Status::Unavailable();
   }
-  std::optional<ByteSpan> command_span = command->ContiguousSpan();
+  span<uint8_t> command_span = MultiBufAdapter::AsSpan(command.value());
 
   Result<emboss::L2capFlowControlCreditIndWriter> command_view =
-      MakeEmbossWriter<emboss::L2capFlowControlCreditIndWriter>(
-          pw::span_cast<uint8_t>(command_span.value()));
+      MakeEmbossWriter<emboss::L2capFlowControlCreditIndWriter>(command_span);
   PW_CHECK(command_view->IsComplete());
 
   command_view->command_header().code().Write(
@@ -466,7 +536,8 @@ Status L2capSignalingChannel::SendFlowControlCreditInd(
   command_view->credits().Write(credits);
   PW_CHECK(command_view->Ok());
 
-  StatusWithMultiBuf s = WriteDuringRx(*std::move(command));
+  StatusWithMultiBuf s =
+      WriteDuringRx(std::move(MultiBufAdapter::Unwrap(command.value())));
 
   return s.status;
 }
