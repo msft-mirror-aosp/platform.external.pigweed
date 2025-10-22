@@ -220,6 +220,18 @@ cc_library(
 )
 
 cc_library(
+    name = "deque",
+    hdrs = ["public/pw_containers/deque.h"],
+    strip_include_prefix = "public",
+    deps = [
+        ":deque_common",
+        ":storage",
+        "//pw_allocator:allocator",
+        "//pw_assert:assert",
+    ],
+)
+
+cc_library(
     name = "dynamic_deque",
     hdrs = ["public/pw_containers/dynamic_deque.h"],
     strip_include_prefix = "public",
@@ -292,6 +304,16 @@ cc_library(
         ":async_count_and_capacity",
         ":inline_async_deque",
         ":inline_queue",
+    ],
+)
+
+cc_library(
+    name = "queue",
+    hdrs = ["public/pw_containers/queue.h"],
+    strip_include_prefix = "public",
+    deps = [
+        ":deque",
+        ":queue_common",
     ],
 )
 
@@ -535,6 +557,40 @@ pw_cc_test(
 )
 
 pw_cc_test(
+    name = "deque_test",
+    srcs = ["deque_test.cc"],
+    has_nc_test = True,
+    deps = [
+        ":deque",
+        ":test_helpers",
+        "//pw_allocator:null_allocator",
+        "//pw_allocator:testing",
+        "//pw_assert:assert",
+        "//pw_polyfill",
+        "//pw_span",
+    ],
+)
+
+pw_cc_test(
+    name = "fixed_deque_allocated_common_test",
+    srcs = ["fixed_deque_allocated_common_test.cc"],
+    deps = [
+        ":deque",
+        ":test_helpers",
+        "//pw_allocator:testing",
+    ],
+)
+
+pw_cc_test(
+    name = "fixed_deque_static_common_test",
+    srcs = ["fixed_deque_static_common_test.cc"],
+    deps = [
+        ":deque",
+        ":test_helpers",
+    ],
+)
+
+pw_cc_test(
     name = "dynamic_deque_test",
     srcs = ["dynamic_deque_test.cc"],
     deps = [
@@ -608,6 +664,16 @@ pw_cc_test(
         "//pw_async2:pend_func_task",
         "//pw_async2:poll",
         "//pw_status",
+    ],
+)
+
+pw_cc_test(
+    name = "queue_test",
+    srcs = ["queue_test.cc"],
+    deps = [
+        ":queue",
+        ":test_helpers",
+        "//pw_allocator:testing",
     ],
 )
 
@@ -796,6 +862,7 @@ filegroup(
     srcs = [
         "public/pw_containers/algorithm.h",
         "public/pw_containers/bitset.h",
+        "public/pw_containers/deque.h",
         "public/pw_containers/dynamic_deque.h",
         "public/pw_containers/dynamic_queue.h",
         "public/pw_containers/dynamic_vector.h",
@@ -809,6 +876,7 @@ filegroup(
         "public/pw_containers/internal/aa_tree.h",
         "public/pw_containers/internal/async_count_and_capacity.h",
         "public/pw_containers/internal/generic_deque.h",
+        "public/pw_containers/internal/generic_queue.h",
         "public/pw_containers/internal/intrusive_list.h",
         "public/pw_containers/intrusive_forward_list.h",
         "public/pw_containers/intrusive_list.h",
@@ -818,6 +886,7 @@ filegroup(
         "public/pw_containers/intrusive_set.h",
         "public/pw_containers/optional_tuple.h",
         "public/pw_containers/ptr_iterator.h",
+        "public/pw_containers/queue.h",
         "public/pw_containers/storage.h",
         "public/pw_containers/to_array.h",
         "public/pw_containers/vector.h",
@@ -1022,6 +1091,41 @@ pw_size_diff(
 )
 
 pw_size_diff(
+    name = "fixed_deque_static_base_size_diff",
+    base = "//pw_containers/size_report:base",
+    label = "FixedDeque (static)",
+    target = "//pw_containers/size_report:fixed_deque_static_base",
+)
+
+pw_size_diff(
+    name = "fixed_deque_static_alternate_type_size_diff",
+    base = "//pw_containers/size_report:fixed_deque_static_base",
+    label = "Additional FixedDeque (static) with different item type",
+    target = "//pw_containers/size_report:fixed_deque_static_alternate_type",
+)
+
+pw_size_diff(
+    name = "fixed_deque_dynamic_base_size_diff",
+    base = "//pw_containers/size_report:base",
+    label = "FixedDeque (dynamic)",
+    target = "//pw_containers/size_report:fixed_deque_dynamic_base",
+)
+
+pw_size_diff(
+    name = "fixed_deque_dynamic_alternate_type_size_diff",
+    base = "//pw_containers/size_report:fixed_deque_dynamic_base",
+    label = "Additional FixedDeque (dynamic) with different item type",
+    target = "//pw_containers/size_report:fixed_deque_dynamic_alternate_type",
+)
+
+pw_size_diff(
+    name = "fixed_deque_static_and_dynamic_size_diff",
+    base = "//pw_containers/size_report:base",
+    label = "FixedDeque (static and dynamic)",
+    target = "//pw_containers/size_report:fixed_deque_static_and_dynamic",
+)
+
+pw_size_diff(
     name = "std_deque_base_size_diff",
     base = "//pw_containers/size_report:base",
     label = "std::deque",
@@ -1042,6 +1146,11 @@ pw_size_table(
         ":std_deque_alternate_type_size_diff",
         ":dynamic_deque_base_size_diff",
         ":dynamic_deque_alternate_type_size_diff",
+        ":fixed_deque_static_base_size_diff",
+        ":fixed_deque_static_alternate_type_size_diff",
+        ":fixed_deque_dynamic_base_size_diff",
+        ":fixed_deque_dynamic_alternate_type_size_diff",
+        ":fixed_deque_static_and_dynamic_size_diff",
         ":inline_deque_base_size_diff",
         ":inline_deque_alternate_type_size_diff",
         ":inline_queue_base_size_diff",

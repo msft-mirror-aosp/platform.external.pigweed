@@ -15,36 +15,43 @@
 #include "pw_grpc/send_queue.h"
 
 #include "pw_log/log.h"
-#include "pw_status/try.h"
 
 namespace pw::grpc {
+
+UniquePtr<std::byte[]> SendQueue::PopNext() {
+  std::lock_guard lock(send_mutex_);
+  if (queue_.empty()) {
+    return nullptr;
+  }
+  auto buffer = std::move(queue_.front());
+  queue_.pop_front();
+  return buffer;
+}
 
 void SendQueue::ProcessSendQueue(async::Context&, Status task_status) {
   if (!task_status.ok()) {
     return;
   }
 
-  multibuf::MultiBuf buffer;
-  {
-    std::lock_guard lock(send_mutex_);
-    if (buffer_to_write_.empty()) {
-      return;
-    }
-    buffer = std::move(buffer_to_write_);
-  }
-  for (const auto& chunk : buffer.Chunks()) {
-    if (Status status = socket_.Write(chunk); !status.ok()) {
+  UniquePtr<std::byte[]> buffer = PopNext();
+  while (buffer != nullptr) {
+    if (Status status = socket_.Write(pw::span(buffer.get(), buffer.size()));
+        !status.ok()) {
       PW_LOG_ERROR("Failed to write to socket in SendQueue: %s", status.str());
       return;
     }
+    buffer = PopNext();
   }
 }
 
-void SendQueue::QueueSend(multibuf::MultiBuf&& buffer) {
+bool SendQueue::QueueSend(UniquePtr<std::byte[]>&& buffer) {
   std::lock_guard lock(send_mutex_);
-  buffer_to_write_.PushSuffix(std::move(buffer));
+  if (!queue_.try_push_back(std::move(buffer))) {
+    return false;
+  }
   send_dispatcher_.Cancel(send_task_);
   send_dispatcher_.Post(send_task_);
+  return true;
 }
 
 }  // namespace pw::grpc

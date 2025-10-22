@@ -18,6 +18,7 @@
 #include <string_view>
 #include <type_traits>
 
+#include "pw_allocator/best_fit.h"
 #include "pw_allocator/libc_allocator.h"
 #include "pw_bytes/byte_builder.h"
 #include "pw_bytes/span.h"
@@ -27,7 +28,6 @@
 #include "pw_grpc/grpc_channel_output.h"
 #include "pw_grpc/pw_rpc_handler.h"
 #include "pw_log/log.h"
-#include "pw_multibuf/simple_allocator.h"
 #include "pw_result/result.h"
 #include "pw_rpc/internal/hash.h"
 #include "pw_rpc/internal/packet.h"
@@ -53,7 +53,8 @@ class EchoService
     auto message =
         ::grpc::examples::echo::pwpb::EchoRequest::FindMessage(request);
     if (!message.ok()) {
-      responder.Finish({}, message.status()).IgnoreError();
+      responder.Finish({}, pw::OkStatus()).IgnoreError();
+      return;
     }
 
     if (message->size() < 100) {
@@ -221,9 +222,9 @@ int main(int argc, char* argv[]) {
 
     constexpr size_t kMaxSendQueueSize = 4096;
     pw::allocator::LibCAllocator message_assembly_allocator;
-    std::array<std::byte, kMaxSendQueueSize> data_area;
-    pw::multibuf::SimpleAllocator simple_allocator(data_area,
-                                                   message_assembly_allocator);
+
+    std::array<std::byte, kMaxSendQueueSize> send_allocator_data;
+    pw::allocator::BestFitAllocator<> send_allocator(send_allocator_data);
     pw::thread::test::TestThreadContext connection_thread_context;
     pw::thread::test::TestThreadContext send_thread_context;
     pw::grpc::ConnectionThread conn(
@@ -232,7 +233,7 @@ int main(int argc, char* argv[]) {
         handler,
         [&socket]() { socket->Close(); },
         &message_assembly_allocator,
-        simple_allocator);
+        send_allocator);
     rpc_egress.set_connection(conn);
 
     pw::Thread conn_thread(connection_thread_context.options(), conn);
