@@ -24,7 +24,7 @@ class ItemDropSensor {
  public:
   constexpr ItemDropSensor() = default;
 
-  // Pends until theitem drop sensor triggers.
+  // Pends until the item drop sensor triggers.
   pw::async2::Poll<> Pend(pw::async2::Context& cx);
 
   // Records an item drop event. Typically called from the drop sensor ISR.

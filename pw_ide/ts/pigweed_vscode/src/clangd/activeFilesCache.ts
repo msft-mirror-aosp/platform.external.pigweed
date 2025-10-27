@@ -29,7 +29,7 @@ import { didInit, didUpdateActiveFilesCache } from '../events';
 import logger from '../logging';
 import { OK, RefreshCallback, RefreshManager } from '../refreshManager';
 import { settings, workingDir } from '../settings/vscode';
-import { CompilationDatabase } from './parser';
+import { CompileCommand, CompilationDatabase } from './parser';
 import { glob } from 'glob';
 
 function isNotInExcludedDirs(
@@ -50,9 +50,9 @@ function isNotInExcludedDirs(
 /** Parse a compilation database and get the source files in the build. */
 export async function parseForSourceFiles(
   target: Target,
-): Promise<Set<string>> {
+): Promise<Map<string, CompileCommand>> {
   const compDb = await CompilationDatabase.fromFile(target.path);
-  const files = new Set<string>();
+  const files = new Map<string, CompileCommand>();
   if (!compDb) return files;
 
   const _workingDir = workingDir.get();
@@ -65,7 +65,13 @@ export async function parseForSourceFiles(
 
   for (const command of compDb.db) {
     if (isNotInExcludedDirs(excludedDirs, command.sourceFilePath)) {
-      files.add(path.relative(_workingDir, command.sourceFilePath));
+      try {
+        const realPath = await fs_p.realpath(command.sourceFilePath);
+        const relativeRealPath = path.relative(_workingDir, realPath);
+        files.set(relativeRealPath, command);
+      } catch (error) {
+        // Ignore errors, for example if the file doesn't exist
+      }
     }
   }
 
@@ -82,10 +88,10 @@ const clangdSettingsDisableFiles = (paths: string[]) => ({
   },
 });
 
-export type FileStatus = 'ACTIVE' | 'INACTIVE' | 'ORPHANED';
+export type FileStatus = 'ACTIVE' | 'INACTIVE' | 'ORPHANED' | 'INVALID';
 
 export class ClangdActiveFilesCache extends Disposable {
-  activeFiles: Record<string, Set<string>> = {};
+  activeFiles: Record<string, Map<string, CompileCommand>> = {};
 
   constructor(refreshManager: RefreshManager<any>) {
     super();
@@ -94,9 +100,11 @@ export class ClangdActiveFilesCache extends Disposable {
   }
 
   /** Get the active files for a particular target. */
-  getForTarget = async (target: string): Promise<Set<string>> => {
+  getForTarget = async (
+    target: string,
+  ): Promise<Map<string, CompileCommand>> => {
     if (!Object.keys(this.activeFiles).includes(target)) {
-      return new Set();
+      return new Map();
     }
 
     return this.activeFiles[target];
@@ -108,10 +116,30 @@ export class ClangdActiveFilesCache extends Disposable {
       .map(([target, files]) => (files.has(fileName) ? target : undefined))
       .filter((it) => it !== undefined);
 
-  fileStatus = async (projectRoot: string, uri: Uri, target?: string) => {
-    const fileName = path.relative(projectRoot, uri.fsPath);
-    const activeFiles = target ? await this.getForTarget(target) : new Set();
+  fileStatus = async (
+    projectRoot: string,
+    uri: Uri,
+    target?: string,
+  ): Promise<{
+    status: FileStatus;
+    targets: string[];
+    error?: Error;
+  }> => {
+    let fileName = path.relative(projectRoot, uri.fsPath);
+    try {
+      const realPath = await fs_p.realpath(uri.fsPath);
+      fileName = path.relative(projectRoot, realPath);
+    } catch (error) {
+      // Ignore errors, for example if the file doesn't exist
+    }
+
+    const activeFiles = target ? await this.getForTarget(target) : new Map();
     const targets = this.targetsForFile(fileName);
+    const command = activeFiles.get(fileName);
+
+    if (command?.error) {
+      return { status: 'INVALID', targets, error: command.error };
+    }
 
     const status: FileStatus =
       // prettier-ignore
@@ -162,7 +190,9 @@ export class ClangdActiveFilesCache extends Disposable {
 
     // Create clangd settings that disable code intelligence for all files
     // except those that are in the build for the specified target.
-    const activeFilesForTarget = [...(await this.getForTarget(target))];
+    const activeFilesForTarget = [
+      ...((await this.getForTarget(target)).keys() ?? []),
+    ];
     let data = yaml.dump(clangdSettingsDisableFiles(activeFilesForTarget));
 
     // If there are other clangd settings for the project, append this fragment

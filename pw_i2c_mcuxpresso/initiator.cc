@@ -21,6 +21,7 @@
 #include "fsl_i2c.h"
 #include "pw_assert/check.h"
 #include "pw_chrono/system_clock.h"
+#include "pw_function/scope_guard.h"
 #include "pw_log/log.h"
 #include "pw_status/status.h"
 #include "pw_status/try.h"
@@ -49,7 +50,12 @@ Status HalStatusToPwStatus(status_t status) {
 void McuxpressoInitiator::Enable() {
   std::lock_guard lock(mutex_);
 
+  // Acquire the clock_tree element. Note that this function only requires the
+  // IP clock and not the functional clock. However, ClockMcuxpressoClockIp
+  // only provides the combined element, so that's what we use here.
+  // Make sure it's released on any function exits through a scoped guard.
   PW_CHECK_OK(clock_tree_element_.Acquire());
+  pw::ScopeGuard guard([this] { clock_tree_element_.Release().IgnoreError(); });
 
   i2c_master_config_t master_config;
   I2C_MasterGetDefaultConfig(&master_config);
@@ -65,8 +71,15 @@ void McuxpressoInitiator::Enable() {
 
 void McuxpressoInitiator::Disable() {
   std::lock_guard lock(mutex_);
+
+  // Acquire the clock_tree element. Note that this function only requires the
+  // IP clock and not the functional clock. However, ClockMcuxpressoClockIp
+  // only provides the combined element, so that's what we use here.
+  // Make sure it's released on any function exits through a scoped guard.
+  PW_CHECK_OK(clock_tree_element_.Acquire());
+  pw::ScopeGuard guard([this] { clock_tree_element_.Release().IgnoreError(); });
+
   I2C_MasterDeinit(base_);
-  clock_tree_element_.Release().IgnoreError();
   enabled_ = false;
 }
 
@@ -81,11 +94,19 @@ void McuxpressoInitiator::TransferCompleteCallback(I2C_Type*,
   initiator.callback_isl_.lock();
   initiator.transfer_status_ = status;
   initiator.callback_isl_.unlock();
+
+  // We cannot release clock_tree_element_ here since we are in an ISR.
+  // It is released where callback_complete_notification_ is waited on.
   initiator.callback_complete_notification_.release();
 }
 
 Status McuxpressoInitiator::InitiateNonBlockingTransferUntil(
     chrono::SystemClock::time_point deadline, i2c_master_transfer_t* transfer) {
+  // Acquire the clock_tree_element. Use a scoped guard so it's released from
+  // any function return.
+  PW_CHECK_OK(clock_tree_element_.Acquire());
+  pw::ScopeGuard guard([this] { clock_tree_element_.Release().IgnoreError(); });
+
   const status_t status =
       I2C_MasterTransferNonBlocking(base_, &handle_, transfer);
   if (status != kStatus_Success) {

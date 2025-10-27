@@ -159,20 +159,80 @@ PW_PACKED(struct) WireFrameHeader {
   uint32_t stream_id;
 };
 
+template <typename T, std::size_t N, typename... Args, std::size_t... I>
+constexpr std::array<T, N> MakeArrayWithValueImpl(std::index_sequence<I...>,
+                                                  Args&&... args) {
+  // For each index 'I' in the sequence, the comma operator expression
+  // discards the index and evaluates to a new T(args...).
+  // The result is an initializer list of N identical elements.
+  return {(static_cast<void>(I), T(args...))...};
+}
+
+template <typename T, std::size_t N, typename... Args>
+constexpr std::array<T, N> MakeArrayWithValue(Args&&... args) {
+  return MakeArrayWithValueImpl<T, N>(std::make_index_sequence<N>{},
+                                      std::forward<Args>(args)...);
+}
+
 }  // namespace
 
 Connection::Connection(stream::ReaderWriter& socket,
-                       SendQueue& send_queue,
                        RequestCallbacks& callbacks,
-                       allocator::Allocator* message_assembly_allocator,
-                       multibuf::MultiBufAllocator& multibuf_allocator)
+                       Allocator* message_assembly_allocator,
+                       Allocator& send_allocator)
     : socket_(socket),
+      send_allocator_(send_allocator),
+      send_queue_(socket, send_allocator_),
       shared_state_(std::in_place,
                     message_assembly_allocator,
-                    multibuf_allocator,
-                    send_queue),
+                    send_allocator_,
+                    send_queue_),
       reader_(*this, callbacks),
       writer_(*this) {}
+
+Connection::SharedState::SharedState(
+    allocator::Allocator* message_assembly_allocator,
+    Allocator& send_allocator,
+    SendQueue& send_queue)
+    : streams_(
+          MakeArrayWithValue<Stream, kMaxConcurrentStreams>(send_allocator)),
+      message_assembly_allocator_(message_assembly_allocator),
+      send_allocator_(send_allocator),
+      send_queue_(send_queue) {}
+
+Result<Connection::DataFrame> Connection::DataFrame::Create(
+    Allocator& allocator, size_t message_payload_size) {
+  DataFrame data_frame(allocator, message_payload_size);
+  if (data_frame.bytes_ == nullptr) {
+    return Status::ResourceExhausted();
+  }
+  return data_frame;
+}
+
+Connection::DataFrame::DataFrame(Allocator& allocator,
+                                 size_t message_payload_size)
+    : bytes_(allocator.MakeUnique<std::byte[]>(message_payload_size +
+                                               kLengthPrefixedMessageHdrSize +
+                                               sizeof(WireFrameHeader))) {}
+
+size_t Connection::DataFrame::frame_payload_size() const {
+  return bytes_.size() - sizeof(WireFrameHeader);
+}
+
+ByteSpan Connection::DataFrame::writable_frame_header() {
+  return {bytes_.get(), sizeof(WireFrameHeader)};
+}
+
+ByteSpan Connection::DataFrame::writable_message_prefix() {
+  return {bytes_.get() + sizeof(WireFrameHeader),
+          kLengthPrefixedMessageHdrSize};
+}
+
+ByteSpan Connection::DataFrame::writable_message_payload() {
+  return {
+      bytes_.get() + sizeof(WireFrameHeader) + kLengthPrefixedMessageHdrSize,
+      bytes_.size() - sizeof(WireFrameHeader) - kLengthPrefixedMessageHdrSize};
+}
 
 Status Connection::Reader::ProcessFrame() {
   if (!received_connection_preface_) {
@@ -262,16 +322,17 @@ Connection::Stream* Connection::SharedState::LookupStream(StreamId id) {
 
 Status Connection::SharedState::DrainResponseQueue(Stream& stream) {
   while (stream.response_queue.size() > 0) {
-    multibuf::MultiBufChunks& chunks = stream.response_queue.Chunks();
-
-    size_t message_size = chunks.front().size();
+    size_t message_size = stream.response_queue.front().frame_payload_size();
 
     if (static_cast<int32_t>(message_size) > stream.send_window ||
         static_cast<int32_t>(message_size) > connection_send_window_) {
       break;
     }
 
-    PW_TRY(SendQueued(stream, stream.response_queue.TakeFrontChunk()));
+    DataFrame front = std::move(stream.response_queue.front());
+    stream.response_queue.pop();
+
+    PW_TRY(SendQueuedDataFrame(stream, std::move(front)));
   }
   return OkStatus();
 }
@@ -284,53 +345,26 @@ Status Connection::SharedState::DrainResponseQueues() {
 }
 
 Status Connection::SharedState::SendBytes(ConstByteSpan message) {
-  std::optional<multibuf::MultiBuf> buffer =
-      multibuf_allocator_.AllocateContiguous(message.size());
-  if (!buffer.has_value()) {
+  UniquePtr<std::byte[]> buffer =
+      send_allocator_.MakeUnique<std::byte[]>(message.size());
+  if (buffer == nullptr) {
     return Status::ResourceExhausted();
   }
-  PW_TRY(buffer->CopyFrom(message, 0));
-  send_queue_.QueueSend(std::move(*buffer));
+
+  std::memcpy(buffer.get(), message.data(), message.size());
+  send_queue_.QueueSend(std::move(buffer));
   return OkStatus();
 }
 
 // RFC 9113 §6.1
-//
-// multibuf chunk should have already been allocated with enough prefix space
-// for headers.
 Status Connection::SharedState::SendData(StreamId stream_id,
-                                         multibuf::OwnedChunk&& chunk) {
-  size_t message_size = chunk.size();
+                                         DataFrame&& data_frame) {
+  const size_t message_size = data_frame.frame_payload_size();
   PW_LOG_DEBUG("Conn.Send DATA with id=%" PRIu32 " len=%" PRIu32,
                stream_id,
                static_cast<uint32_t>(message_size));
 
-  // Write a Length-Prefixed-Message payload.
-  if (!chunk->ClaimPrefix(kLengthPrefixedMessageHdrSize)) {
-    return Status::ResourceExhausted();
-  }
-
-  ByteBuilder prefix(chunk);
-  prefix.PutUint8(0);
-  prefix.PutUint32(static_cast<uint32_t>(message_size), endian::big);
-
-  // Write FrameHeader
-  if (!chunk->ClaimPrefix(sizeof(WireFrameHeader))) {
-    return Status::ResourceExhausted();
-  }
-
-  WireFrameHeader frame(FrameHeader{
-      .payload_length =
-          static_cast<uint32_t>(message_size + kLengthPrefixedMessageHdrSize),
-      .type = FrameType::DATA,
-      .flags = 0,
-      .stream_id = stream_id,
-  });
-  ConstByteSpan frame_span = ObjectAsBytes(frame);
-  std::copy(frame_span.begin(), frame_span.end(), chunk->begin());
-
-  auto buffer = multibuf::MultiBuf::FromChunk(std::move(chunk));
-  send_queue_.QueueSend(std::move(buffer));
+  send_queue_.QueueSend(data_frame.release());
   return OkStatus();
 }
 
@@ -358,27 +392,28 @@ Status Connection::SharedState::SendHeaders(StreamId stream_id,
   }
 
   ConstByteSpan frame_span = ObjectAsBytes(frame);
-  std::optional<multibuf::MultiBuf> buffer =
-      multibuf_allocator_.AllocateContiguous(frame_span.size() +
-                                             payload1.size() + payload2.size());
-  if (!buffer.has_value()) {
+
+  UniquePtr<std::byte[]> buffer = send_allocator_.MakeUnique<std::byte[]>(
+      frame_span.size() + payload1.size() + payload2.size());
+
+  if (buffer == nullptr) {
     return Status::ResourceExhausted();
   }
 
   size_t offset = 0;
-  PW_TRY(buffer->CopyFrom(frame_span, offset));
+  std::memcpy(buffer.get(), frame_span.data(), frame_span.size());
   offset += frame_span.size();
 
   if (!payload1.empty()) {
-    PW_TRY(buffer->CopyFrom(payload1, offset));
+    std::memcpy(buffer.get() + offset, payload1.data(), payload1.size());
     offset += payload1.size();
   }
   if (!payload2.empty()) {
-    PW_TRY(buffer->CopyFrom(payload2, offset));
+    std::memcpy(buffer.get() + offset, payload2.data(), payload2.size());
     offset += payload2.size();
   }
 
-  send_queue_.QueueSend(std::move(*buffer));
+  send_queue_.QueueSend(std::move(buffer));
   return OkStatus();
 }
 
@@ -482,39 +517,48 @@ Status Connection::Writer::SendResponseMessage(StreamId stream_id,
     return Status::InvalidArgument();
   }
 
-  // Create contiguous buffer big enough to hold the response message plus
-  // headers.
-  std::optional<multibuf::MultiBuf> buffer =
-      state->multibuf_allocator().AllocateContiguous(
-          message.size() + kLengthPrefixedMessageHdrSize +
-          sizeof(WireFrameHeader));
+  PW_TRY_ASSIGN(DataFrame data_frame,
+                DataFrame::Create(state->send_allocator(), message.size()));
 
-  if (!buffer.has_value()) {
-    return Status::ResourceExhausted();
-  }
+  WireFrameHeader frame(FrameHeader{
+      .payload_length = static_cast<uint32_t>(data_frame.frame_payload_size()),
+      .type = FrameType::DATA,
+      .flags = 0,
+      .stream_id = stream_id,
+  });
 
-  // Before copying message in, move internal offset forward past header region.
-  buffer->DiscardPrefix(kLengthPrefixedMessageHdrSize +
-                        sizeof(WireFrameHeader));
-  PW_TRY(buffer->CopyFrom(message, 0));
+  ConstByteSpan frame_span = ObjectAsBytes(frame);
+  std::copy_n(frame_span.begin(),
+              frame_span.size(),
+              data_frame.writable_frame_header().begin());
 
-  return state->QueueStreamResponse(stream_id, std::move(*buffer));
+  ByteBuilder prefix(data_frame.writable_message_prefix());
+  prefix.PutUint8(0);
+  prefix.PutUint32(static_cast<uint32_t>(message.size()), endian::big);
+
+  std::copy_n(message.begin(),
+              message.size(),
+              data_frame.writable_message_payload().begin());
+
+  return state->QueueStreamResponse(stream_id, std::move(data_frame));
 }
 
-Status Connection::SharedState::QueueStreamResponse(
-    StreamId id, multibuf::MultiBuf&& buffer) {
+Status Connection::SharedState::QueueStreamResponse(StreamId id,
+                                                    DataFrame&& data_frame) {
   auto stream = LookupStream(id);
   if (!stream) {
     return Status::NotFound();
   }
-  stream->response_queue.PushSuffix(std::move(buffer));
+  if (!stream->response_queue.try_emplace(std::move(data_frame))) {
+    return Status::ResourceExhausted();
+  }
   // Try and send if we have window
   return DrainResponseQueues();
 }
 
-Status Connection::SharedState::SendQueued(Connection::Stream& stream,
-                                           multibuf::OwnedChunk&& chunk) {
-  size_t message_size = chunk.size();
+Status Connection::SharedState::SendQueuedDataFrame(Connection::Stream& stream,
+                                                    DataFrame&& data_frame) {
+  const size_t message_size = data_frame.frame_payload_size();
 
   auto status = OkStatus();
   if (!stream.started_response) {
@@ -526,7 +570,7 @@ Status Connection::SharedState::SendQueued(Connection::Stream& stream,
   }
 
   if (status.ok()) {
-    status = SendData(stream.id, std::move(chunk));
+    status = SendData(stream.id, std::move(data_frame));
   }
 
   if (!status.ok()) {

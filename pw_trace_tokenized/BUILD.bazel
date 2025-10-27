@@ -26,6 +26,7 @@ load(
     "pw_proto_filegroup",
     "pwpb_proto_library",
     "pwpb_rpc_proto_library",
+    "raw_rpc_proto_library",
 )
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
@@ -49,7 +50,10 @@ cc_library(
     ],
     strip_include_prefix = "public",
     tags = ["noclangtidy"],
-    deps = [":config_backend"],
+    deps = [
+        ":config_backend",
+        "//pw_varint",
+    ],
 )
 
 label_flag(
@@ -157,7 +161,6 @@ cc_library(
     deps = [
         ":buffer",
         ":pw_trace_tokenized",
-        "//pw_ring_buffer",
         "//pw_stream",
     ],
 )
@@ -187,6 +190,9 @@ cc_library(
         "public/pw_trace_tokenized/trace_rpc_service_nanopb.h",
     ],
     features = ["-conversion_warnings"],
+    implementation_deps = [
+        ":pw_trace_tokenized",
+    ],
     strip_include_prefix = "public",
     deps = [
         ":buffer",
@@ -198,20 +204,15 @@ cc_library(
 
 cc_library(
     name = "buffer",
-    srcs = [
-        "trace_buffer.cc",
-    ],
-    hdrs = [
-        "public/pw_trace_tokenized/trace_buffer.h",
-    ],
-    features = ["-conversion_warnings"],
-    strip_include_prefix = "public",
-    deps = [
+    srcs = ["trace_buffer.cc"],
+    hdrs = ["public/pw_trace_tokenized/trace_buffer.h"],
+    implementation_deps = [
+        ":config",
         ":pw_trace_tokenized",
-        "//pw_bytes",
-        "//pw_ring_buffer",
-        "//pw_status",
+        "//pw_span",
     ],
+    strip_include_prefix = "public",
+    deps = ["//pw_containers:inline_var_len_entry_queue"],
 )
 
 cc_library(
@@ -223,12 +224,39 @@ cc_library(
         "public/pw_trace_tokenized/trace_buffer_log.h",
     ],
     features = ["-conversion_warnings"],
+    implementation_deps = [
+        ":config",
+        ":pw_trace_tokenized",
+    ],
     strip_include_prefix = "public",
     deps = [
         ":buffer",
         "//pw_base64",
         "//pw_log",
         "//pw_string",
+    ],
+)
+
+cc_library(
+    name = "decoder",
+    srcs = [
+        "decoder.cc",
+    ],
+    hdrs = [
+        "public/pw_trace_tokenized/decoder.h",
+    ],
+    strip_include_prefix = "public",
+    deps = [
+        ":pw_trace_tokenized",
+        "//pw_bytes",
+        "//pw_log",
+        "//pw_result",
+        "//pw_status",
+        "//pw_stream",
+        "//pw_string",
+        "//pw_tokenizer:decoder",
+        "//pw_varint:stream",
+        "//third_party/fuchsia:stdcompat",
     ],
 )
 
@@ -270,6 +298,7 @@ filegroup(
     srcs = [
         "public/pw_trace_tokenized/base_trace_service.h",
         "public/pw_trace_tokenized/config.h",
+        "public/pw_trace_tokenized/decoder.h",
         "public/pw_trace_tokenized/trace_buffer.h",
         "public/pw_trace_tokenized/trace_buffer_log.h",
         "public/pw_trace_tokenized/trace_callback.h",
@@ -282,6 +311,11 @@ filegroup(
 
 pwpb_proto_library(
     name = "protos_pwpb",
+    deps = [":protos"],
+)
+
+raw_rpc_proto_library(
+    name = "protos_raw_rpc",
     deps = [":protos"],
 )
 
@@ -309,16 +343,17 @@ py_proto_library(
 
 cc_library(
     name = "transfer_handler",
-    srcs = [
-        "transfer_handler.cc",
-    ],
-    hdrs = [
-        "public/pw_trace_tokenized/transfer_handler.h",
+    srcs = ["transfer_handler.cc"],
+    hdrs = ["public/pw_trace_tokenized/transfer_handler.h"],
+    implementation_deps = [
+        ":buffer",
+        ":pw_trace_tokenized",
+        "//pw_containers:var_len_entry_queue",
+        "//pw_log",
     ],
     strip_include_prefix = "public",
     deps = [
-        ":buffer",
-        ":pw_trace_tokenized",
+        ":config",
         "//pw_transfer",
     ],
 )
@@ -375,6 +410,21 @@ pw_cc_test(
         ":buffer_log",
         ":pw_trace_tokenized",
         "//pw_preprocessor",
+    ],
+)
+
+pw_cc_test(
+    name = "decoder_test",
+    srcs = [
+        "decoder_test.cc",
+    ],
+    deps = [
+        ":decoder",
+        "//pw_assert:check",
+        "//pw_log",
+        "//pw_stream",
+        "//pw_tokenizer:decoder",
+        "//pw_trace",
     ],
 )
 
@@ -454,7 +504,10 @@ cc_library(
     name = "trace_tokenized_example_rpc",
     srcs = ["example/rpc.cc"],
     features = ["-conversion_warnings"],
-    implementation_deps = ["//pw_assert:check"],
+    implementation_deps = [
+        ":pw_trace_tokenized",
+        "//pw_assert:check",
+    ],
     deps = [
         ":trace_rpc_service",
         "//pw_hdlc",

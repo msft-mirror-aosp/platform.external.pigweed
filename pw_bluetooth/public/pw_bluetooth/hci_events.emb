@@ -1709,6 +1709,8 @@ struct UserPasskeyNotificationEvent:
 struct LEMetaEvent:
   -- 7.7.65 LE Meta event
   let hdr_size = hci.EventHeader.$size_in_bytes
+  let event_fixed_size = $size_in_bytes-hdr_size
+  let return_parameters_size = header.parameter_total_size-event_fixed_size
   0        [+hdr_size]  hci.EventHeader     header
   hdr_size [+1]         UInt                subevent_code
   hdr_size [+1]         hci.LeSubEventCode  subevent_code_enum
@@ -1778,9 +1780,11 @@ struct LEAdvertisingReportSubevent:
     [requires: 0x01 <= this <= 0x0A]
 
   # The -1 at the end is sizeof(num_reports).
-  let reports_size = le_meta_event.header.parameter_total_size-(LEMetaEvent.$size_in_bytes-hci.EventHeader.$size_in_bytes)-1
+  let reports_size = le_meta_event.return_parameters_size-1
   $next [+reports_size]                UInt:8[reports_size]  reports
-    -- Since each report has a variable length, they are stored in a UInt:8 array.
+    -- NOTE(https://github.com/google/emboss/issues/230): Emboss currently
+    -- doesn't support variable length array elements and returns "error: Array
+    -- elements must be fixed size."
 
 
 struct LEConnectionUpdateCompleteSubevent:
@@ -1996,9 +2000,12 @@ struct LEExtendedAdvertisingReportSubevent:
     -- Number of separate reports in the event.
     [requires: 0x01 <= this <= 0x0A]
 
-  let reports_size = le_meta_event.header.parameter_total_size-(LEMetaEvent.$size_in_bytes-hci.EventHeader.$size_in_bytes)-1
+  # The -1 at the end is sizeof(num_reports).
+  let reports_size = le_meta_event.return_parameters_size-1
   $next [+reports_size]                UInt:8[reports_size]  reports
-    -- Since each report has a variable length, they are stored in a UInt:8 array.
+    -- NOTE(https://github.com/google/emboss/issues/230): Emboss currently
+    -- doesn't support variable length array elements and returns "error: Array
+    -- elements must be fixed size."
 
 
 struct LEPeriodicAdvertisingSyncEstablishedSubeventV1:
@@ -2478,13 +2485,15 @@ struct LEReadNumberOfSupportedAdvertisingSetsCommandCompleteEvent:
 struct LESetCIGParametersCommandCompleteEvent:
   -- 7.7.14 Command Complete event (7.8.97 LE Set CIG Parameters command)
   let hdr_size = hci.CommandCompleteEvent.$size_in_bytes
-  0     [+hdr_size]       hci.CommandCompleteEvent  command_complete
-  $next [+1]              hci.StatusCode            status
-  $next [+1]              UInt                      cig_id
+  0     [+hdr_size]     hci.CommandCompleteEvent  command_complete
+  $next [+1]            hci.StatusCode            status
+  $next [+1]            UInt                      cig_id
     [requires: 0x00 <= this <= 0xEF]
-  $next [+1]              UInt                      cis_count
+
+  $next [+1]            UInt                      cis_count
     [requires: 0x00 <= 0x1F]
-  $next [+cis_count * 2]  UInt:16[cis_count]        connection_handles
+
+  $next [+cis_count*2]  UInt:16[cis_count]        connection_handles
     -- [requires: 0x0000 <= each <= 0x0EFF]  # Can't currently be expressed
 
 

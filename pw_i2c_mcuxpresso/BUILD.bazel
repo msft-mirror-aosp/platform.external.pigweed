@@ -30,6 +30,7 @@ cc_library(
     deps = [
         "//pw_chrono:system_clock",
         "//pw_clock_tree",
+        "//pw_function:scope_guard",
         "//pw_i2c:address",
         "//pw_i2c:initiator",
         "//pw_log",
@@ -70,6 +71,7 @@ cc_library(
         "//pw_chrono:system_clock",
         "//pw_clock_tree",
         "//pw_containers:vector",
+        "//pw_function:scope_guard",
         "//pw_i2c:address",
         "//pw_i2c:initiator",
         "//pw_log",

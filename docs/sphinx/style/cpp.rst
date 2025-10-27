@@ -191,6 +191,8 @@ parameters erroneously in C code. For consistency with the header file, use
 
    }  // namespace pw
 
+.. _docs-pw-style-cpp-comments:
+
 Comments
 ========
 Prefer C++-style (``//``) comments over C-style comments (``/* */``). C-style
@@ -400,14 +402,14 @@ The syntax ``while (true)`` is preferred over ``for (;;)`` for infinite loops.
       }
 
 Do not declare empty infinite loops, which are undefined behavior. Instead, call
-:cpp:func:`pw::InfiniteLoop`.
+:cc:`pw::BusyWaitForever`.
 
 .. admonition:: **Yes**:
    :class: checkmark
 
    .. code-block:: cpp
 
-      pw::InfiniteLoop();
+      pw::BusyWaitForever();
 
 .. admonition:: **No**:
    :class: error

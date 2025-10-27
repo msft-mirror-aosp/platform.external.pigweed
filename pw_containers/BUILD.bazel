@@ -49,6 +49,23 @@ cc_library(
 )
 
 cc_library(
+    name = "bitset",
+    hdrs = ["public/pw_containers/bitset.h"],
+    strip_include_prefix = "public",
+    deps = ["//third_party/fuchsia:stdcompat"],
+)
+
+pw_cc_test(
+    name = "bitset_test",
+    srcs = ["bitset_test.cc"],
+    has_nc_test = True,
+    deps = [
+        ":bitset",
+        "//pw_unit_test:constexpr",
+    ],
+)
+
+cc_library(
     name = "intrusive_item",
     srcs = ["intrusive_item.cc"],
     hdrs = ["public/pw_containers/internal/intrusive_item.h"],
@@ -185,6 +202,7 @@ cc_library(
         "//pw_assert:assert",
         "//pw_numeric:checked_arithmetic",
         "//pw_span",
+        "//third_party/fuchsia:stdcompat",
     ],
 )
 
@@ -198,6 +216,18 @@ cc_library(
         "//pw_async2:dispatcher",
         "//pw_async2:poll",
         "//pw_async2:waker_queue",
+    ],
+)
+
+cc_library(
+    name = "deque",
+    hdrs = ["public/pw_containers/deque.h"],
+    strip_include_prefix = "public",
+    deps = [
+        ":deque_common",
+        ":storage",
+        "//pw_allocator:allocator",
+        "//pw_assert:assert",
     ],
 )
 
@@ -278,16 +308,75 @@ cc_library(
 )
 
 cc_library(
-    name = "inline_var_len_entry_queue",
-    srcs = ["inline_var_len_entry_queue.c"],
-    hdrs = ["public/pw_containers/inline_var_len_entry_queue.h"],
-    implementation_deps = ["//pw_assert:check"],
+    name = "queue",
+    hdrs = ["public/pw_containers/queue.h"],
     strip_include_prefix = "public",
     deps = [
-        ":raw_storage",
+        ":deque",
+        ":queue_common",
+    ],
+)
+
+cc_library(
+    name = "generic_var_len_entry_queue",
+    srcs = [
+        "var_len_entry.cc",
+        "var_len_entry_queue_iterator.cc",
+    ],
+    hdrs = [
+        "public/pw_containers/internal/generic_var_len_entry_queue.h",
+        "public/pw_containers/internal/var_len_entry.h",
+        "public/pw_containers/internal/var_len_entry_iterator.h",
+        "public/pw_containers/internal/var_len_entry_queue_iterator.h",
+    ],
+    strip_include_prefix = "public",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":algorithm",
+        ":common",
+        "//pw_assert:assert",
+        "//pw_bytes",
         "//pw_preprocessor",
+        "//pw_span",
+        "//pw_span:cast",
+        "//pw_varint",
+    ],
+)
+
+cc_library(
+    name = "generic_var_len_entry_queue_testing",
+    testonly = True,
+    hdrs = [
+        "public/pw_containers/test/generic_var_len_entry_queue_testing.h",
+    ],
+    strip_include_prefix = "public",
+    deps = ["//pw_unit_test"],
+)
+
+cc_library(
+    name = "inline_var_len_entry_queue",
+    srcs = ["inline_var_len_entry_queue.cc"],
+    hdrs = ["public/pw_containers/inline_var_len_entry_queue.h"],
+    strip_include_prefix = "public",
+    deps = [
+        ":generic_var_len_entry_queue",
+        ":raw_storage",
+        "//pw_bytes",
+        "//pw_preprocessor",
+        "//pw_span",
         "//pw_toolchain:constexpr_tag",
         "//pw_varint",
+    ],
+)
+
+cc_library(
+    name = "var_len_entry_queue",
+    hdrs = ["public/pw_containers/var_len_entry_queue.h"],
+    strip_include_prefix = "public",
+    deps = [
+        ":generic_var_len_entry_queue",
+        ":raw_storage",
+        "//pw_span",
     ],
 )
 
@@ -334,11 +423,19 @@ cc_library(
 
 cc_library(
     name = "raw_storage",
-    hdrs = [
-        "public/pw_containers/internal/raw_storage.h",
-    ],
+    hdrs = ["public/pw_containers/internal/raw_storage.h"],
     strip_include_prefix = "public",
     visibility = [":__subpackages__"],
+)
+
+cc_library(
+    name = "storage",
+    hdrs = ["public/pw_containers/storage.h"],
+    strip_include_prefix = "public",
+    deps = [
+        ":algorithm",
+        "//pw_allocator",
+    ],
 )
 
 cc_library(
@@ -416,6 +513,7 @@ pw_cc_test(
         "pw_containers_private/inline_var_len_entry_queue_test_oracle.h",
     ],
     deps = [
+        ":generic_var_len_entry_queue_testing",
         ":inline_var_len_entry_queue",
         "//pw_assert:assert",
         "//pw_bytes",
@@ -425,14 +523,26 @@ pw_cc_test(
 )
 
 pw_cc_test(
+    name = "var_len_entry_queue_test",
+    srcs = ["var_len_entry_queue_test.cc"],
+    deps = [
+        ":generic_var_len_entry_queue",
+        ":generic_var_len_entry_queue_testing",
+        ":var_len_entry_queue",
+        "//pw_assert:check",
+        "//pw_span",
+    ],
+)
+
+pw_cc_test(
     name = "vector_test",
     srcs = [
         "vector_test.cc",
     ],
+    has_nc_test = True,
     deps = [
         ":test_helpers",
         ":vector",
-        "//pw_compilation_testing:negative_compilation_testing",
     ],
 )
 
@@ -443,6 +553,40 @@ pw_cc_test(
         ":dynamic_vector",
         ":test_helpers",
         "//pw_allocator:testing",
+    ],
+)
+
+pw_cc_test(
+    name = "deque_test",
+    srcs = ["deque_test.cc"],
+    has_nc_test = True,
+    deps = [
+        ":deque",
+        ":test_helpers",
+        "//pw_allocator:null_allocator",
+        "//pw_allocator:testing",
+        "//pw_assert:assert",
+        "//pw_polyfill",
+        "//pw_span",
+    ],
+)
+
+pw_cc_test(
+    name = "fixed_deque_allocated_common_test",
+    srcs = ["fixed_deque_allocated_common_test.cc"],
+    deps = [
+        ":deque",
+        ":test_helpers",
+        "//pw_allocator:testing",
+    ],
+)
+
+pw_cc_test(
+    name = "fixed_deque_static_common_test",
+    srcs = ["fixed_deque_static_common_test.cc"],
+    deps = [
+        ":deque",
+        ":test_helpers",
     ],
 )
 
@@ -464,10 +608,10 @@ pw_cc_test(
     srcs = [
         "inline_deque_test.cc",
     ],
+    has_nc_test = True,
     deps = [
         ":inline_deque",
         ":test_helpers",
-        "//pw_compilation_testing:negative_compilation_testing",
     ],
 )
 
@@ -501,11 +645,11 @@ pw_cc_test(
     srcs = [
         "inline_queue_test.cc",
     ],
+    has_nc_test = True,
     deps = [
         ":algorithm",
         ":inline_queue",
         ":test_helpers",
-        "//pw_compilation_testing:negative_compilation_testing",
     ],
 )
 
@@ -524,6 +668,16 @@ pw_cc_test(
 )
 
 pw_cc_test(
+    name = "queue_test",
+    srcs = ["queue_test.cc"],
+    deps = [
+        ":queue",
+        ":test_helpers",
+        "//pw_allocator:testing",
+    ],
+)
+
+pw_cc_test(
     name = "raw_storage_test",
     srcs = [
         "raw_storage_test.cc",
@@ -535,9 +689,51 @@ pw_cc_test(
 )
 
 pw_cc_test(
+    name = "storage_test",
+    srcs = ["storage_test.cc"],
+    deps = [
+        ":storage",
+        "//pw_unit_test:constexpr",
+    ],
+)
+
+pw_cc_test(
     name = "to_array_test",
     srcs = ["to_array_test.cc"],
     deps = [":to_array"],
+)
+
+pw_cc_test(
+    name = "var_len_entry_test",
+    srcs = ["var_len_entry_test.cc"],
+    deps = [
+        ":generic_var_len_entry_queue",
+        ":var_len_entry_queue",
+        "//pw_bytes",
+        "//pw_unit_test:constexpr",
+    ],
+)
+
+pw_cc_test(
+    name = "var_len_entry_iterator_test",
+    srcs = ["var_len_entry_iterator_test.cc"],
+    deps = [
+        ":generic_var_len_entry_queue",
+        ":var_len_entry_queue",
+        "//pw_bytes",
+        "//pw_unit_test:constexpr",
+    ],
+)
+
+pw_cc_test(
+    name = "var_len_entry_queue_iterator_test",
+    srcs = ["var_len_entry_queue_iterator_test.cc"],
+    deps = [
+        ":generic_var_len_entry_queue",
+        ":var_len_entry_queue",
+        "//pw_bytes",
+        "//pw_unit_test:constexpr",
+    ],
 )
 
 pw_cc_test(
@@ -555,10 +751,10 @@ pw_cc_test(
 pw_cc_test(
     name = "intrusive_forward_list_test",
     srcs = ["intrusive_forward_list_test.cc"],
+    has_nc_test = True,
     deps = [
         ":intrusive_forward_list",
         ":vector",
-        "//pw_compilation_testing:negative_compilation_testing",
         "//pw_preprocessor",
     ],
 )
@@ -566,10 +762,10 @@ pw_cc_test(
 pw_cc_test(
     name = "intrusive_list_test",
     srcs = ["intrusive_list_test.cc"],
+    has_nc_test = True,
     deps = [
         ":intrusive_list",
         ":vector",
-        "//pw_compilation_testing:negative_compilation_testing",
         "//pw_preprocessor",
     ],
 )
@@ -578,10 +774,10 @@ pw_cc_test(
     name = "intrusive_map_test",
     srcs = ["intrusive_map_test.cc"],
     features = ["-conversion_warnings"],
+    has_nc_test = True,
     deps = [
         ":intrusive_map",
         ":intrusive_multimap",
-        "//pw_compilation_testing:negative_compilation_testing",
         "//pw_span",
     ],
 )
@@ -590,10 +786,10 @@ pw_cc_test(
     name = "intrusive_multimap_test",
     srcs = ["intrusive_multimap_test.cc"],
     features = ["-conversion_warnings"],
+    has_nc_test = True,
     deps = [
         ":intrusive_map",
         ":intrusive_multimap",
-        "//pw_compilation_testing:negative_compilation_testing",
         "//pw_span",
     ],
 )
@@ -602,10 +798,10 @@ pw_cc_test(
     name = "intrusive_set_test",
     srcs = ["intrusive_set_test.cc"],
     features = ["-conversion_warnings"],
+    has_nc_test = True,
     deps = [
         ":intrusive_multiset",
         ":intrusive_set",
-        "//pw_compilation_testing:negative_compilation_testing",
         "//pw_span",
     ],
 )
@@ -614,10 +810,10 @@ pw_cc_test(
     name = "intrusive_multiset_test",
     srcs = ["intrusive_multiset_test.cc"],
     features = ["-conversion_warnings"],
+    has_nc_test = True,
     deps = [
         ":intrusive_multiset",
         ":intrusive_set",
-        "//pw_compilation_testing:negative_compilation_testing",
         "//pw_span",
     ],
 )
@@ -626,6 +822,7 @@ pw_cc_test(
     name = "intrusive_item_test",
     srcs = ["intrusive_item_test.cc"],
     features = ["-conversion_warnings"],
+    has_nc_test = True,
     deps = [
         ":intrusive_forward_list",
         ":intrusive_list",
@@ -633,7 +830,30 @@ pw_cc_test(
         ":intrusive_multimap",
         ":intrusive_multiset",
         ":intrusive_set",
-        "//pw_compilation_testing:negative_compilation_testing",
+    ],
+)
+
+cc_library(
+    name = "optional_tuple",
+    hdrs = ["public/pw_containers/optional_tuple.h"],
+    strip_include_prefix = "public",
+    deps = [
+        ":bitset",
+        "//pw_assert:assert",
+        "//pw_polyfill",
+        "//third_party/fuchsia:stdcompat",
+    ],
+)
+
+pw_cc_test(
+    name = "optional_tuple_test",
+    srcs = ["optional_tuple_test.cc"],
+    has_nc_test = True,
+    deps = [
+        ":optional_tuple",
+        ":test_helpers",
+        "//pw_polyfill",
+        "//pw_unit_test:constexpr",
     ],
 )
 
@@ -641,6 +861,8 @@ filegroup(
     name = "doxygen",
     srcs = [
         "public/pw_containers/algorithm.h",
+        "public/pw_containers/bitset.h",
+        "public/pw_containers/deque.h",
         "public/pw_containers/dynamic_deque.h",
         "public/pw_containers/dynamic_queue.h",
         "public/pw_containers/dynamic_vector.h",
@@ -654,6 +876,7 @@ filegroup(
         "public/pw_containers/internal/aa_tree.h",
         "public/pw_containers/internal/async_count_and_capacity.h",
         "public/pw_containers/internal/generic_deque.h",
+        "public/pw_containers/internal/generic_queue.h",
         "public/pw_containers/internal/intrusive_list.h",
         "public/pw_containers/intrusive_forward_list.h",
         "public/pw_containers/intrusive_list.h",
@@ -661,7 +884,10 @@ filegroup(
         "public/pw_containers/intrusive_multimap.h",
         "public/pw_containers/intrusive_multiset.h",
         "public/pw_containers/intrusive_set.h",
+        "public/pw_containers/optional_tuple.h",
         "public/pw_containers/ptr_iterator.h",
+        "public/pw_containers/queue.h",
+        "public/pw_containers/storage.h",
         "public/pw_containers/to_array.h",
         "public/pw_containers/vector.h",
         "public/pw_containers/wrapped_iterator.h",
@@ -865,6 +1091,41 @@ pw_size_diff(
 )
 
 pw_size_diff(
+    name = "fixed_deque_static_base_size_diff",
+    base = "//pw_containers/size_report:base",
+    label = "FixedDeque (static)",
+    target = "//pw_containers/size_report:fixed_deque_static_base",
+)
+
+pw_size_diff(
+    name = "fixed_deque_static_alternate_type_size_diff",
+    base = "//pw_containers/size_report:fixed_deque_static_base",
+    label = "Additional FixedDeque (static) with different item type",
+    target = "//pw_containers/size_report:fixed_deque_static_alternate_type",
+)
+
+pw_size_diff(
+    name = "fixed_deque_dynamic_base_size_diff",
+    base = "//pw_containers/size_report:base",
+    label = "FixedDeque (dynamic)",
+    target = "//pw_containers/size_report:fixed_deque_dynamic_base",
+)
+
+pw_size_diff(
+    name = "fixed_deque_dynamic_alternate_type_size_diff",
+    base = "//pw_containers/size_report:fixed_deque_dynamic_base",
+    label = "Additional FixedDeque (dynamic) with different item type",
+    target = "//pw_containers/size_report:fixed_deque_dynamic_alternate_type",
+)
+
+pw_size_diff(
+    name = "fixed_deque_static_and_dynamic_size_diff",
+    base = "//pw_containers/size_report:base",
+    label = "FixedDeque (static and dynamic)",
+    target = "//pw_containers/size_report:fixed_deque_static_and_dynamic",
+)
+
+pw_size_diff(
     name = "std_deque_base_size_diff",
     base = "//pw_containers/size_report:base",
     label = "std::deque",
@@ -885,6 +1146,11 @@ pw_size_table(
         ":std_deque_alternate_type_size_diff",
         ":dynamic_deque_base_size_diff",
         ":dynamic_deque_alternate_type_size_diff",
+        ":fixed_deque_static_base_size_diff",
+        ":fixed_deque_static_alternate_type_size_diff",
+        ":fixed_deque_dynamic_base_size_diff",
+        ":fixed_deque_dynamic_alternate_type_size_diff",
+        ":fixed_deque_static_and_dynamic_size_diff",
         ":inline_deque_base_size_diff",
         ":inline_deque_alternate_type_size_diff",
         ":inline_queue_base_size_diff",

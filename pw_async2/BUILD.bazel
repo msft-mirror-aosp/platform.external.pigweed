@@ -64,6 +64,7 @@ pw_facade(
         "public/pw_async2/context.h",
         "public/pw_async2/dispatcher.h",
         "public/pw_async2/dispatcher_base.h",
+        "public/pw_async2/future.h",
         "public/pw_async2/internal/config.h",
         "public/pw_async2/lock.h",
         "public/pw_async2/task.h",
@@ -174,6 +175,41 @@ pw_cc_test(
         ":dispatcher",
         ":pendable",
         ":poll",
+    ],
+)
+
+pw_cc_test(
+    name = "future_test",
+    srcs = ["future_test.cc"],
+    has_nc_test = True,
+    deps = [
+        ":dispatcher",
+        ":pend_func_task",
+        ":poll",
+        ":select",
+    ],
+)
+
+cc_library(
+    name = "value_future",
+    hdrs = [
+        "public/pw_async2/value_future.h",
+    ],
+    strip_include_prefix = "public",
+    deps = [
+        ":dispatcher",
+        ":poll",
+    ],
+)
+
+pw_cc_test(
+    name = "value_future_test",
+    srcs = ["value_future_test.cc"],
+    deps = [
+        ":dispatcher",
+        ":pend_func_task",
+        ":poll",
+        ":value_future",
     ],
 )
 
@@ -535,9 +571,11 @@ pw_cc_test(
     srcs = [
         "join_test.cc",
     ],
+    has_nc_test = True,
     deps = [
         ":dispatcher",
         ":join",
+        ":value_future",
     ],
 )
 
@@ -549,6 +587,7 @@ cc_library(
     strip_include_prefix = "public",
     deps = [
         ":dispatcher",
+        "//pw_containers:optional_tuple",
     ],
 )
 
@@ -562,6 +601,53 @@ pw_cc_test(
         ":pendable",
         ":poll",
         ":select",
+        ":value_future",
+    ],
+)
+
+cc_library(
+    name = "channel",
+    hdrs = [
+        "public/pw_async2/channel.h",
+    ],
+    strip_include_prefix = "public",
+    deps = [
+        ":dispatcher",
+        ":poll",
+        "//pw_allocator",
+        "//pw_containers:dynamic_deque",
+        "//pw_sync:interrupt_spin_lock",
+    ],
+)
+
+pw_cc_test(
+    name = "channel_test",
+    srcs = [
+        "channel_test.cc",
+    ],
+    deps = [
+        ":channel",
+        ":dispatcher",
+        ":pend_func_task",
+        ":poll",
+        "//pw_allocator:testing",
+        "//pw_containers:vector",
+    ],
+)
+
+pw_cc_test(
+    name = "channel_coro_test",
+    srcs = [
+        "channel_coro_test.cc",
+    ],
+    deps = [
+        ":channel",
+        ":coro",
+        ":coro_or_else_task",
+        ":dispatcher",
+        ":poll",
+        "//pw_allocator:testing",
+        "//pw_containers:vector",
     ],
 )
 
@@ -570,23 +656,13 @@ sphinx_docs_library(
     srcs = [
         "backends.rst",
         "code_size.rst",
-        "codelab.rst",
         "coroutines.rst",
         "docs.rst",
         "guides.rst",
         "informed_poll.rst",
         "public/pw_async2/coro.h",
         "quickstart.rst",
-        "//pw_async2/codelab:hardware.h",
-        "//pw_async2/codelab:main.cc",
-        "//pw_async2/codelab:vending_machine.cc",
-        "//pw_async2/codelab:vending_machine.h",
-        "//pw_async2/codelab/solutions/step1:main.cc",
-        "//pw_async2/codelab/solutions/step2:main.cc",
-        "//pw_async2/codelab/solutions/step2:vending_machine.cc",
-        "//pw_async2/codelab/solutions/step5:main.cc",
-        "//pw_async2/codelab/solutions/step5:vending_machine.cc",
-        "//pw_async2/codelab/solutions/step5:vending_machine.h",
+        "//pw_async2/codelab:docs",
         "//pw_async2/examples:docs",
         "//pw_async2/size_report:full_size_report",
         "//pw_async2/size_report:once_sender_size_report",
@@ -602,12 +678,14 @@ filegroup(
         "public/pw_async2/allocate_task.h",
         "public/pw_async2/callback_task.h",
         "public/pw_async2/cancellable_task.h",
+        "public/pw_async2/channel.h",
         "public/pw_async2/context.h",
         "public/pw_async2/coro.h",
         "public/pw_async2/coro_or_else_task.h",
         "public/pw_async2/dispatcher.h",
         "public/pw_async2/dispatcher_base.h",
         "public/pw_async2/enqueue_heap_func.h",
+        "public/pw_async2/future.h",
         "public/pw_async2/internal/config.h",
         "public/pw_async2/join.h",
         "public/pw_async2/lock.h",

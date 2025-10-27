@@ -30,6 +30,8 @@ pw_source_set("connection") {
   deps = [
     ":hpack",
     ":send_queue",
+    "$dir_pw_allocator",
+    "$dir_pw_allocator:synchronized_allocator",
     "$dir_pw_assert",
     "$dir_pw_async:dispatcher",
     "$dir_pw_async_basic:dispatcher",
@@ -53,6 +55,7 @@ pw_source_set("send_queue") {
   public = [ "public/pw_grpc/send_queue.h" ]
   public_configs = [ ":public_include_path" ]
   deps = [
+    "$dir_pw_allocator",
     "$dir_pw_async:dispatcher",
     "$dir_pw_async_basic:dispatcher",
     "$dir_pw_bytes",
@@ -125,6 +128,7 @@ pw_executable("test_pw_rpc_server") {
     ":echo_cc.pwpb_rpc",
     ":grpc_channel_output",
     ":pw_rpc_handler",
+    "$dir_pw_allocator:best_fit",
     "$dir_pw_assert_basic:pw_assert_basic_handler",
     "$dir_pw_assert_log:assert_backend",
     "$dir_pw_assert_log:check_backend",

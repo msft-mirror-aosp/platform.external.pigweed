@@ -29,7 +29,7 @@ void coin_inserted_isr() { coin_slot.Deposit(); }
 
 // Interrupt handler function invoked when the user presses a key on the
 // machine's keypad. Receives the value of the pressed key (0-9).
-void key_press_isr(int /*key*/) {
+void key_press_isr(int key) {
   // In Step 3, implement your keypad handler here.
 }
 

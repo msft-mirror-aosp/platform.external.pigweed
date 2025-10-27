@@ -190,8 +190,9 @@ TEST_F(GattNotifyTest, Send1ByteAttribute) {
   GattNotifyChannel channel = BuildGattNotifyChannel(
       proxy,
       {.handle = capture.handle, .attribute_handle = capture.attribute_handle});
-  PW_TEST_EXPECT_OK(
-      channel.Write(MultiBufFromArray(capture.attribute_value)).status);
+  FlatMultiBufInstance mbuf_inst = MultiBufFromArray(capture.attribute_value);
+  FlatMultiBuf& mbuf = MultiBufAdapter::Unwrap(mbuf_inst);
+  PW_TEST_EXPECT_OK(channel.Write(std::move(mbuf)).status);
   EXPECT_EQ(capture.sends_called, 1);
 }
 
@@ -271,8 +272,9 @@ TEST_F(GattNotifyTest, Send2ByteAttribute) {
   GattNotifyChannel channel = BuildGattNotifyChannel(
       proxy,
       {.handle = capture.handle, .attribute_handle = capture.attribute_handle});
-  PW_TEST_EXPECT_OK(
-      channel.Write(MultiBufFromArray(capture.attribute_value)).status);
+  FlatMultiBufInstance mbuf_inst = MultiBufFromArray(capture.attribute_value);
+  FlatMultiBuf& mbuf = MultiBufAdapter::Unwrap(mbuf_inst);
+  PW_TEST_EXPECT_OK(channel.Write(std::move(mbuf)).status);
   EXPECT_EQ(capture.sends_called, 1);
 }
 
@@ -286,18 +288,19 @@ TEST_F(GattNotifyTest, ReturnsErrorIfAttributeTooLarge) {
                               std::move(send_to_controller_fn),
                               /*le_acl_credits_to_reserve=*/0,
                               /*br_edr_acl_credits_to_reserve=*/0);
-  PW_TEST_EXPECT_OK(SendLeReadBufferResponseFromController(proxy, 0));
+  const uint16_t kLeAclLength = 250;
+  PW_TEST_EXPECT_OK(
+      SendLeReadBufferResponseFromController(proxy, 0, kLeAclLength));
 
   // attribute_value 1 byte too large
   std::array<uint8_t,
-             proxy.GetMaxAclSendSize() -
-                 emboss::AclDataFrameHeader::IntrinsicSizeInBytes() -
-                 emboss::BasicL2capHeader::IntrinsicSizeInBytes() -
+             kLeAclLength - emboss::BasicL2capHeader::IntrinsicSizeInBytes() -
                  emboss::AttHandleValueNtf::MinSizeInBytes() + 1>
       attribute_value_too_large;
   GattNotifyChannel channel = BuildGattNotifyChannel(proxy, {});
-  EXPECT_EQ(channel.Write(MultiBufFromArray(attribute_value_too_large)).status,
-            PW_STATUS_INVALID_ARGUMENT);
+  FlatMultiBufInstance mbuf_inst = MultiBufFromArray(attribute_value_too_large);
+  FlatMultiBuf& mbuf = MultiBufAdapter::Unwrap(mbuf_inst);
+  EXPECT_EQ(channel.Write(std::move(mbuf)).status, Status::InvalidArgument());
 }
 
 TEST_F(GattNotifyTest, ChannelIsNotConstructedIfParametersInvalid) {
@@ -336,13 +339,14 @@ TEST_F(GattNotifyTest, PayloadIsReturnedOnError) {
   const std::array<const uint8_t, 2> attribute_value = {5};
 
   GattNotifyChannel channel = BuildGattNotifyChannel(proxy, {});
-  StatusWithMultiBuf result =
-      channel.Write(MultiBufFromSpan(pw::span{attribute_value}));
+  FlatMultiBufInstance mbuf_inst = MultiBufFromSpan(pw::span{attribute_value});
+  FlatMultiBuf& mbuf = MultiBufAdapter::Unwrap(mbuf_inst);
+  StatusWithMultiBuf result = channel.Write(std::move(mbuf));
   ASSERT_EQ(result.status, Status::FailedPrecondition());
-  auto s = result.buf->ContiguousSpan();
-  ASSERT_TRUE(s.has_value());
-  EXPECT_EQ(s.value().size(), attribute_value.size());
-  EXPECT_EQ((std::byte)attribute_value[0], s.value().data()[0]);
+  FlatConstMultiBuf& result_buf = MultiBufAdapter::Unwrap(result.buf.value());
+  auto bytes = MultiBufAdapter::AsSpan(result_buf);
+  EXPECT_EQ(bytes.size(), attribute_value.size());
+  EXPECT_EQ(bytes[0], attribute_value[0]);
 }
 
 }  // namespace

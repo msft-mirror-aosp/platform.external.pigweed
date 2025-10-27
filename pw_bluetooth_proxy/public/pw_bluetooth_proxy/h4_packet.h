@@ -43,19 +43,23 @@ class H4PacketInterface {
 
   /// Returns HCI packet type indicator as defined in BT Core Spec Version 5.4 |
   /// Vol 4, Part A, Section 2.
-  virtual emboss::H4PacketType GetH4Type() = 0;
+  virtual emboss::H4PacketType GetH4Type() const = 0;
 
   /// Sets HCI packet type indicator.
   virtual void SetH4Type(emboss::H4PacketType) = 0;
 
   /// Returns pw::span of HCI packet as defined in BT Core Spec Version 5.4 |
   /// Vol 4, Part E, Section 5.4.
-  virtual pw::span<uint8_t> GetHciSpan() = 0;
+  pw::span<uint8_t> GetHciSpan() { return DoGetHciSpan(); }
+  pw::span<const uint8_t> GetHciSpan() const { return DoGetHciSpan(); }
 
  protected:
   H4PacketInterface& operator=(const H4PacketInterface& other) = default;
 
   static constexpr std::uint8_t kH4PacketIndicatorSize = 1;
+
+ private:
+  virtual pw::span<uint8_t> DoGetHciSpan() const = 0;
 };
 
 /// H4PacketWithHci is an H4Packet backed by an HCI buffer.
@@ -75,11 +79,9 @@ class H4PacketWithHci final : public H4PacketInterface {
 
   ~H4PacketWithHci() final = default;
 
-  emboss::H4PacketType GetH4Type() final { return h4_type_; }
+  emboss::H4PacketType GetH4Type() const final { return h4_type_; }
 
   void SetH4Type(emboss::H4PacketType h4_type) final { h4_type_ = h4_type; }
-
-  pw::span<uint8_t> GetHciSpan() final { return hci_span_; }
 
  private:
   H4PacketWithHci& operator=(const H4PacketWithHci& other) = default;
@@ -87,17 +89,20 @@ class H4PacketWithHci final : public H4PacketInterface {
   pw::span<uint8_t> hci_span_;
 
   emboss::H4PacketType h4_type_;
+
+  pw::span<uint8_t> DoGetHciSpan() const final { return hci_span_; }
 };
 
 /// H4PacketWithH4 is an H4Packet backed by an H4 buffer.
 class H4PacketWithH4 final : public H4PacketInterface {
  public:
+  using ReleaseFn = Function<void(const uint8_t*)>;
+
   H4PacketWithH4() = default;
   H4PacketWithH4(pw::span<uint8_t> h4_span) : h4_span_(h4_span) {}
 
   /// release_fn (if callable) will be called when H4PacketWithH4 is destructed.
-  H4PacketWithH4(pw::span<uint8_t> h4_span,
-                 pw::Function<void(const uint8_t* buffer)>&& release_fn)
+  H4PacketWithH4(pw::span<uint8_t> h4_span, ReleaseFn&& release_fn)
       : h4_span_(h4_span), release_fn_(std::move(release_fn)) {}
 
   H4PacketWithH4(emboss::H4PacketType h4_type, pw::span<uint8_t> h4_span)
@@ -126,7 +131,7 @@ class H4PacketWithH4 final : public H4PacketInterface {
     }
   }
 
-  emboss::H4PacketType GetH4Type() final {
+  emboss::H4PacketType GetH4Type() const final {
     if (h4_span_.empty()) {
       return emboss::H4PacketType::UNKNOWN;
     }
@@ -149,19 +154,10 @@ class H4PacketWithH4 final : public H4PacketInterface {
   // Essentially it moves ownership of the buffer to the caller (who should have
   // already stored `GetH4Span()` since packet's span will be reset by this
   // call).
-  pw::Function<void(const uint8_t*)> ResetAndReturnReleaseFn() {
-    pw::Function<void(const uint8_t* packet)> fn = std::move(release_fn_);
+  ReleaseFn ResetAndReturnReleaseFn() {
+    ReleaseFn fn = std::move(release_fn_);
     Reset();
     return fn;
-  }
-
-  pw::span<uint8_t> GetHciSpan() final {
-    // If h4_span is empty, then return an empty span for hci also.
-    if (h4_span_.empty()) {
-      return {};
-    }
-    return pw::span(h4_span_.data() + kH4PacketIndicatorSize,
-                    h4_span_.size() - kH4PacketIndicatorSize);
   }
 
   pw::span<uint8_t> GetH4Span() {
@@ -179,7 +175,16 @@ class H4PacketWithH4 final : public H4PacketInterface {
 
   pw::span<uint8_t> h4_span_;
 
-  pw::Function<void(const uint8_t* packet)> release_fn_{};
+  ReleaseFn release_fn_{};
+
+  pw::span<uint8_t> DoGetHciSpan() const final {
+    // If h4_span is empty, then return an empty span for hci also.
+    if (h4_span_.empty()) {
+      return {};
+    }
+    return pw::span(h4_span_.data() + kH4PacketIndicatorSize,
+                    h4_span_.size() - kH4PacketIndicatorSize);
+  }
 };
 
 }  // namespace pw::bluetooth::proxy

@@ -125,19 +125,26 @@ pw_py_binary(
 )
 
 pw_substitute_workspace_status(
-    name = "git_build_info",
+    name = "git_build_info_hdr",
     src = "git_build_info.h.in",
     out = "git_build_info.h",
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "git_build_info",
+    hdrs = [":git_build_info_hdr"],
+    deps = ["//pw_string:string"],
 )
 
 pw_cc_test(
     name = "git_build_info_test",
-    srcs = [
-        "git_build_info_test.cc",
-        ":git_build_info",
-    ],
+    srcs = ["git_build_info_test.cc"],
     tags = ["noclangtidy"],
-    deps = ["//pw_log"],
+    deps = [
+        ":git_build_info",
+        "//pw_log",
+    ],
 )
 
 sphinx_docs_library(

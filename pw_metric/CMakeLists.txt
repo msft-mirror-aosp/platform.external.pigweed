@@ -54,9 +54,11 @@ pw_proto_library(pw_metric.metric_service_proto
 
 pw_add_library(pw_metric.metric_walker STATIC
   HEADERS
-    pw_metric_private/metric_walker.h
+    public/pw_metric/metric_walker.h
   SOURCES
     metric_walker.cc
+  PUBLIC_INCLUDES
+    public
   PUBLIC_DEPS
     pw_metric
     pw_assert
@@ -65,6 +67,33 @@ pw_add_library(pw_metric.metric_walker STATIC
     pw_result
     pw_status
     pw_tokenizer
+)
+
+pw_add_library(pw_metric.nanopb_metric_writer INTERFACE
+  HEADERS
+    public/pw_metric/nanopb_metric_writer.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_metric
+    pw_metric.metric_service_proto.nanopb
+    pw_metric.metric_walker
+    pw_containers
+    pw_span
+    pw_status
+)
+
+pw_add_library(pw_metric.pwpb_metric_writer INTERFACE
+  HEADERS
+    public/pw_metric/pwpb_metric_writer.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_metric
+    pw_metric.metric_service_proto.pwpb
+    pw_metric.metric_walker
+    pw_protobuf
+    pw_status
 )
 
 pw_add_library(pw_metric.metric_service_nanopb STATIC
@@ -76,6 +105,7 @@ pw_add_library(pw_metric.metric_service_nanopb STATIC
     pw_containers
     pw_metric
     pw_metric.metric_service_proto.nanopb_rpc
+    pw_metric.nanopb_metric_writer
     pw_span
     pw_status
   SOURCES
@@ -96,6 +126,7 @@ pw_add_library(pw_metric.metric_service_pwpb STATIC
     pw_metric.metric_service_proto.pwpb_rpc
     pw_metric.metric_service_proto.raw_rpc
     pw_metric.metric_walker
+    pw_metric.pwpb_metric_writer
     pw_metric
     pw_bytes
     pw_containers
@@ -134,6 +165,7 @@ pw_add_test(pw_metric.metric_service_nanopb_test
   PRIVATE_DEPS
     pw_metric.global
     pw_metric.metric_service_nanopb
+    pw_metric.nanopb_metric_writer
     pw_rpc.nanopb.test_method_context
     pw_rpc.test_helpers
   GROUPS
@@ -147,11 +179,12 @@ pw_add_test(pw_metric.metric_service_pwpb_test
   PRIVATE_DEPS
     pw_metric.global
     pw_metric.metric_service_pwpb
+    pw_metric.pwpb_metric_writer
     pw_rpc.pwpb.test_method_context
     pw_rpc.raw.test_method_context
     pw_rpc.test_helpers
+    pw_stream
   GROUPS
     modules
     pw_metric
 )
-

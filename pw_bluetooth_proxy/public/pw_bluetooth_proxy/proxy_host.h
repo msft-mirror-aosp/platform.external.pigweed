@@ -16,13 +16,12 @@
 
 #include "pw_bluetooth_proxy/gatt_notify_channel.h"
 #include "pw_bluetooth_proxy/internal/acl_data_channel.h"
-#include "pw_bluetooth_proxy/internal/h4_storage.h"
 #include "pw_bluetooth_proxy/internal/hci_transport.h"
 #include "pw_bluetooth_proxy/internal/l2cap_channel_manager.h"
+#include "pw_bluetooth_proxy/internal/multibuf.h"
 #include "pw_bluetooth_proxy/l2cap_channel_common.h"
 #include "pw_bluetooth_proxy/l2cap_coc.h"
 #include "pw_bluetooth_proxy/l2cap_status_delegate.h"
-#include "pw_bluetooth_proxy/rfcomm_channel.h"
 #include "pw_status/status.h"
 
 /// Lightweight proxy for augmenting Bluetooth functionality
@@ -43,10 +42,15 @@ class ProxyHost {
   /// proxy out of any LE ACL buffers received from controller.
   /// @param[in] br_edr_acl_credits_to_reserve - How many buffers to reserve for
   /// the proxy out of any BR/EDR ACL buffers received from controller.
+  /// @param[in] allocator - General purpose allocator to use for internal
+  /// packet buffers and objects. If null, an internal allocator and memory pool
+  /// will be used. On multi-threaded systems this should be a
+  /// SynchronizedAllocator.
   ProxyHost(pw::Function<void(H4PacketWithHci&& packet)>&& send_to_host_fn,
             pw::Function<void(H4PacketWithH4&& packet)>&& send_to_controller_fn,
             uint16_t le_acl_credits_to_reserve,
-            uint16_t br_edr_acl_credits_to_reserve);
+            uint16_t br_edr_acl_credits_to_reserve,
+            pw::Allocator* allocator = nullptr);
 
   ProxyHost() = delete;
   ProxyHost(const ProxyHost&) = delete;
@@ -155,19 +159,12 @@ class ProxyHost {
   /// * @UNAVAILABLE: A channel could not be created because no memory was
   ///   available to accommodate an additional ACL connection.
   pw::Result<L2capCoc> AcquireL2capCoc(
-      pw::multibuf::MultiBufAllocator& rx_multibuf_allocator,
+      MultiBufAllocator& rx_multibuf_allocator,
       uint16_t connection_handle,
       L2capCoc::CocConfig rx_config,
       L2capCoc::CocConfig tx_config,
-      Function<void(multibuf::MultiBuf&& payload)>&& receive_fn,
+      Function<void(FlatConstMultiBuf&& payload)>&& receive_fn,
       ChannelEventCallback&& event_fn);
-
-  /// TODO: https://pwbug.dev/380076024 - Delete after downstream client uses
-  /// this method on `L2capCoc`.
-  /// @deprecated Use L2capCoc::SendAdditionalRxCredits instead.
-  pw::Status SendAdditionalRxCredits(uint16_t connection_handle,
-                                     uint16_t local_cid,
-                                     uint16_t additional_rx_credits);
 
   /// Returns an L2CAP channel operating in basic mode that supports writing to
   /// and reading from a remote peer.
@@ -207,7 +204,7 @@ class ProxyHost {
   /// * @UNAVAILABLE: A channel could not be created because no memory was
   ///   available to accommodate an additional ACL connection.
   pw::Result<BasicL2capChannel> AcquireBasicL2capChannel(
-      multibuf::MultiBufAllocator& rx_multibuf_allocator,
+      MultiBufAllocator& rx_multibuf_allocator,
       uint16_t connection_handle,
       uint16_t local_cid,
       uint16_t remote_cid,
@@ -238,43 +235,6 @@ class ProxyHost {
       uint16_t attribute_handle,
       ChannelEventCallback&& event_fn);
 
-  /// Returns an RFCOMM channel that supports writing to and reading from a
-  /// remote peer.
-  ///
-  /// @param[in] rx_multibuf_allocator
-  ///                              Provides the allocator the channel will use
-  ///                              for its Rx buffers (for both queueing and
-  ///                              returning to the client).
-  ///
-  /// @param[in] connection_handle The connection handle of the remote peer.
-  ///
-  /// @param[in] rx_config         Parameters applying to reading packets.
-  ///                              See `rfcomm_channel.h` for details.
-  ///
-  /// @param[in] tx_config         Parameters applying to writing packets.
-  ///                              See `rfcomm_channel.h` for details.
-  ///
-  /// @param[in] channel_number    RFCOMM channel number to use.
-  ///
-  /// @param[in] payload_from_controller_fn
-  ///                              Read callback to be invoked on Rx frames.
-  ///
-  /// @param[in] event_fn          Handle asynchronous events such as errors
-  ///                              encountered by the channel. See
-  ///                              `l2cap_channel_common.h`.
-  ///
-  /// @returns @Result{the channel}
-  /// * @INVALID_ARGUMENT: Arguments are invalid. Check the logs.
-  /// * @UNAVAILABLE: A channel could not be created.
-  pw::Result<RfcommChannel> AcquireRfcommChannel(
-      multibuf::MultiBufAllocator& rx_multibuf_allocator,
-      uint16_t connection_handle,
-      RfcommChannel::Config rx_config,
-      RfcommChannel::Config tx_config,
-      uint8_t channel_number,
-      Function<void(multibuf::MultiBuf&& payload)>&& payload_from_controller_fn,
-      ChannelEventCallback&& event_fn);
-
   /// Indicates whether the proxy has the capability of sending LE ACL packets.
   /// Note that this indicates intention, so it can be true even if the proxy
   /// has not yet or has been unable to reserve credits from the host.
@@ -292,17 +252,6 @@ class ProxyHost {
   /// Returns the number of available BR/EDR ACL send credits for the proxy.
   /// Can be zero if the controller has not yet been initialized by the host.
   uint16_t GetNumFreeBrEdrAclPackets() const;
-
-  /// Returns the max number of LE ACL sends that can be in-flight at one time.
-  /// That is, ACL packets that have been sent and not yet released.
-  static constexpr size_t GetNumSimultaneousAclSendsSupported() {
-    return H4Storage::GetNumH4Buffs();
-  }
-
-  /// Returns the max LE ACL packet size supported to be sent.
-  static constexpr size_t GetMaxAclSendSize() {
-    return H4Storage::GetH4BuffSize() - sizeof(emboss::H4PacketType);
-  }
 
   /// Returns the max number of simultaneous LE ACL connections supported.
   static constexpr size_t GetMaxNumAclConnections() {

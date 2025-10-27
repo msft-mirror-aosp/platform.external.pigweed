@@ -151,7 +151,8 @@ class HostServerTest : public bthost::testing::AdapterTestFixture {
                                      adapter()->AsWeakPtr(),
                                      gatt_->GetWeakPtr(),
                                      lease_provider(),
-                                     sco_offload_index);
+                                     sco_offload_index,
+                                     dispatcher());
     host_.Bind(std::move(host_handle));
   }
 
@@ -1139,11 +1140,34 @@ TEST_F(HostServerTest, WatchPeersUpdatedThenRemoved) {
   client->GetNext([&](fhost::PeerWatcher_GetNext_Result result) {
     ASSERT_TRUE(result.is_response());
     ASSERT_TRUE(result.response().is_removed());
-    EXPECT_EQ(1u, result.response().removed().size());
+    ASSERT_EQ(1u, result.response().removed().size());
     EXPECT_TRUE(
         fidl::Equals(fbt::PeerId{id.value()}, result.response().removed()[0]));
     replied = true;
   });
+  RunLoopUntilIdle();
+  EXPECT_TRUE(replied);
+}
+
+TEST_F(HostServerTest, WatchPeersUpdatedNonConnectable) {
+  fidl::InterfacePtr<fhost::PeerWatcher> client = SetPeerWatcher();
+  RunLoopUntilIdle();
+
+  // Add a non-connectable peer. It should be reported.
+  bool replied = false;
+  bt::gap::Peer* peer =
+      adapter()->peer_cache()->NewPeer(kLeTestAddr, /*connectable=*/false);
+  bt::PeerId id = peer->identifier();
+
+  client->GetNext([&](fhost::PeerWatcher_GetNext_Result result) {
+    ASSERT_TRUE(result.is_response());
+    ASSERT_TRUE(result.response().is_updated());
+    ASSERT_EQ(1u, result.response().updated().size());
+    EXPECT_TRUE(fidl::Equals(fbt::PeerId{id.value()},
+                             result.response().updated()[0].id()));
+    replied = true;
+  });
+
   RunLoopUntilIdle();
   EXPECT_TRUE(replied);
 }
@@ -1638,7 +1662,8 @@ class HostServerTestFakeAdapter
                                      adapter()->AsWeakPtr(),
                                      gatt_->GetWeakPtr(),
                                      lease_provider_,
-                                     sco_offload_index);
+                                     sco_offload_index,
+                                     dispatcher());
     host_.Bind(std::move(host_handle));
   }
 

@@ -10,11 +10,11 @@ MultiBufs are flexible binary data structures. As such, there is no single guide
 on how to use them. Instead, several examples are presented that demonstrate
 various aspects of how they can be used.
 
-In each of the guides below, a :doxylink:`pw::Allocator` instance is needed to
+In each of the guides below, a :cc:`pw::Allocator` instance is needed to
 instantiate a MultiBuf instance. This allocator is used to allocate the memory
 for the MultiBuf instance's deque of :ref:`module-pw_multibuf-concepts-entries`.
 For the purposes of these examples, the simple, low-performance
-:doxylink:`AllocatorForTest <pw::allocator::test::AllocatorForTest>` is used.
+:cc:`AllocatorForTest <pw::allocator::test::AllocatorForTest>` is used.
 
 .. literalinclude:: examples/basic.cc
    :language: cpp
@@ -42,9 +42,9 @@ The following example creates just such a MultiBuf instance:
    :start-after: [pw_multibuf-examples-iterate-create]
    :end-before: [pw_multibuf-examples-iterate-create]
 
-Note the use of :doxylink:`pw::ConstMultiBuf`. This type alias of
-:doxylink:`GenericMultiBuf <pw::multibuf_impl::GenericMultiBuf>` includes the
-:doxylink:`kConst <pw::MultiBufProperty>` as one of its
+Note the use of :cc:`pw::ConstMultiBuf`. This type alias of
+:cc:`GenericMultiBuf <pw::multibuf::internal::GenericMultiBuf>` includes the
+:cc:`kConst <pw::multibuf::Property>` as one of its
 :ref:`module-pw_multibuf-design-properties`.
 
 Regardless of how the underlying memory is stored, MultiBuf methods can
@@ -84,9 +84,7 @@ Both methods iterate over the exact same data, just with different levels of
 granularity. The choice of which to use depends on the specific requirements of
 the task.
 
-For the complete example, see `//pw_multibuf/examples/iterate.cc`_.
-
-.. _`//pw_multibuf/examples/iterate.cc`: https://cs.opensource.google/pigweed/pigweed/+/main:pw_multibuf/examples/iterate.cc
+For the complete example, see :cs:`pw_multibuf/examples/iterate.cc`.
 
 ---------------------------
 Variable-length entry queue
@@ -104,11 +102,9 @@ variable-length queue of binary data entries, very similar to
 
 This queue does all of its dynamic allocation in the factory method. After that
 method succeeds, all the queue methods are
-:ref:`infallible <module-pw_multibuf-design-infallibe>`.
+:ref:`infallible <module-pw_multibuf-design-infallible>`.
 
-For the complete example, see `//pw_multibuf/examples/queue.cc`_.
-
-.. _`//pw_multibuf/examples/queue.cc`: https://cs.opensource.google/pigweed/pigweed/+/main:pw_multibuf/examples/queue.cc
+For the complete example, see :cs:`pw_multibuf/examples/queue.cc`.
 
 ------------------
 Asynchronous queue
@@ -130,9 +126,9 @@ producers):
    :start-after: [pw_multibuf-examples-async_queue-observer]
    :end-before: [pw_multibuf-examples-async_queue-observer]
 
-This type extends :doxylink:`pw::MultiBufObserver` and receives an
-:doxylink:`Event <pw::MultiBufObserver::Event>` every time the contents or
-structure of the MultiBuf instance changes.
+This type extends :cc:`Observer <pw::multibuf::Observer>` and receives an
+:cc:`Event <pw::multibuf::Observer::Event>` every time the contents or structure
+of the MultiBuf instance changes.
 
 With this, the queue can leverage the observer to add the same methods that
 produces and consumers can wait on:
@@ -143,7 +139,7 @@ produces and consumers can wait on:
    :start-after: [pw_multibuf-examples-async_queue]
    :end-before: [pw_multibuf-examples-async_queue]
 
-Note that this queue uses a :doxylink:`pw::TrackedConstMultiBuf`. The "Tracked"
+Note that this queue uses a :cc:`pw::TrackedConstMultiBuf`. The "Tracked"
 prefix indicates the MultiBuf instance supports observers, and the "Const"
 prefix indicates the data cannot be modified.
 
@@ -168,9 +164,7 @@ Altogether, this approach is efficient for passing data as it avoids unnecessary
 data copies and leverages the :ref:`module-pw_async2` framework for non-blocking
 synchronization.
 
-For the complete example, see `//pw_multibuf/examples/async_queue.cc`_.
-
-.. _`//pw_multibuf/examples/async_queue.cc`: https://cs.opensource.google/pigweed/pigweed/+/main:pw_multibuf/examples/async_queue.cc
+For the complete example, see :cs:`pw_multibuf/examples/async_queue.cc`.
 
 -------------------
 Scatter-gather I/O
@@ -181,7 +175,7 @@ single source into multiple memory regions (scatter) or written from multiple
 memory regions to a single destination (gather).
 
 As an example, the following container holds
-:doxylink:`Message <pw::i2c::Message>`\s for performing multiple I2C reads and
+:cc:`Message <pw::i2c::Message>`\s for performing multiple I2C reads and
 writes in a single operation:
 
 .. literalinclude:: examples/scatter_gather.cc
@@ -190,8 +184,8 @@ writes in a single operation:
    :start-after: [pw_multibuf-examples-scatter_gather-message_vector]
    :end-before: [pw_multibuf-examples-scatter_gather-message_vector]
 
-This container has a :doxylink:`pw::TrackedMultiBuf` for data to be read, and a
-:doxylink:`pw::TrackedConstMultiBuf` for data to be written. As the "Tracked"
+This container has a :cc:`pw::TrackedMultiBuf` for data to be read, and a
+:cc:`pw::TrackedConstMultiBuf` for data to be written. As the "Tracked"
 prefix indicates, these accept an observer that can be used to signal when an
 I2C transfer is complete:
 
@@ -201,8 +195,8 @@ I2C transfer is complete:
    :start-after: [pw_multibuf-examples-scatter_gather-observer]
    :end-before: [pw_multibuf-examples-scatter_gather-observer]
 
-With a real device, the :doxylink:`Message <pw::i2c::Message>`\s would be passed
-to an :doxylink:`Initiator <pw::i2c::Initiator>`. This example uses a simpler
+With a real device, the :cc:`Message <pw::i2c::Message>`\s would be passed
+to an :cc:`Initiator <pw::i2c::Initiator>`. This example uses a simpler
 ``TestInitiator`` type that simply accepts the messages and then waits for
 another thread to indicate the transfer is complete:
 
@@ -224,9 +218,8 @@ abstracts away the memory management of the individual buffers, and
 automatically notifies the observer when the transfer is complete and the
 messages are dropped.
 
-For the complete example, see `//pw_multibuf/examples/scatter_gather.cc`_.
+For the complete example, see :cs:`pw_multibuf/examples/scatter_gather.cc`.
 
-.. _`//pw_multibuf/examples/scatter_gather.cc`: https://cs.opensource.google/pigweed/pigweed/+/main:pw_multibuf/examples/scatter_gather.cc
 .. _scatter-gather I/O: https://en.wikipedia.org/wiki/Vectored_I/O
 
 ----------------------------------------------
@@ -291,9 +284,8 @@ With these, creating packets becomes straightforward:
    :start-after: [pw_multibuf-examples-transfer-create]
    :end-before: [pw_multibuf-examples-transfer-create]
 
-For the complete example, see `//pw_multibuf/examples/transfer.cc`_.
+For the complete example, see :cs:`pw_multibuf/examples/transfer.cc`.
 
-.. _`//pw_multibuf/examples/transfer.cc`: https://cs.opensource.google/pigweed/pigweed/+/main:pw_multibuf/examples/transfer.cc
 .. _Emboss: https://github.com/google/emboss
 
 ---------------------
@@ -395,6 +387,44 @@ place to send "encrypted" messages from one end to the other:
    :start-after: [pw_multibuf-examples-pseudo_encrypt-e2e]
    :end-before: [pw_multibuf-examples-pseudo_encrypt-e2e]
 
-For the complete example, see `//pw_multibuf/examples/pseudo_encrypt.cc`_.
+For the complete example, see :cs:`pw_multibuf/examples/pseudo_encrypt.cc`.
 
-.. _`//pw_multibuf/examples/pseudo_encrypt.cc`: https://cs.opensource.google/pigweed/pigweed/+/main:pw_multibuf/examples/pseudo_encrypt.cc
+-------------------------------
+Top-down forwarding, and Emboss
+-------------------------------
+``examples/top_down_forward.cc`` demonstrates how to decode a received packet
+(bottom-up decoding), and then excerpt the received payload to use it in
+generating a new packet.
+
+.. literalinclude:: examples/top_down_forward.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_multibuf-examples-top_down_forward-main]
+   :end-before: [pw_multibuf-examples-top_down_forward-main]
+
+It also serves as an example of using `Emboss`_, which allows the packed data
+for each header to be read and written using view. However it requires some
+manual glue code for each header type.
+
+Here for example is how to use the Emboss view types to serialize and
+deserialize the 6-byte ``DemoLinkHeader``, unpacking it into an 8-byte C/C++
+structure that is friendlier for the CPU to access.
+
+.. literalinclude:: examples/top_down_forward.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_multibuf-examples-top_down_forward-demo_link_header_serialize]
+   :end-before: [pw_multibuf-examples-top_down_forward-demo_link_header_serialize]
+
+For that, there is a `.emb` file for the demo protocol that describes the packed
+layout.
+
+.. literalinclude:: examples/public/pw_multibuf/examples/protocol.emb
+   :language: gsql
+   :linenos:
+   :start-after: [pw_multibuf-examples-protocol-link_frame-emboss]
+   :end-before: [pw_multibuf-examples-protocol-link_frame-emboss]
+
+For the complete code, see :cs:`pw_multibuf/examples/top_down_forward.cc`, and
+for the Emboss definition, see
+:cs:`pw_multibuf/examples/public/pw_multibuf/examples/protocol.emb`

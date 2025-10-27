@@ -13,11 +13,11 @@
 // the License.
 #pragma once
 
-#include <optional>
-
+#include "pw_allocator/allocator.h"
 #include "pw_async/dispatcher.h"
 #include "pw_async_basic/dispatcher.h"
-#include "pw_multibuf/multibuf.h"
+#include "pw_containers/dynamic_deque.h"
+#include "pw_function/function.h"
 #include "pw_status/status.h"
 #include "pw_stream/stream.h"
 #include "pw_sync/lock_annotations.h"
@@ -26,32 +26,45 @@
 
 namespace pw::grpc {
 
-// SendQueue is a queue+thread that serializes sending MultiBuf's to
+// SendQueue is a queue+thread that serializes sending buffers to
 // a blocking stream. The queue length is implicitly limited by the allocator
-// that is creating the multibuf's to send.
+// that is creating the buffers to send.
 class SendQueue : public thread::ThreadCore {
  public:
-  SendQueue(stream::ReaderWriter& socket)
-      : socket_(socket),
-        send_task_(pw::bind_member<&SendQueue::ProcessSendQueue>(this)) {}
+  using ErrorHandler = pw::Function<void(pw::Status)>;
 
-  // Thread safe. Queues buffer to be sent on send thread.
-  void QueueSend(multibuf::MultiBuf&& buffer) PW_LOCKS_EXCLUDED(send_mutex_);
+  SendQueue(stream::ReaderWriter& socket, Allocator& allocator)
+      : socket_(socket),
+        send_task_(pw::bind_member<&SendQueue::ProcessSendQueue>(this)),
+        queue_(allocator) {}
+  // Thread safe. Queues buffer to be sent on send thread. Returns false if
+  // there was no queue space available from allocator.
+  bool QueueSend(UniquePtr<std::byte[]>&& buffer)
+      PW_LOCKS_EXCLUDED(send_mutex_);
 
   // ThreadCore impl.
   void Run() override { send_dispatcher_.Run(); }
   // Call before attempting to join thread.
   void RequestStop() { send_dispatcher_.RequestStop(); }
 
+  // Set callback to be called when write to socket fails. QueueSend should not
+  // be called from this callback.
+  void set_on_error(ErrorHandler&& error_handler)
+      PW_LOCKS_EXCLUDED(send_mutex_);
+
  private:
   void ProcessSendQueue(async::Context& context, Status status)
       PW_LOCKS_EXCLUDED(send_mutex_);
 
+  UniquePtr<std::byte[]> PopNext() PW_LOCKS_EXCLUDED(send_mutex_);
+  void NotifyOnError(Status status) PW_LOCKS_EXCLUDED(send_mutex_);
+
   stream::ReaderWriter& socket_;
   async::BasicDispatcher send_dispatcher_;
   async::Task send_task_;
+  ErrorHandler on_error_;
   sync::Mutex send_mutex_;
-  multibuf::MultiBuf buffer_to_write_ PW_GUARDED_BY(send_mutex_);
+  DynamicDeque<UniquePtr<std::byte[]>> queue_ PW_GUARDED_BY(send_mutex_);
 };
 
 }  // namespace pw::grpc

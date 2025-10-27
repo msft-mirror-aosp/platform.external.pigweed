@@ -159,6 +159,7 @@ pw_source_set("snoop") {
   sources = [ "snoop.cc" ]
   public_deps = [
     ":emboss_snoop",
+    ":emboss_util",
     "$dir_pw_chrono:system_clock",
     "$dir_pw_containers:inline_var_len_entry_queue",
     "$dir_pw_sync:mutex",
@@ -168,6 +169,7 @@ pw_source_set("snoop") {
     dir_pw_hex_dump,
     dir_pw_log,
     dir_pw_result,
+    dir_pw_stream,
   ]
 }
 

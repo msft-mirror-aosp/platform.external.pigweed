@@ -18,6 +18,7 @@
 #include <string_view>
 #include <variant>
 
+#include "pw_containers/test/generic_var_len_entry_queue_testing.h"
 #include "pw_containers_private/inline_var_len_entry_queue_test_oracle.h"
 #include "pw_span/span.h"
 #include "pw_unit_test/framework.h"
@@ -354,40 +355,6 @@ TEST(InlineVarLenEntryQueue, MaxSizeElement) {
   EXPECT_EQ(pw_InlineVarLenEntryQueue_Size(q19), 1u);
 }
 
-constexpr const char* kStrings[] = {"Haart", "Sandro", "", "Gelu", "Solmyr"};
-
-TEST(InlineVarLenEntryQueueClass, Iterate) {
-  pw::BasicInlineVarLenEntryQueue<char, 32> queue;
-
-  for (const char* string : kStrings) {
-    queue.push(std::string_view(string));
-  }
-
-  uint32_t i = 0;
-  for (auto entry : queue) {
-    char value[8]{};
-    entry.copy(value, sizeof(value));
-    EXPECT_STREQ(value, kStrings[i++]);
-  }
-  ASSERT_EQ(i, 5u);
-}
-
-TEST(InlineVarLenEntryQueueClass, IterateOverwrittenElements) {
-  pw::BasicInlineVarLenEntryQueue<char, 6> queue;
-
-  for (const char* string : kStrings) {
-    queue.push_overwrite(std::string_view(string));
-  }
-
-  ASSERT_EQ(queue.size(), 1u);
-
-  for (auto entry : queue) {
-    char value[8]{};
-    EXPECT_EQ(6u, entry.copy(value, sizeof(value)));
-    EXPECT_STREQ(value, "Solmyr");
-  }
-}
-
 TEST(InlineVarLenEntryQueueClass, InitializeExistingBuffer) {
   constexpr size_t kArraySize =
       10 + PW_VARIABLE_LENGTH_ENTRY_QUEUE_HEADER_SIZE_UINT32;
@@ -405,187 +372,24 @@ TEST(InlineVarLenEntryQueueClass, InitializeExistingBuffer) {
   EXPECT_TRUE(queue.empty());
 }
 
-TEST(InlineVarLenEntryQueueClass, MaxSizeOneBytePrefix) {
-  pw::InlineVarLenEntryQueue<127> queue;
-  EXPECT_EQ(queue.max_size(), 128u);
-
-  while (queue.try_push({})) {
-  }
-  EXPECT_EQ(queue.size(), queue.max_size());
-  EXPECT_EQ(queue.size_bytes(), 0u);
-}
-
-TEST(InlineVarLenEntryQueueClass, MaxSizeTwoBytePrefix) {
-  pw::InlineVarLenEntryQueue<128> queue;
-  EXPECT_EQ(queue.max_size(), 130u);
-
-  while (queue.try_push({})) {
-  }
-  EXPECT_EQ(queue.size(), queue.max_size());
-  EXPECT_EQ(queue.size_bytes(), 0u);
-}
-
-TEST(InlineVarLenEntryQueueClass, ConstEntry) {
-  pw::BasicInlineVarLenEntryQueue<char, 5> queue;
-  queue.push("12");  // Split the next entry across the end.
-  queue.push_overwrite(std::string_view("ABCDE"));
-
-  decltype(queue)::const_value_type front = queue.front();
-
-  ASSERT_EQ(front.size(), 5u);
-  EXPECT_EQ(front[0], 'A');
-  EXPECT_EQ(front[1], 'B');
-  EXPECT_EQ(front[2], 'C');
-  EXPECT_EQ(front[3], 'D');
-  EXPECT_EQ(front[4], 'E');
-
-  EXPECT_EQ(front.at(0), 'A');
-  EXPECT_EQ(front.at(1), 'B');
-  EXPECT_EQ(front.at(2), 'C');
-  EXPECT_EQ(front.at(3), 'D');
-  EXPECT_EQ(front.at(4), 'E');
-
-  const auto [span_1, span_2] = front.contiguous_data();
-  EXPECT_EQ(span_1.size(), 2u);
-  EXPECT_EQ(std::memcmp(span_1.data(), "AB", 2u), 0);
-  EXPECT_EQ(span_2.size(), 3u);
-  EXPECT_EQ(std::memcmp(span_2.data(), "CDE", 3u), 0);
-
-  const char* expected_ptr = "ABCDE";
-  for (char c : front) {
-    EXPECT_EQ(*expected_ptr, c);
-    ++expected_ptr;
-  }
-
-  // Check the iterators with std::copy and std::equal.
-  char value[6] = {};
-  std::copy(front.begin(), front.end(), value);
-  EXPECT_STREQ(value, "ABCDE");
-
-  EXPECT_TRUE(std::equal(front.begin(), front.end(), "ABCDE"));
-}
-
-TEST(InlineVarLenEntryQueueClass, ModifyEntry) {
-  pw::BasicInlineVarLenEntryQueue<char, 5> queue;
-  queue.push("12");  // Split the next entry across the end.
-  queue.push_overwrite(std::string_view("ABCDE"));
-
-  decltype(queue)::value_type front = queue.front();
-
-  ASSERT_EQ(front.size(), 5u);
-  EXPECT_EQ(std::exchange(front[0], 'a'), 'A');
-  EXPECT_EQ(std::exchange(front[1], 'b'), 'B');
-  EXPECT_EQ(std::exchange(front[2], 'c'), 'C');
-  EXPECT_EQ(std::exchange(front[3], 'd'), 'D');
-  EXPECT_EQ(std::exchange(front[4], 'e'), 'E');
-
-  EXPECT_EQ(std::exchange(front.at(0), 'A'), 'a');
-  EXPECT_EQ(std::exchange(front.at(1), 'B'), 'b');
-  EXPECT_EQ(std::exchange(front.at(2), 'C'), 'c');
-  EXPECT_EQ(std::exchange(front.at(3), 'D'), 'd');
-  EXPECT_EQ(std::exchange(front.at(4), 'E'), 'e');
-
-  const auto [span_1, span_2] = front.contiguous_data();
-  EXPECT_EQ(span_1.size(), 2u);
-  EXPECT_EQ(std::memcmp(span_1.data(), "AB", 2u), 0);
-  std::fill(span_1.begin(), span_1.end(), '?');
-  EXPECT_EQ(std::memcmp(span_1.data(), "??", 2u), 0);
-
-  EXPECT_EQ(span_2.size(), 3u);
-  std::fill(span_2.begin(), span_2.end(), '#');
-  EXPECT_EQ(std::memcmp(span_2.data(), "###", 3u), 0);
-
-  const char* expected_ptr = "??###";
-  for (char c : front) {
-    EXPECT_EQ(*expected_ptr, c);
-    ++expected_ptr;
-  }
-
-  // Check the iterators with std::copy, std::fill, and std::equal.
-  std::string_view data("1234");
-  std::copy(data.begin(), data.end(), ++front.begin());
-  EXPECT_TRUE(std::equal(front.begin(), front.end(), "?1234"));
-
-  ASSERT_EQ(front.front(), '?');
-  front.front() = '!';
-  EXPECT_EQ(front.front(), '!');
-
-  ASSERT_EQ(front.back(), '4');
-  front.back() = '!';
-  EXPECT_EQ(front.back(), '!');
-}
-
-TEST(InlineVarLenEntryQueueClass, EntryIteratorPlusAndPlusEquals) {
-  pw::BasicInlineVarLenEntryQueue<char, 5> queue;
-  queue.push(std::string_view("12"));  // Split the next entry across the end.
-  queue.push_overwrite(std::string_view("ABCDE"));
-
-  auto entry = queue.front();
-  auto it = entry.begin();
-
-  EXPECT_EQ(*(it + 0), 'A');
-  EXPECT_EQ(*(it + 1), 'B');
-  EXPECT_EQ(*(it + 2), 'C');
-  EXPECT_EQ(*(it + 3), 'D');
-  EXPECT_EQ(*(it + 4), 'E');
-
-  EXPECT_EQ(*(0 + it), 'A');
-  EXPECT_EQ(*(4 + it), 'E');
-
-  auto it2 = it;
-  it2 += 2;
-  EXPECT_EQ(*it2, 'C');
-  it2 += 2;
-  EXPECT_EQ(*it2, 'E');
-
-  // Test non-wrapped entry.
-  pw::BasicInlineVarLenEntryQueue<char, 10> queue2;
-  queue2.push(std::string_view("0123456789"));
-
-  auto entry2 = queue2.front();
-  auto it3 = entry2.begin();
-
-  EXPECT_EQ(*(it3 + 0), '0');
-  EXPECT_EQ(*(it3 + 5), '5');
-  EXPECT_EQ(*(5 + it3), '5');
-
-  auto it4 = it3;
-  it4 += 3;
-  EXPECT_EQ(*it4, '3');
-  it4 += 4;
-  EXPECT_EQ(*it4, '7');
-}
-
-TEST(InlineVarLenEntryQueueClass, ModifyMultipleEntries) {
-  pw::BasicInlineVarLenEntryQueue<char, 7> queue;
-  queue.push(std::string_view("ab"));
-  queue.push(std::string_view("CDE"));
-  ASSERT_EQ(queue.size(), 2u);
-
-  auto it = queue.begin();
-  (*it)[0] = 'v';
-  (*it)[1] = 'w';
-
-  ++it;
-  (*it)[0] = 'X';
-  (*it)[2] = 'Z';
-
-  it = queue.begin();
-  EXPECT_EQ(it->size(), 2u);
-  EXPECT_TRUE(std::equal(it->begin(), it->end(), "vw"));
-
-  ++it;
-  ASSERT_EQ(it->size(), 3u);
-  EXPECT_TRUE(std::equal(it->begin(), it->end(), "XDZ"));
-
-  EXPECT_EQ(++it, queue.end());
-}
-
 TEST(InlineVarLenEntryQueueClass, Construct_Constexpr) {
   constexpr pw::InlineVarLenEntryQueue<127> queue(pw::kConstexpr);
   EXPECT_TRUE(queue.empty());
   EXPECT_EQ(queue.max_size(), 128u);
   EXPECT_EQ(queue.size(), 0u);
 }
+
+// Include tests of GenericVarLenEntryQueue, using a BasicInlineVarLenEntryQueue
+// factory.
+class BasicInlineVarLenEntryQueueTest
+    : public pw::containers::test::GenericVarLenEntryQueueTest<
+          BasicInlineVarLenEntryQueueTest> {
+ public:
+  template <typename T, size_t kMaxSizeBytes>
+  pw::BasicInlineVarLenEntryQueue<T, kMaxSizeBytes> MakeQueue() {
+    return pw::BasicInlineVarLenEntryQueue<T, kMaxSizeBytes>();
+  }
+};
+PW_GENERIC_VAR_LEN_ENTRY_QUEUE_TESTS(BasicInlineVarLenEntryQueueTest);
 
 }  // namespace

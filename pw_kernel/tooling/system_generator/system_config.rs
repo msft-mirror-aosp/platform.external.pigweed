@@ -39,8 +39,8 @@ pub struct Armv8MConfig {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Armv8MNvicConfig {
-    pub vector_table_start_address: usize,
-    pub vector_table_size_bytes: usize,
+    pub vector_table_start_address: u64,
+    pub vector_table_size_bytes: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -50,35 +50,39 @@ pub struct RiscVConfig;
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct KernelConfig {
-    pub flash_start_address: usize,
-    pub flash_size_bytes: usize,
-    pub ram_start_address: usize,
-    pub ram_size_bytes: usize,
+    pub flash_start_address: u64,
+    pub flash_size_bytes: u64,
+    pub ram_start_address: u64,
+    pub ram_size_bytes: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AppConfig {
-    pub flash_size_bytes: usize,
-    pub ram_size_bytes: usize,
+    pub flash_size_bytes: u64,
+    pub ram_size_bytes: u64,
     pub process: ProcessConfig,
     // The following fields are calculated, not defined by a user.
     // TODO: davidroth - if this becomes too un-wieldy, we should
     // split the config schema from the template structs.
     #[serde(skip_deserializing)]
-    pub flash_start_address: usize,
+    pub flash_start_address: u64,
     #[serde(skip_deserializing)]
-    pub ram_start_address: usize,
+    pub ram_start_address: u64,
     #[serde(skip_deserializing)]
-    pub start_fn_address: usize,
+    pub start_fn_address: u64,
     #[serde(skip_deserializing)]
-    pub initial_sp: usize,
+    pub initial_sp: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProcessConfig {
     name: String,
+
+    #[serde(default)]
+    memory_mappings: LinkedHashMap<String, MemoryMapping>,
+
     #[serde(default)]
     objects: LinkedHashMap<String, ObjectConfig>,
     threads: Vec<ThreadConfig>,
@@ -86,13 +90,28 @@ pub struct ProcessConfig {
     // Internally the template engine (`minijinja`) does not preserve the order of
     // associative containers.  Since ordering of objects in a processes object
     // table is directly related to its handle, this Vec is used to allow templates
-    // to iterate over objects in order.
+    // to iterate over objects in order.  The same is true for memory mappings.
     //
     // `minijina` does have a `preserve-order` feature.  However, depending on
     // this can be fragile when downstream users are using non-cargo build systems
     // and managing their own third party deps.
     #[serde(skip_deserializing)]
+    ordered_memory_mapping_names: Vec<String>,
+    #[serde(skip_deserializing)]
     ordered_object_names: Vec<String>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryMappingType {
+    Device,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct MemoryMapping {
+    #[serde(rename = "type")]
+    ty: MemoryMappingType,
+    start_address: u64,
+    size_bytes: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -123,7 +142,8 @@ pub struct ChannelHandlerConfig;
 #[serde(deny_unknown_fields)]
 pub struct ThreadConfig {
     name: String,
-    stack_size_bytes: usize,
+    stack_size_bytes: u64,
+    priority: Option<String>,
 }
 
 impl<A: ArchConfigInterface> SystemConfig<A> {
@@ -145,6 +165,13 @@ impl<A: ArchConfigInterface> SystemConfig<A> {
             app_config.process.ordered_object_names = app_config
                 .process
                 .objects
+                .iter()
+                .map(|(name, _)| name.clone())
+                .collect();
+
+            app_config.process.ordered_memory_mapping_names = app_config
+                .process
+                .memory_mappings
                 .iter()
                 .map(|(name, _)| name.clone())
                 .collect();

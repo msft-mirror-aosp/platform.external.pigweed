@@ -18,6 +18,7 @@
 #include "pw_allocator/libc_allocator.h"
 #include "pw_assert/check.h"
 #include "pw_bluetooth_proxy/h4_packet.h"
+#include "pw_bluetooth_proxy/internal/multibuf.h"
 #include "pw_bluetooth_proxy/l2cap_channel_common.h"
 #include "pw_bluetooth_proxy_private/test_utils.h"
 #include "pw_containers/flat_map.h"
@@ -144,8 +145,9 @@ TEST_F(L2capCocWriteTest, BasicWrite) {
   L2capCoc channel = BuildCoc(proxy,
                               CocParameters{.handle = capture.handle,
                                             .remote_cid = capture.channel_id});
-  PW_TEST_EXPECT_OK(
-      channel.Write(MultiBufFromSpan(span(capture.payload))).status);
+  FlatMultiBufInstance mbuf_inst = MultiBufFromSpan(span(capture.payload));
+  FlatMultiBuf& mbuf = MultiBufAdapter::Unwrap(mbuf_inst);
+  PW_TEST_EXPECT_OK(channel.Write(std::move(mbuf)).status);
   EXPECT_EQ(capture.sends_called, 1);
 }
 
@@ -171,7 +173,8 @@ TEST_F(L2capCocWriteTest, ErrorOnWriteToStoppedChannel) {
 
   channel.Stop();
   EXPECT_EQ(channel.IsWriteAvailable(), PW_STATUS_FAILED_PRECONDITION);
-  EXPECT_EQ(channel.Write(multibuf::MultiBuf{}).status,
+  FlatMultiBufInstance empty = MakeEmptyMultiBuf();
+  EXPECT_EQ(channel.Write(std::move(MultiBufAdapter::Unwrap(empty))).status,
             Status::FailedPrecondition());
 }
 
@@ -191,7 +194,9 @@ TEST_F(L2capCocWriteTest, WriteExceedingMtuFails) {
   // Payload size exceeds MTU.
   L2capCoc small_mtu_channel = BuildCoc(proxy, CocParameters{.tx_mtu = 1});
   std::array<uint8_t, 24> payload;
-  EXPECT_EQ(small_mtu_channel.Write(MultiBufFromSpan(span(payload))).status,
+  FlatMultiBufInstance mbuf_inst = MultiBufFromSpan(span(payload));
+  FlatMultiBuf& mbuf = MultiBufAdapter::Unwrap(mbuf_inst);
+  EXPECT_EQ(small_mtu_channel.Write(std::move(mbuf)).status,
             Status::InvalidArgument());
 }
 
@@ -227,8 +232,9 @@ TEST_F(L2capCocWriteTest, MultipleWritesSameChannel) {
 
   L2capCoc channel = BuildCoc(proxy, CocParameters{.tx_credits = num_writes});
   for (int i = 0; i < num_writes; ++i) {
-    PW_TEST_EXPECT_OK(
-        channel.Write(MultiBufFromSpan(span(capture.payload))).status);
+    FlatMultiBufInstance mbuf_inst = MultiBufFromSpan(span(capture.payload));
+    FlatMultiBuf& mbuf = MultiBufAdapter::Unwrap(mbuf_inst);
+    PW_TEST_EXPECT_OK(channel.Write(std::move(mbuf)).status);
     std::for_each(capture.payload.begin(),
                   capture.payload.end(),
                   [](uint8_t& byte) { ++byte; });
@@ -282,12 +288,16 @@ TEST_F(L2capCocWriteTest, FlowControlDueToAclCredits) {
   // Use up the ACL credits and fill up the send queue.
   for (int i = 0; i < kExpectedSuccessfulWrites; ++i) {
     EXPECT_EQ(channel.IsWriteAvailable(), PW_STATUS_OK);
-    EXPECT_EQ(channel.Write(multibuf::MultiBuf{}).status, PW_STATUS_OK);
+    FlatMultiBufInstance empty = MakeEmptyMultiBuf();
+    EXPECT_EQ(channel.Write(std::move(MultiBufAdapter::Unwrap(empty))).status,
+              PW_STATUS_OK);
   }
   EXPECT_EQ(0, capture.write_available_events);
 
   // Send queue is full, so Write should get unavailable.
-  EXPECT_EQ(channel.Write(multibuf::MultiBuf{}).status, PW_STATUS_UNAVAILABLE);
+  FlatMultiBufInstance empty1 = MakeEmptyMultiBuf();
+  EXPECT_EQ(channel.Write(std::move(MultiBufAdapter::Unwrap(empty1))).status,
+            PW_STATUS_UNAVAILABLE);
 
   // Release a ACL credit, so even should trigger and write should be available
   // again.
@@ -296,7 +306,9 @@ TEST_F(L2capCocWriteTest, FlowControlDueToAclCredits) {
       proxy, FlatMap<uint16_t, uint16_t, 1>({{{kHandle, 1}}})));
   EXPECT_EQ(1, capture.write_available_events);
   EXPECT_EQ(channel.IsWriteAvailable(), PW_STATUS_OK);
-  EXPECT_EQ(channel.Write(multibuf::MultiBuf{}).status, PW_STATUS_OK);
+  FlatMultiBufInstance empty2 = MakeEmptyMultiBuf();
+  EXPECT_EQ(channel.Write(std::move(MultiBufAdapter::Unwrap(empty2))).status,
+            PW_STATUS_OK);
 
   // Verify event on just IsWriteAvailable
   EXPECT_EQ(channel.IsWriteAvailable(), PW_STATUS_UNAVAILABLE);
@@ -347,13 +359,17 @@ TEST_F(L2capCocWriteTest, UnavailableWhenSendQueueIsFullDueToL2capCocCredits) {
   // Use up the CoC credits and fill up the send queue.
   for (int i = 0; i < kExpectedSuccessfulWrites; ++i) {
     EXPECT_EQ(channel.IsWriteAvailable(), PW_STATUS_OK);
-    EXPECT_EQ(channel.Write(multibuf::MultiBuf{}).status, PW_STATUS_OK);
+    FlatMultiBufInstance empty = MakeEmptyMultiBuf();
+    EXPECT_EQ(channel.Write(std::move(MultiBufAdapter::Unwrap(empty))).status,
+              PW_STATUS_OK);
   }
   EXPECT_EQ(0, capture.write_available_events);
 
   // Send queue is full, so client should now get unavailable.
   EXPECT_EQ(channel.IsWriteAvailable(), PW_STATUS_UNAVAILABLE);
-  EXPECT_EQ(channel.Write(multibuf::MultiBuf{}).status, PW_STATUS_UNAVAILABLE);
+  FlatMultiBufInstance empty = MakeEmptyMultiBuf();
+  EXPECT_EQ(channel.Write(std::move(MultiBufAdapter::Unwrap(empty))).status,
+            PW_STATUS_UNAVAILABLE);
   EXPECT_EQ(0, capture.write_available_events);
 
   // TODO: https://pwbug.dev/380299794 - Verify we properly show available once
@@ -408,8 +424,9 @@ TEST_F(L2capCocWriteTest, MultipleWritesMultipleChannels) {
   };
 
   for (int i = 0; i < kNumChannels; ++i) {
-    PW_TEST_EXPECT_OK(
-        channels[i].Write(MultiBufFromSpan(span(capture.payload))).status);
+    FlatMultiBufInstance mbuf_inst = MultiBufFromSpan(span(capture.payload));
+    FlatMultiBuf& mbuf = MultiBufAdapter::Unwrap(mbuf_inst);
+    PW_TEST_EXPECT_OK(channels[i].Write(std::move(mbuf)).status);
     std::for_each(capture.payload.begin(),
                   capture.payload.end(),
                   [](uint8_t& byte) { ++byte; });
@@ -500,7 +517,13 @@ TEST_F(L2capCocWriteTest, MultithreadedWrite) {
   PW_TEST_EXPECT_OK(SendLeReadBufferResponseFromController(
       proxy, kNumThreads * kPacketsPerThread));
 
-  pw::Vector<L2capCoc, kNumThreads> channels;
+  MultiBufAllocatorContext<200 * 1024, sync::Mutex> packet_allocator_context;
+  struct ThreadCapture {
+    L2capCoc channel;
+    MultiBufAllocator& packet_allocator;
+  };
+
+  pw::Vector<ThreadCapture, kNumThreads> captures;
   pw::thread::test::TestThreadContext context;
   pw::Vector<pw::Thread, kNumThreads> threads;
 
@@ -512,47 +535,29 @@ TEST_F(L2capCocWriteTest, MultithreadedWrite) {
     // TODO: https://pwbug.dev/422222575 -  Move channel creation, close, and
     // destruction inside each thread once we have proper channel lifecycle
     // locking.
-    channels.emplace_back(
+    ThreadCapture thread_capture{
         BuildCoc(proxy,
                  CocParameters{.handle = capture.kTestHandle,
                                .local_cid = local_cid,
                                .remote_cid = remote_cid,
-                               .tx_credits = kPacketsPerThread}));
+                               .tx_credits = kPacketsPerThread}),
+        packet_allocator_context.GetAllocator()};
+    captures.emplace_back(std::move(thread_capture));
   }
 
-  std::array<std::byte, 200 * 1024> data_mem{};
-  // Use a libc allocator for metadata so msan can detect use after free at
-  // multibuf level. When we move to MultiBuf 2 we can use libc for entire
-  // multibuf.
-  pw::allocator::LibCAllocator libc_allocator;
-  pw::multibuf::SimpleAllocator packet_allocator{
-      /*data_area=*/data_mem,
-      /*metadata_alloc=*/libc_allocator};
-
   for (unsigned int thread_numb = 0; thread_numb < kNumThreads; ++thread_numb) {
-    struct ThreadCapture {
-      L2capCoc* channel;
-      multibuf::MultiBufAllocator* packet_allocator;
-    };
-    // Dynamic allocation needed since thread will outlive this for loop scope.
-    std::unique_ptr<ThreadCapture> thread_capture(
-        new ThreadCapture{.channel = &channels[thread_numb],
-                          .packet_allocator = &packet_allocator});
-
-    threads.emplace_back(
-        context.options(), [thread_capture = std::move(thread_capture)]() {
-          for (unsigned int packet_numb = 0; packet_numb < kPacketsPerThread;
-               ++packet_numb) {
-            std::array<uint8_t, kPayloadSize> payload = {};
-            std::fill(payload.begin(), payload.end(), packet_numb);
-            Status write_status =
-                thread_capture->channel
-                    ->Write(MultiBufFromSpan(span(payload),
-                                             *thread_capture->packet_allocator))
-                    .status;
-            PW_TEST_EXPECT_OK(write_status);
-          }
-        });
+    ThreadCapture& thread_capture = captures[thread_numb];
+    threads.emplace_back(context.options(), [&thread_capture]() {
+      for (unsigned int packet_numb = 0; packet_numb < kPacketsPerThread;
+           ++packet_numb) {
+        std::array<uint8_t, kPayloadSize> payload = {};
+        std::fill(payload.begin(), payload.end(), packet_numb);
+        FlatMultiBufInstance mbuf_inst =
+            MultiBufFromSpan(span(payload), thread_capture.packet_allocator);
+        FlatMultiBuf& mbuf = MultiBufAdapter::Unwrap(mbuf_inst);
+        PW_TEST_EXPECT_OK(thread_capture.channel.Write(std::move(mbuf)).status);
+      }
+    });
   }
 
   for (auto& t : threads) {
@@ -562,7 +567,7 @@ TEST_F(L2capCocWriteTest, MultithreadedWrite) {
   for (unsigned int i = 0; i < kNumThreads; ++i) {
     // TODO: https://pwbug.dev/422222575 -  Move channel close and dtor inside
     // each thread once we have proper channel lifecycle locking.
-    channels[i].Close();
+    captures[i].channel.Close();
   }
 
   {
@@ -599,16 +604,15 @@ TEST_F(L2capCocReadTest, BasicRead) {
       proxy,
       CocParameters{.handle = handle,
                     .local_cid = local_cid,
-                    .receive_fn = [&capture](multibuf::MultiBuf&& payload) {
+                    .receive_fn = [&capture](FlatConstMultiBuf&& payload) {
                       ++capture.receives_called;
-                      std::optional<ConstByteSpan> rx_sdu =
-                          payload.ContiguousSpan();
-                      ASSERT_TRUE(rx_sdu);
+                      ASSERT_FALSE(payload.empty());
+                      ConstByteSpan rx_sdu = *payload.ConstChunks().begin();
                       ConstByteSpan expected_sdu =
                           as_bytes(span(capture.expected_payload.data(),
                                         capture.expected_payload.size()));
-                      EXPECT_TRUE(std::equal(rx_sdu->begin(),
-                                             rx_sdu->end(),
+                      EXPECT_TRUE(std::equal(rx_sdu.begin(),
+                                             rx_sdu.end(),
                                              expected_sdu.begin(),
                                              expected_sdu.end()));
                     }});
@@ -810,7 +814,7 @@ TEST_F(L2capCocReadTest, ErrorOnRxToStoppedChannel) {
       CocParameters{.handle = handle,
                     .local_cid = local_cid,
                     .rx_credits = num_invalid_rx,
-                    .receive_fn = [](multibuf::MultiBuf&&) { FAIL(); },
+                    .receive_fn = [](FlatConstMultiBuf&&) { FAIL(); },
                     .event_fn =
                         [&events_received](L2capChannelEvent event) {
                           ++events_received;
@@ -858,7 +862,7 @@ TEST_F(L2capCocReadTest, TooShortAclPassedToHost) {
       proxy,
       CocParameters{.handle = handle,
                     .local_cid = local_cid,
-                    .receive_fn = [](multibuf::MultiBuf&&) { FAIL(); }});
+                    .receive_fn = [](FlatConstMultiBuf&&) { FAIL(); }});
 
   std::array<uint8_t, kFirstKFrameOverAclMinSize> hci_arr;
   hci_arr.fill(0);
@@ -894,7 +898,7 @@ TEST_F(L2capCocReadTest, ChannelClosedWithErrorIfMtuExceeded) {
       CocParameters{.handle = handle,
                     .local_cid = local_cid,
                     .rx_mtu = kRxMtu,
-                    .receive_fn = [](multibuf::MultiBuf&&) { FAIL(); },
+                    .receive_fn = [](FlatConstMultiBuf&&) { FAIL(); },
                     .event_fn =
                         [&events_received](L2capChannelEvent event) {
                           ++events_received;
@@ -942,7 +946,7 @@ TEST_F(L2capCocReadTest, ChannelClosedWithErrorIfMpsExceeded) {
       CocParameters{.handle = handle,
                     .local_cid = local_cid,
                     .rx_mps = kRxMps,
-                    .receive_fn = [](multibuf::MultiBuf&&) { FAIL(); },
+                    .receive_fn = [](FlatConstMultiBuf&&) { FAIL(); },
                     .event_fn =
                         [&events_received](L2capChannelEvent event) {
                           ++events_received;
@@ -988,7 +992,7 @@ TEST_F(L2capCocReadTest, ChannelClosedWithErrorIfPayloadsExceedSduLength) {
       proxy,
       CocParameters{.handle = handle,
                     .local_cid = local_cid,
-                    .receive_fn = [](multibuf::MultiBuf&&) { FAIL(); },
+                    .receive_fn = [](FlatConstMultiBuf&&) { FAIL(); },
                     .event_fn =
                         [&events_received](L2capChannelEvent event) {
                           ++events_received;
@@ -1057,7 +1061,7 @@ TEST_F(L2capCocReadTest, NoReadOnStoppedChannel) {
       proxy,
       CocParameters{.handle = handle,
                     .local_cid = local_cid,
-                    .receive_fn = [](multibuf::MultiBuf&&) { FAIL(); }});
+                    .receive_fn = [](FlatConstMultiBuf&&) { FAIL(); }});
 
   std::array<uint8_t, kFirstKFrameOverAclMinSize> hci_arr;
   hci_arr.fill(0);
@@ -1091,7 +1095,7 @@ TEST_F(L2capCocReadTest, NoReadOnSameCidDifferentConnectionHandle) {
   L2capCoc channel = BuildCoc(
       proxy,
       CocParameters{.local_cid = local_cid,
-                    .receive_fn = [](multibuf::MultiBuf&&) { FAIL(); }});
+                    .receive_fn = [](FlatConstMultiBuf&&) { FAIL(); }});
 
   std::array<uint8_t, kFirstKFrameOverAclMinSize> hci_arr;
   hci_arr.fill(0);
@@ -1131,15 +1135,14 @@ TEST_F(L2capCocReadTest, MultipleReadsSameChannel) {
       proxy,
       CocParameters{.handle = handle,
                     .local_cid = local_cid,
-                    .receive_fn = [&capture](multibuf::MultiBuf&& payload) {
+                    .receive_fn = [&capture](FlatConstMultiBuf&& payload) {
                       ++capture.sends_called;
-                      std::optional<ConstByteSpan> rx_sdu =
-                          payload.ContiguousSpan();
-                      ASSERT_TRUE(rx_sdu);
+                      ASSERT_FALSE(payload.empty());
+                      ConstByteSpan rx_sdu = *payload.ConstChunks().begin();
                       ConstByteSpan expected_sdu = as_bytes(
                           span(capture.payload.data(), capture.payload.size()));
-                      EXPECT_TRUE(std::equal(rx_sdu->begin(),
-                                             rx_sdu->end(),
+                      EXPECT_TRUE(std::equal(rx_sdu.begin(),
+                                             rx_sdu.end(),
                                              expected_sdu.begin(),
                                              expected_sdu.end()));
                     }});
@@ -1195,14 +1198,14 @@ TEST_F(L2capCocReadTest, MultipleReadsMultipleChannels) {
   constexpr int kNumChannels = 5;
   uint16_t local_cid = 123;
   uint16_t handle = 456;
-  auto receive_fn = [&capture](multibuf::MultiBuf&& payload) {
+  auto receive_fn = [&capture](FlatConstMultiBuf&& payload) {
     ++capture.sends_called;
-    std::optional<ConstByteSpan> rx_sdu = payload.ContiguousSpan();
-    ASSERT_TRUE(rx_sdu);
+    ASSERT_FALSE(payload.empty());
+    ConstByteSpan rx_sdu = *payload.ConstChunks().begin();
     ConstByteSpan expected_sdu =
         as_bytes(span(capture.payload.data(), capture.payload.size()));
-    EXPECT_TRUE(std::equal(rx_sdu->begin(),
-                           rx_sdu->end(),
+    EXPECT_TRUE(std::equal(rx_sdu.begin(),
+                           rx_sdu.end(),
                            expected_sdu.begin(),
                            expected_sdu.end()));
   };
@@ -1280,14 +1283,14 @@ TEST_F(L2capCocReadTest, ChannelStoppageDoNotAffectOtherChannels) {
   constexpr int kNumChannels = 5;
   uint16_t local_cid = 123;
   uint16_t handle = 456;
-  auto receive_fn = [&capture](multibuf::MultiBuf&& payload) {
+  auto receive_fn = [&capture](FlatConstMultiBuf&& payload) {
     ++capture.sends_called;
-    std::optional<ConstByteSpan> rx_sdu = payload.ContiguousSpan();
-    ASSERT_TRUE(rx_sdu);
+    ASSERT_FALSE(payload.empty());
+    ConstByteSpan rx_sdu = *payload.ConstChunks().begin();
     ConstByteSpan expected_sdu =
         as_bytes(span(capture.payload.data(), capture.payload.size()));
-    EXPECT_TRUE(std::equal(rx_sdu->begin(),
-                           rx_sdu->end(),
+    EXPECT_TRUE(std::equal(rx_sdu.begin(),
+                           rx_sdu.end(),
                            expected_sdu.begin(),
                            expected_sdu.end()));
   };
@@ -1384,7 +1387,7 @@ TEST_F(L2capCocReadTest, NonCocAclPacketPassesThroughToHost) {
   L2capCoc channel = BuildCoc(
       proxy,
       CocParameters{.handle = capture.handle,
-                    .receive_fn = [](multibuf::MultiBuf&&) { FAIL(); }});
+                    .receive_fn = [](FlatConstMultiBuf&&) { FAIL(); }});
 
   std::array<uint8_t,
              emboss::AclDataFrameHeader::IntrinsicSizeInBytes() +
@@ -1461,7 +1464,7 @@ TEST_F(L2capCocReadTest, FragmentedPduDoesNotInterfereWithOtherChannels) {
   uint16_t handle_frag = 0x123, handle_fine = 0x234;
   uint16_t cid_frag = 0x345, cid_fine = 0x456;
   int packets_received = 0;
-  auto receive_fn = [&packets_received](multibuf::MultiBuf&&) {
+  auto receive_fn = [&packets_received](FlatConstMultiBuf&&) {
     ++packets_received;
   };
   L2capCoc frag_channel = BuildCoc(proxy,
@@ -1593,9 +1596,13 @@ TEST_F(L2capCocQueueTest, ReadBufferResponseDrainsQueue) {
 
   EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 0);
   for (size_t i = 0; i < L2capCoc::QueueCapacity(); ++i) {
-    PW_TEST_EXPECT_OK(channel.Write(multibuf::MultiBuf{}).status);
+    FlatMultiBufInstance empty = MakeEmptyMultiBuf();
+    PW_TEST_EXPECT_OK(
+        channel.Write(std::move(MultiBufAdapter::Unwrap(empty))).status);
   }
-  EXPECT_EQ(channel.Write(multibuf::MultiBuf{}).status, PW_STATUS_UNAVAILABLE);
+  FlatMultiBufInstance empty = MakeEmptyMultiBuf();
+  EXPECT_EQ(channel.Write(std::move(MultiBufAdapter::Unwrap(empty))).status,
+            PW_STATUS_UNAVAILABLE);
   EXPECT_EQ(sends_called, 0u);
 
   PW_TEST_EXPECT_OK(
@@ -1628,14 +1635,20 @@ TEST_F(L2capCocQueueTest, NocpEventDrainsQueue) {
                              .tx_credits = 2 * L2capCoc::QueueCapacity()});
 
   for (size_t i = 0; i < L2capCoc::QueueCapacity(); ++i) {
-    PW_TEST_EXPECT_OK(channel.Write(multibuf::MultiBuf{}).status);
+    FlatMultiBufInstance empty = MakeEmptyMultiBuf();
+    PW_TEST_EXPECT_OK(
+        channel.Write(std::move(MultiBufAdapter::Unwrap(empty))).status);
   }
 
   EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 0);
   for (size_t i = 0; i < L2capCoc::QueueCapacity(); ++i) {
-    PW_TEST_EXPECT_OK(channel.Write(multibuf::MultiBuf{}).status);
+    FlatMultiBufInstance empty = MakeEmptyMultiBuf();
+    PW_TEST_EXPECT_OK(
+        channel.Write(std::move(MultiBufAdapter::Unwrap(empty))).status);
   }
-  EXPECT_EQ(channel.Write(multibuf::MultiBuf{}).status, PW_STATUS_UNAVAILABLE);
+  FlatMultiBufInstance empty = MakeEmptyMultiBuf();
+  EXPECT_EQ(channel.Write(std::move(MultiBufAdapter::Unwrap(empty))).status,
+            PW_STATUS_UNAVAILABLE);
   EXPECT_EQ(sends_called, L2capCoc::QueueCapacity());
 
   PW_TEST_EXPECT_OK(SendNumberOfCompletedPackets(
@@ -1684,7 +1697,9 @@ TEST_F(L2capCocQueueTest, RemovingLrdChannelDoesNotInvalidateRoundRobin) {
 
   // Queue a packet in middle channel.
   for (size_t i = 0; i < L2capCoc::QueueCapacity() + 1; ++i) {
-    PW_TEST_EXPECT_OK(chan_middle->Write(multibuf::MultiBuf{}).status);
+    FlatMultiBufInstance empty = MakeEmptyMultiBuf();
+    PW_TEST_EXPECT_OK(
+        chan_middle->Write(std::move(MultiBufAdapter::Unwrap(empty))).status);
   }
   EXPECT_EQ(sends_called, L2capCoc::QueueCapacity());
 
@@ -1694,8 +1709,12 @@ TEST_F(L2capCocQueueTest, RemovingLrdChannelDoesNotInvalidateRoundRobin) {
   EXPECT_EQ(sends_called, L2capCoc::QueueCapacity() + 1);
 
   // Queue a packet each in left and right channels.
-  PW_TEST_EXPECT_OK(chan_left.Write(multibuf::MultiBuf{}).status);
-  PW_TEST_EXPECT_OK(chan_right.Write(multibuf::MultiBuf{}).status);
+  FlatMultiBufInstance empty1 = MakeEmptyMultiBuf();
+  PW_TEST_EXPECT_OK(
+      chan_left.Write(std::move(MultiBufAdapter::Unwrap(empty1))).status);
+  FlatMultiBufInstance empty2 = MakeEmptyMultiBuf();
+  PW_TEST_EXPECT_OK(
+      chan_right.Write(std::move(MultiBufAdapter::Unwrap(empty2))).status);
   EXPECT_EQ(sends_called, L2capCoc::QueueCapacity() + 1);
 
   // Drop middle channel. LRD write iterator should still be valid.
@@ -1708,14 +1727,10 @@ TEST_F(L2capCocQueueTest, RemovingLrdChannelDoesNotInvalidateRoundRobin) {
 }
 
 TEST_F(L2capCocQueueTest, H4BufferReleaseTriggersQueueDrain) {
-  constexpr size_t kNumSends =
-      ProxyHost::GetNumSimultaneousAclSendsSupported() + 1;
-
+  constexpr uint8_t kAclLeCredits = 255;
   struct {
     size_t sends_called = 0;
-    // TODO: https://pwbug.dev/403330161 - Switch back to pw Vector once
-    // its use-of-uninitialized-value is fixed.
-    std::vector<H4PacketWithH4> packet_store;
+    pw::Vector<H4PacketWithH4, 50> packet_store;
   } capture;
   pw::Function<void(H4PacketWithHci && packet)>&& send_to_host_fn(
       []([[maybe_unused]] H4PacketWithHci&& packet) {});
@@ -1724,30 +1739,51 @@ TEST_F(L2capCocQueueTest, H4BufferReleaseTriggersQueueDrain) {
         ++capture.sends_called;
         capture.packet_store.push_back(std::move(packet));
       });
-  ProxyHost proxy = ProxyHost(std::move(send_to_host_fn),
-                              std::move(send_to_controller_fn),
-                              /*le_acl_credits_to_reserve=*/kNumSends,
-                              /*br_edr_acl_credits_to_reserve=*/0);
-  PW_TEST_EXPECT_OK(SendLeReadBufferResponseFromController(proxy, kNumSends));
-  EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), kNumSends);
+  ProxyHost proxy(std::move(send_to_host_fn),
+                  std::move(send_to_controller_fn),
+                  /*le_acl_credits_to_reserve=*/kAclLeCredits,
+                  /*br_edr_acl_credits_to_reserve=*/0);
+  PW_TEST_EXPECT_OK(
+      SendLeReadBufferResponseFromController(proxy, kAclLeCredits));
+  EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), kAclLeCredits);
 
   constexpr uint16_t kHandle = 0x123;
   constexpr uint16_t kRemoteCid = 0x456;
   L2capCoc channel = BuildCoc(proxy,
-                              CocParameters{.handle = kHandle,
-                                            .remote_cid = kRemoteCid,
-                                            .tx_credits = kNumSends});
-
+                              CocParameters{
+                                  .handle = kHandle,
+                                  .remote_cid = kRemoteCid,
+                                  .tx_mtu = 1000,
+                                  .tx_mps = 1000,
+                                  .tx_credits = kAclLeCredits,
+                              });
+  EXPECT_EQ(capture.sends_called, 0u);
   // Occupy all buffers. Final Write should queue and not send.
-  for (size_t i = 0; i < kNumSends; ++i) {
-    PW_TEST_EXPECT_OK(channel.Write(multibuf::MultiBuf{}).status);
-  }
-  EXPECT_EQ(capture.sends_called, kNumSends - 1);
+  std::array<uint8_t, 240> payload = {};
+  size_t num_writes = 0;
+  do {
+    FlatMultiBufInstance mbuf = MultiBufFromSpan(span(payload));
+    PW_TEST_EXPECT_OK(
+        channel.Write(std::move(MultiBufAdapter::Unwrap(mbuf))).status);
+    ++num_writes;
+  } while (capture.sends_called == num_writes);
+  // The final write should be queued and not sent.
+  EXPECT_EQ(capture.sends_called, num_writes - 1);
+  // Sending should have stopped because the allocator is full, not because ACL
+  // credits ran out.
+  EXPECT_LT(capture.sends_called, kAclLeCredits);
 
-  // Release a buffer. Queued packet should then send.
+  // Destroying an H4 packet will send the next packet in the destructor, so we
+  // need to first extract the packet from the vector to avoid appending to
+  // the vector during pop_back.
+  std::optional<H4PacketWithH4> packet = std::move(capture.packet_store.back());
   capture.packet_store.pop_back();
-  EXPECT_EQ(capture.sends_called, kNumSends);
+  // Release a buffer. Queued packet should then send.
+  packet.reset();
+  EXPECT_EQ(capture.sends_called, num_writes);
 
+  // Free all buffers before the allocator is destroyed.
+  channel.Close();
   capture.packet_store.clear();
 }
 
@@ -1775,7 +1811,9 @@ TEST_F(L2capCocQueueTest, RoundRobinHandlesMultiplePasses) {
 
   // Occupy all queue slots.
   for (size_t i = 0; i < kNumSends; ++i) {
-    PW_TEST_EXPECT_OK(channel.Write(multibuf::MultiBuf{}).status);
+    FlatMultiBufInstance empty = MakeEmptyMultiBuf();
+    PW_TEST_EXPECT_OK(
+        channel.Write(std::move(MultiBufAdapter::Unwrap(empty))).status);
   }
   EXPECT_EQ(capture.sends_called, 0ul);
 
@@ -1810,14 +1848,14 @@ TEST_F(L2capCocReassemblyTest, OneSegmentRx) {
       proxy,
       {.handle = handle,
        .local_cid = local_cid,
-       .receive_fn = [&capture](multibuf::MultiBuf&& payload) {
+       .receive_fn = [&capture](FlatConstMultiBuf&& payload) {
          ++capture.sdus_received;
-         std::optional<ConstByteSpan> rx_sdu = payload.ContiguousSpan();
-         ASSERT_TRUE(rx_sdu);
+         ASSERT_FALSE(payload.empty());
+         ConstByteSpan rx_sdu = *payload.ConstChunks().begin();
          ConstByteSpan expected_sdu = as_bytes(span(
              capture.expected_payload.data(), capture.expected_payload.size()));
-         EXPECT_TRUE(std::equal(rx_sdu->begin(),
-                                rx_sdu->end(),
+         EXPECT_TRUE(std::equal(rx_sdu.begin(),
+                                rx_sdu.end(),
                                 expected_sdu.begin(),
                                 expected_sdu.end()));
        }});
@@ -1860,14 +1898,14 @@ TEST_F(L2capCocReassemblyTest, SduReceivedWhenSegmentedOverFullRangeOfMps) {
       proxy,
       {.handle = handle,
        .local_cid = local_cid,
-       .receive_fn = [&capture](multibuf::MultiBuf&& payload) {
+       .receive_fn = [&capture](FlatConstMultiBuf&& payload) {
          ++capture.sdus_received;
-         std::optional<ConstByteSpan> rx_sdu = payload.ContiguousSpan();
-         ASSERT_TRUE(rx_sdu);
+         ASSERT_FALSE(payload.empty());
+         ConstByteSpan rx_sdu = *payload.ConstChunks().begin();
          ConstByteSpan expected_sdu = as_bytes(span(
              capture.expected_payload.data(), capture.expected_payload.size()));
-         EXPECT_TRUE(std::equal(rx_sdu->begin(),
-                                rx_sdu->end(),
+         EXPECT_TRUE(std::equal(rx_sdu.begin(),
+                                rx_sdu.end(),
                                 expected_sdu.begin(),
                                 expected_sdu.end()));
        }});
@@ -1910,7 +1948,7 @@ TEST_F(L2capCocReassemblyTest, ErrorIfPayloadBytesExceedSduLength) {
                {
                    .handle = handle,
                    .local_cid = local_cid,
-                   .receive_fn = [](multibuf::MultiBuf&&) { FAIL(); },
+                   .receive_fn = [](FlatConstMultiBuf&&) { FAIL(); },
                    .event_fn =
                        [&events_received](L2capChannelEvent event) {
                          ++events_received;
@@ -1965,7 +2003,7 @@ TEST_F(L2capCocReassemblyTest, ErrorIfRxBufferTooSmallForFirstKFrame) {
                {
                    .handle = handle,
                    .local_cid = local_cid,
-                   .receive_fn = [](multibuf::MultiBuf&&) { FAIL(); },
+                   .receive_fn = [](FlatConstMultiBuf&&) { FAIL(); },
                    .event_fn =
                        [&events_received](L2capChannelEvent event) {
                          ++events_received;
@@ -2065,8 +2103,10 @@ TEST_F(L2capCocSegmentationTest, SduSentWhenSegmentedOverFullRangeOfMps) {
                                  .tx_mtu = capture.expected_payload.size(),
                                  .tx_mps = capture.mps,
                                  .tx_credits = UINT8_MAX});
-    PW_TEST_EXPECT_OK(
-        channel.Write(MultiBufFromSpan(span(capture.expected_payload))).status);
+    FlatMultiBufInstance mbuf_inst =
+        MultiBufFromSpan(span(capture.expected_payload));
+    FlatMultiBuf& mbuf = MultiBufAdapter::Unwrap(mbuf_inst);
+    PW_TEST_EXPECT_OK(channel.Write(std::move(mbuf)).status);
     ++sdus_sent;
 
     // Replenish proxy's LE ACL send credits, or else only UINT8_MAX PDUs could

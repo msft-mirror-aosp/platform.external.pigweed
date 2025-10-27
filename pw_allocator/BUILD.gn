@@ -41,6 +41,7 @@ pw_source_set("pw_allocator") {
   public_deps = [
     ":config",
     ":hardening",
+    "$dir_pw_multibuf:properties",
     "$dir_pw_numeric:checked_arithmetic",
     dir_pw_bytes,
     dir_pw_preprocessor,
@@ -876,6 +877,5 @@ pw_test_group("tests") {
     "benchmarks:tests",
     "block:tests",
     "bucket:tests",
-    "examples",
   ]
 }

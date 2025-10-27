@@ -18,6 +18,7 @@
 
 #include <jni.h>
 
+#include <cassert>
 #include <cstdint>
 #include <cstring>
 
@@ -52,6 +53,29 @@ jbyteArray ByteArrayFromString(JNIEnv* env, const std::string& str) {
   env->SetByteArrayRegion(
       array, 0, size, reinterpret_cast<const jbyte*>(str.data()));
   return array;
+}
+
+jbyteArray Detokenize(JNIEnv* env,
+                      jlong handle,
+                      jbyteArray java_array,
+                      jstring java_domain,
+                      bool recursive) {
+  jbyte* const data = env->GetByteArrayElements(java_array, nullptr);
+  const size_t size = static_cast<size_t>(env->GetArrayLength(java_array));
+
+  const std::string_view domain(
+      env->GetStringUTFChars(java_domain, nullptr),
+      static_cast<size_t>(env->GetStringUTFLength(java_domain)));
+
+  Detokenizer& detokenizer = *HandleToPointer(handle);
+  DetokenizedString result =
+      recursive ? detokenizer.RecursiveDetokenize(data, size, domain)
+                : detokenizer.Detokenize(data, size, domain);
+
+  env->ReleaseByteArrayElements(java_array, data, 0);
+  env->ReleaseStringUTFChars(java_domain, domain.data());
+
+  return result.ok() ? ByteArrayFromString(env, result.BestString()) : nullptr;
 }
 
 }  // namespace
@@ -92,19 +116,47 @@ DETOKENIZER_JNI_METHOD(void, deleteNativeDetokenizer)(JNIEnv*,
   delete HandleToPointer(handle);
 }
 
-DETOKENIZER_JNI_METHOD(jbyteArray, detokenizeNative)(JNIEnv* env,
-                                                     jobject,
-                                                     jlong handle,
-                                                     jbyteArray array) {
-  jbyte* const data = env->GetByteArrayElements(array, nullptr);
-  const jsize size = env->GetArrayLength(array);
+DETOKENIZER_JNI_METHOD(jobjectArray, lookupNative)(
+    JNIEnv* env, jobject, jlong handle, jint token, jstring java_domain) {
+  static_assert(sizeof(jint) == sizeof(pw::tokenizer::Token));
 
-  DetokenizedString result =
-      HandleToPointer(handle)->Detokenize(data, static_cast<size_t>(size));
+  const std::string_view domain(
+      env->GetStringUTFChars(java_domain, nullptr),
+      static_cast<size_t>(env->GetStringUTFLength(java_domain)));
 
-  env->ReleaseByteArrayElements(array, data, 0);
+  Detokenizer& detokenizer = *HandleToPointer(handle);
+  auto results = detokenizer.DatabaseLookup(
+      static_cast<pw::tokenizer::Token>(token), domain);
 
-  return result.ok() ? ByteArrayFromString(env, result.BestString()) : nullptr;
+  env->ReleaseStringUTFChars(java_domain, domain.data());
+
+  jclass string_class = env->GetObjectClass(java_domain);
+  assert(string_class != nullptr);
+
+  jobjectArray array = env->NewObjectArray(
+      static_cast<jsize>(results.size()), string_class, nullptr);
+  if (array == nullptr) {
+    return nullptr;  // unable to allocate the array!
+  }
+
+  for (size_t i = 0; i < results.size(); ++i) {
+    std::string string = results[i].first.text();
+    jstring java_string = env->NewStringUTF(string.c_str());
+    env->SetObjectArrayElement(array, static_cast<jsize>(i), java_string);
+    env->DeleteLocalRef(java_string);
+  }
+
+  return array;
+}
+
+DETOKENIZER_JNI_METHOD(jbyteArray, detokenizeNative)(
+    JNIEnv* env, jobject, jlong handle, jbyteArray array, jstring domain) {
+  return Detokenize(env, handle, array, domain, /*recursive=*/false);
+}
+
+DETOKENIZER_JNI_METHOD(jbyteArray, recursiveDetokenizeNative)(
+    JNIEnv* env, jobject, jlong handle, jbyteArray array, jstring domain) {
+  return Detokenize(env, handle, array, domain, /*recursive=*/true);
 }
 
 DETOKENIZER_JNI_METHOD(jbyteArray, detokenizeTextNative)(JNIEnv* env,
@@ -114,8 +166,8 @@ DETOKENIZER_JNI_METHOD(jbyteArray, detokenizeTextNative)(JNIEnv* env,
   const char* const data = env->GetStringUTFChars(message, nullptr);
   const jsize size = env->GetStringUTFLength(message);
 
-  std::string result = HandleToPointer(handle)->DetokenizeText(std::string_view(
-      reinterpret_cast<const char*>(data), static_cast<size_t>(size)));
+  std::string result = HandleToPointer(handle)->DetokenizeText(
+      std::string_view(data, static_cast<size_t>(size)));
 
   env->ReleaseStringUTFChars(message, data);
   return ByteArrayFromString(env, result);

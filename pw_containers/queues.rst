@@ -16,14 +16,14 @@ Pigweed provides many queue and deque implementations to meet different needs.
 -------------
 API reference
 -------------
-Moved: :doxylink:`pw_containers_queues`
+Moved: :cc:`pw_containers_queues`
 
 .. _module-pw_containers-inlinevarlenentryqueue:
 
 --------------------------
 pw::InlineVarLenEntryQueue
 --------------------------
-:doxylink:`InlineVarLenEntryQueue` is a queue of inline variable-length binary
+:cc:`InlineVarLenEntryQueue` is a queue of inline variable-length binary
 entries. It is implemented as a ring (circular) buffer and supports operations
 to append entries and overwrite if necessary. Entries may be zero bytes up to
 the maximum size supported by the queue.
@@ -48,7 +48,7 @@ Prefer this sized-entry ring buffer to ``PrefixedEntryRingBuffer`` when:
 
 ``InlineVarLenEntryQueue`` is implemented in C and provides complete C and C++
 APIs. The ``InlineVarLenEntryQueue`` C++ class is structured similarly to
-:doxylink:`pw::InlineQueue` and :doxylink:`pw::Vector`.
+:cc:`pw::InlineQueue` and :cc:`pw::Vector`.
 
 Queue vs. deque
 ===============
@@ -157,40 +157,16 @@ Python API reference
 ------------
 Size reports
 ------------
-The tables below illustrate the following scenarios:
+The tables below illustrate the memory and code size costs for various queue and
+deque implementations, with ``std::deque`` serving as a baseline. The size
+reports generally cover:
+
+* The cost of a single instance.
+* The cost of instantiating a second container of the same class with a
+  different element type, showing the impact of templates on code size.
+* The cost of using related classes, such as :cc:`pw::InlineQueue` and
+  :cc:`pw::InlineDeque` or static and dynamic :cc:`pw::FixedDeque`\s.
 
 .. TODO: b/394341806 - Add size report for InlineVarLenEntryQueue.
-
-* Scenarios related to ``std::deque``, as a baseline:
-
-  * The memory and code size cost incurred by a adding a single ``std::deque``.
-  * The memory and code size cost incurred by adding another ``std::deque``
-    with a different type. As ``std::deque`` is templated on type, this
-    results in additional code being generated.
-
-* Scenarios related to ``DynamicDeque``:
-
-  * The memory and code size cost incurred by a adding a single ``DynamicDeque``.
-  * The memory and code size cost incurred by adding another ``DynamicDeque``
-    with a different type. As ``DynamicDeque`` is templated on type, this
-    results in additional code being generated.
-
-* Scenarios related to ``InlineDeque``:
-
-  * The memory and code size cost incurred by a adding a single ``InlineDeque``.
-  * The memory and code size cost incurred by adding another ``InlineDeque``
-    with a different type. As ``InlineDeque`` is templated on type, this
-    results in additional code being generated.
-
-* Scenarios related to ``InlineQueue``:
-
-  * The memory and code size cost incurred by a adding a single ``InlineQueue``.
-  * The memory and code size cost incurred by adding another ``InlineQueue``
-    with a different type. As ``InlineQueue`` is templated on type, this results
-    in additional code being generated.
-
-* The memory and code size cost incurred by adding both an ``InlineDeque`` and
-  an ``InlineQueue`` of the same type. These types reuse code, so the combined
-  sum is less than the sum of its parts.
 
 .. include:: queues_size_report

@@ -17,12 +17,12 @@
 #include <cstdint>
 
 #include "pw_allocator/allocator.h"
+#include "pw_allocator/synchronized_allocator.h"
 #include "pw_bytes/byte_builder.h"
 #include "pw_bytes/span.h"
+#include "pw_containers/dynamic_queue.h"
 #include "pw_function/function.h"
 #include "pw_grpc/send_queue.h"
-#include "pw_multibuf/allocator.h"
-#include "pw_multibuf/multibuf.h"
 #include "pw_result/result.h"
 #include "pw_status/status.h"
 #include "pw_stream/stream.h"
@@ -115,10 +115,9 @@ class Connection {
   };
 
   Connection(stream::ReaderWriter& socket,
-             SendQueue& send_queue,
              RequestCallbacks& callbacks,
-             allocator::Allocator* message_assembly_allocator,
-             multibuf::MultiBufAllocator& multibuf_allocator);
+             Allocator* message_assembly_allocator,
+             Allocator& send_allocator);
 
   // Reads from stream and processes required connection preface frames. Should
   // be called before ProcessFrame(). Return OK if connection preface was found.
@@ -160,6 +159,10 @@ class Connection {
     return writer_.SendResponseComplete(stream_id, response_code);
   }
 
+  // Access SendQueue for this connection. Should be used to start and stop the
+  // thread.
+  SendQueue& send_queue() { return send_queue_; }
+
  private:
   // RFC 9113 §6.9.2. Flow control windows are unsigned 31-bit numbers, but
   // because of the following requirement from §6.9.2, we track flow control
@@ -171,6 +174,23 @@ class Connection {
       kDefaultInitialWindowSize;
   static constexpr int32_t kTargetStreamWindowSize = kDefaultInitialWindowSize;
 
+  class DataFrame {
+   public:
+    static Result<DataFrame> Create(Allocator& allocator,
+                                    size_t message_payload_size);
+
+    size_t frame_payload_size() const;
+    ByteSpan writable_frame_header();
+    ByteSpan writable_message_prefix();
+    ByteSpan writable_message_payload();
+
+    UniquePtr<std::byte[]> release() { return std::move(bytes_); }
+
+   private:
+    DataFrame(Allocator& allocator, size_t message_payload_size);
+    UniquePtr<std::byte[]> bytes_;
+  };
+
   // From RFC 9113 §5.1, we use only the following states:
   // * idle, which have `id > last_stream_id_`
   // * open, which are in `streams_` with `half_closed = false`
@@ -181,14 +201,15 @@ class Connection {
   // * half-closed (local) is merged into close, because once a grpc server has
   //   sent a response, the RPC is complete
   struct Stream {
-    StreamId id;
-    bool half_closed;
-    bool started_response;
-    int32_t send_window;
-    int32_t recv_window;
+    constexpr Stream(Allocator& allocator) : response_queue(allocator) {}
+    StreamId id = 0;
+    bool half_closed = false;
+    bool started_response = false;
+    int32_t send_window = 0;
+    int32_t recv_window = kTargetStreamWindowSize;
 
-    // Response messages that are waiting for window to send.
-    multibuf::MultiBuf response_queue;
+    // Response DATA frames that are waiting for window to send.
+    DynamicQueue<DataFrame> response_queue;
 
     // Fragmented gRPC message assembly, nullptr if not assembling a message.
     UniquePtr<std::byte[]> assembly_buffer;
@@ -205,7 +226,7 @@ class Connection {
         // Length of the message received so far (during assembly).
         uint32_t received;
       } message;
-    } assembly;
+    } assembly{};
 
     void Reset() {
       id = 0;
@@ -213,7 +234,7 @@ class Connection {
       started_response = false;
       send_window = 0;
       recv_window = kTargetStreamWindowSize;
-      response_queue = {};
+      response_queue.clear();
 
       assembly_buffer = nullptr;
       assembly = {};
@@ -226,11 +247,8 @@ class Connection {
   class SharedState {
    public:
     SharedState(allocator::Allocator* message_assembly_allocator,
-                multibuf::MultiBufAllocator& multibuf_allocator,
-                SendQueue& send_queue)
-        : message_assembly_allocator_(message_assembly_allocator),
-          multibuf_allocator_(multibuf_allocator),
-          send_queue_(send_queue) {}
+                Allocator& send_allocator,
+                SendQueue& send_queue);
 
     // Create stream if space available.
     pw::Status CreateStream(StreamId id, int32_t initial_send_window);
@@ -255,7 +273,7 @@ class Connection {
 
     // Queue response buffer for sending on `id` stream. Will send right away if
     // window is available.
-    Status QueueStreamResponse(StreamId id, multibuf::MultiBuf&& buffer);
+    Status QueueStreamResponse(StreamId id, DataFrame&& data_frame);
 
     // Write raw bytes directly to send queue.
     Status SendBytes(ConstByteSpan message);
@@ -277,26 +295,21 @@ class Connection {
       return message_assembly_allocator_;
     }
 
-    multibuf::MultiBufAllocator& multibuf_allocator() {
-      return multibuf_allocator_;
-    }
+    Allocator& send_allocator() { return send_allocator_; }
 
    private:
     // Called whenever there is new data to send or a WINDOW_UPDATE message has
     // increased a send window. Should attempt to drain any queued data across
     // all active streams.
     Status DrainResponseQueues();
-
     Status DrainResponseQueue(Stream& stream);
+    Status SendQueuedDataFrame(Stream& stream, DataFrame&& data_frame);
 
-    Status SendQueued(Stream& stream, multibuf::OwnedChunk&& chunk);
-
-    // Write DATA frame to send queue. Chunk should already have prefix space
-    // for headers.
-    Status SendData(StreamId stream_id, multibuf::OwnedChunk&& chunk);
+    // Write DATA frame to connection send queue.
+    Status SendData(StreamId stream_id, DataFrame&& data_frame);
 
     // Stream state
-    std::array<Stream, internal::kMaxConcurrentStreams> streams_{};
+    std::array<Stream, internal::kMaxConcurrentStreams> streams_;
     int32_t connection_send_window_ = kDefaultInitialWindowSize;
     int32_t connection_recv_window_ = kTargetConnectionWindowSize;
 
@@ -304,7 +317,7 @@ class Connection {
     allocator::Allocator* message_assembly_allocator_;
 
     // Allocator for creating send buffers to queue.
-    multibuf::MultiBufAllocator& multibuf_allocator_;
+    Allocator& send_allocator_;
 
     SendQueue& send_queue_;
   };
@@ -366,7 +379,8 @@ class Connection {
 
   // Shared state that is thread-safe.
   stream::ReaderWriter& socket_;
-
+  allocator::SynchronizedAllocator<sync::Mutex> send_allocator_;
+  SendQueue send_queue_;
   sync::InlineBorrowable<SharedState> shared_state_;
   Reader reader_;
   Writer writer_;
@@ -384,24 +398,20 @@ class ConnectionThread : public Connection, public thread::ThreadCore {
                    RequestCallbacks& callbacks,
                    ConnectionCloseCallback&& connection_close_callback,
                    allocator::Allocator* message_assembly_allocator,
-                   multibuf::MultiBufAllocator& multibuf_allocator)
-      : Connection(stream,
-                   send_queue_,
-                   callbacks,
-                   message_assembly_allocator,
-                   multibuf_allocator),
-        send_queue_(stream),
+                   Allocator& send_allocator)
+      : Connection(
+            stream, callbacks, message_assembly_allocator, send_allocator),
         send_queue_thread_options_(send_thread_options),
         connection_close_callback_(std::move(connection_close_callback)) {}
 
   // Process the connection. Does not return until the connection is closed.
   void Run() override {
-    Thread send_thread(send_queue_thread_options_, send_queue_);
+    Thread send_thread(send_queue_thread_options_, send_queue());
     Status status = ProcessConnectionPreface();
     while (status.ok()) {
       status = ProcessFrame();
     }
-    send_queue_.RequestStop();
+    send_queue().RequestStop();
     send_thread.join();
     if (connection_close_callback_) {
       connection_close_callback_();
@@ -409,7 +419,6 @@ class ConnectionThread : public Connection, public thread::ThreadCore {
   }
 
  private:
-  SendQueue send_queue_;
   const thread::Options& send_queue_thread_options_;
   ConnectionCloseCallback connection_close_callback_;
 };

@@ -71,7 +71,8 @@ cc_library(
 cc_library(
     name = "metric_walker",
     srcs = ["metric_walker.cc"],
-    hdrs = ["pw_metric_private/metric_walker.h"],
+    hdrs = ["public/pw_metric/metric_walker.h"],
+    strip_include_prefix = "public",
     tags = ["noclangtidy"],
     visibility = ["//visibility:private"],
     deps = [
@@ -89,7 +90,10 @@ cc_library(
 cc_library(
     name = "metric_service_nanopb",
     srcs = ["metric_service_nanopb.cc"],
-    hdrs = ["public/pw_metric/metric_service_nanopb.h"],
+    hdrs = [
+        "public/pw_metric/metric_service_nanopb.h",
+        "public/pw_metric/nanopb_metric_writer.h",
+    ],
     features = ["-conversion_warnings"],
     implementation_deps = [
         "//pw_assert:check",
@@ -108,7 +112,10 @@ cc_library(
 cc_library(
     name = "metric_service_pwpb",
     srcs = ["metric_service_pwpb.cc"],
-    hdrs = ["public/pw_metric/metric_service_pwpb.h"],
+    hdrs = [
+        "public/pw_metric/metric_service_pwpb.h",
+        "public/pw_metric/pwpb_metric_writer.h",
+    ],
     implementation_deps = [
         "//pw_assert:check",
         "//pw_containers:vector",
@@ -210,6 +217,7 @@ pw_cc_test(
     features = ["-conversion_warnings"],
     deps = [
         ":metric_service_nanopb",
+        ":metric_walker",
         "//pw_rpc:test_helpers",
         "//pw_rpc/nanopb:test_method_context",
     ],
@@ -223,9 +231,11 @@ pw_cc_test(
     features = ["-conversion_warnings"],
     deps = [
         ":metric_service_pwpb",
+        ":metric_walker",
         "//pw_rpc:test_helpers",
         "//pw_rpc/pwpb:test_method_context",
         "//pw_rpc/raw:test_method_context",
+        "//pw_stream",
     ],
 )
 

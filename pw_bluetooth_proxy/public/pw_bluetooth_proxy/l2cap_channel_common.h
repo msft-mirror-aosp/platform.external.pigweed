@@ -16,8 +16,8 @@
 
 #include <optional>
 
+#include "pw_bluetooth_proxy/internal/multibuf.h"
 #include "pw_function/function.h"
-#include "pw_multibuf/multibuf.h"
 #include "pw_status/status.h"
 
 namespace pw::bluetooth::proxy {
@@ -57,13 +57,12 @@ using ChannelEventCallback = pw::InlineFunction<
     // PW_FUNCTION_INLINE_CALLABLE_SIZE use that.
     std::max(sizeof(void*) * 2, PW_FUNCTION_INLINE_CALLABLE_SIZE)>;
 
-/// Result object with status and optional MultiBuf that is only present if the
-/// status is NOT `ok()`.
+/// Result object with status and optional MultiBuf.
 // `pw::Result` can't be used because it only has a value for `ok()` status.
 // `std::expected` can't be used because it only has a value OR a status.
 struct StatusWithMultiBuf {
   pw::Status status;
-  std::optional<pw::multibuf::MultiBuf> buf = std::nullopt;
+  std::optional<FlatConstMultiBufInstance> buf = std::nullopt;
 };
 
 /// Alias for a client provided callback function for that can receive data from
@@ -76,6 +75,7 @@ struct StatusWithMultiBuf {
 /// should be returned. If the client will not own handling the payload then the
 /// payload MultiBuf should be returned (unaltered).
 using OptionalPayloadReceiveCallback =
-    Function<std::optional<multibuf::MultiBuf>(multibuf::MultiBuf&& payload)>;
+    Function<std::optional<FlatConstMultiBufInstance>(
+        FlatConstMultiBuf&& payload)>;
 
 }  // namespace pw::bluetooth::proxy

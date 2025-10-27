@@ -177,22 +177,26 @@ portion with where you have pigweed checked out.
 
 Use ``pw_build_info/git_build_info.h`` Header
 =============================================
-Add generated header directly to the target where you want to use it.
+Add a dependency on ``//pw_build_info:git_build_info``:
 
 .. code-block:: python
 
    cc_binary(
      name = "main",
-     srcs = [
-       "main.cc",
-       "@pigweed//pw_build_info:git_build_info",
-     ]
+     srcs = ["main.cc"],
+     deps = [
+        "@pigweed//pw_build_info:git_build_info",
+        "//pw_log",
+      ],
    )
 
 Include the header. The following constants are available:
 
-* ``pw::build_info::kGitCommit``: The git commit this binary was built from.
-* ``pw::build_info::kGitTreeDirty``: True if there were any uncommitted changes.
+* ``pw::InlineBasicString pw::build_info::kGitCommit``: The git commit this
+  binary was built from. Includes ``-dirty`` suffix if ``kGitTreeDirty`` is
+  true.
+* ``bool pw::build_info::kGitTreeDirty``: True if there were any uncommitted
+  changes.
 
 .. code-block:: cpp
 
@@ -201,8 +205,7 @@ Include the header. The following constants are available:
    #include "pw_string/string.h"
 
    int main() {
-     PW_LOG_INFO("kGitCommit %s",
-                 pw::InlineString<40>(pw::build_info::kGitCommit).c_str());
+     PW_LOG_INFO("kGitCommit %s", pw::build_info::kGitCommit.c_str());
      PW_LOG_INFO("kGitTreeDirty %d", pw::build_info::kGitTreeDirty);
      return 0;
    }
