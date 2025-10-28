@@ -1,4 +1,4 @@
-// Copyright 2021 The Pigweed Authors
+// Copyright 2025 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -11,17 +11,14 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
-
 #pragma once
 
-#include <mbedtls/version.h>
+#include <string_view>
 
-#if MBEDTLS_VERSION_MAJOR >= 3
-#include <mbedtls/build_info.h>
-#include <mbedtls/mbedtls_config.h>
-#else
-#include <mbedtls/config.h>
-#endif
+namespace codelab::webui {
 
-// override some flags needed by pigweed
-#include "configs/config_pigweed_common.h"
+void StartWebUIServer();
+
+void SetDisplay(std::string_view text);
+
+}  // namespace codelab::webui

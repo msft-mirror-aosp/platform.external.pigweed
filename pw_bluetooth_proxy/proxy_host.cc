@@ -40,9 +40,9 @@ ProxyHost::ProxyHost(
     : hci_transport_(std::move(send_to_host_fn),
                      std::move(send_to_controller_fn)),
       acl_data_channel_(hci_transport_,
-                        l2cap_channel_manager_,
                         le_acl_credits_to_reserve,
-                        br_edr_acl_credits_to_reserve),
+                        br_edr_acl_credits_to_reserve,
+                        /*on_tx_credits_fn=*/[this]() { OnAclTxCredits(); }),
       l2cap_channel_manager_(acl_data_channel_, allocator) {
   PW_LOG_INFO(
       "btproxy: ProxyHost ctor - le_acl_credits_to_reserve: %u, "
@@ -123,8 +123,16 @@ void ProxyHost::HandleEventFromController(H4PacketWithHci&& h4_packet) {
       break;
     }
     case emboss::EventCode::DISCONNECTION_COMPLETE: {
-      acl_data_channel_.ProcessDisconnectionCompleteEvent(
-          h4_packet.GetHciSpan());
+      Result<emboss::DisconnectionCompleteEventView> dc_event =
+          MakeEmbossView<emboss::DisconnectionCompleteEventView>(
+              h4_packet.GetHciSpan());
+      if (dc_event.ok() &&
+          dc_event->status().Read() == emboss::StatusCode::SUCCESS) {
+        uint16_t conn_handle = dc_event->connection_handle().Read();
+        l2cap_channel_manager_.HandleAclDisconnectionComplete(conn_handle);
+        acl_data_channel_.ProcessDisconnectionCompleteEvent(
+            conn_handle, dc_event->reason().Read());
+      }
       hci_transport_.SendToHost(std::move(h4_packet));
       break;
     }
@@ -133,7 +141,17 @@ void ProxyHost::HandleEventFromController(H4PacketWithHci&& h4_packet) {
       break;
     }
     case emboss::EventCode::CONNECTION_COMPLETE: {
-      acl_data_channel_.HandleConnectionCompleteEvent(std::move(h4_packet));
+      pw::span<uint8_t> hci_span = h4_packet.GetHciSpan();
+      Result<emboss::ConnectionCompleteEventView> connection_complete_event =
+          MakeEmbossView<emboss::ConnectionCompleteEventView>(hci_span);
+      if (connection_complete_event.ok() &&
+          connection_complete_event->status().Read() ==
+              emboss::StatusCode::SUCCESS) {
+        OnConnectionCompleteSuccess(
+            connection_complete_event->connection_handle().Read(),
+            AclTransportType::kBrEdr);
+      }
+      hci_transport_.SendToHost(std::move(h4_packet));
       break;
     }
     case emboss::EventCode::LE_META_EVENT: {
@@ -151,21 +169,11 @@ void ProxyHost::HandleEventFromController(H4PacketWithHci&& h4_packet) {
 }
 
 void ProxyHost::HandleAclFromController(H4PacketWithHci&& h4_packet) {
-  pw::span<uint8_t> hci_buffer = h4_packet.GetHciSpan();
-
-  Result<emboss::AclDataFrameWriter> acl =
-      MakeEmbossWriter<emboss::AclDataFrameWriter>(hci_buffer);
-  if (!acl.ok()) {
-    PW_LOG_ERROR(
-        "Buffer is too small for ACL header. So will pass on to host.");
-    hci_transport_.SendToHost(std::move(h4_packet));
-    return;
-  }
-
-  if (!acl_data_channel_.HandleAclData(Direction::kFromController, *acl)) {
-    hci_transport_.SendToHost(std::move(h4_packet));
-    return;
-  }
+  acl_data_channel_.HandleAclFromController(std::move(h4_packet));
+  //  It's possible for a channel handling rx traffic to have queued tx traffic
+  //  or events.
+  l2cap_channel_manager_.DrainChannelQueuesIfNewTx();
+  l2cap_channel_manager_.DeliverPendingEvents();
 }
 
 void ProxyHost::HandleLeMetaEvent(H4PacketWithHci&& h4_packet) {
@@ -183,17 +191,35 @@ void ProxyHost::HandleLeMetaEvent(H4PacketWithHci&& h4_packet) {
   PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
   switch (le_meta_event_view->subevent_code_enum().Read()) {
     case emboss::LeSubEventCode::CONNECTION_COMPLETE: {
-      acl_data_channel_.HandleLeConnectionCompleteEvent(std::move(h4_packet));
+      Result<emboss::LEConnectionCompleteSubeventView> event =
+          MakeEmbossView<emboss::LEConnectionCompleteSubeventView>(hci_buffer);
+      if (event.ok() && event->status().Read() == emboss::StatusCode::SUCCESS) {
+        OnConnectionCompleteSuccess(event->connection_handle().Read(),
+                                    AclTransportType::kLe);
+      }
+      hci_transport_.SendToHost(std::move(h4_packet));
       return;
     }
     case emboss::LeSubEventCode::ENHANCED_CONNECTION_COMPLETE_V1: {
-      acl_data_channel_.HandleLeEnhancedConnectionCompleteV1Event(
-          std::move(h4_packet));
+      Result<emboss::LEEnhancedConnectionCompleteSubeventV1View> event =
+          MakeEmbossView<emboss::LEEnhancedConnectionCompleteSubeventV1View>(
+              hci_buffer);
+      if (event.ok() && event->status().Read() == emboss::StatusCode::SUCCESS) {
+        OnConnectionCompleteSuccess(event->connection_handle().Read(),
+                                    AclTransportType::kLe);
+      }
+      hci_transport_.SendToHost(std::move(h4_packet));
       return;
     }
     case emboss::LeSubEventCode::ENHANCED_CONNECTION_COMPLETE_V2: {
-      acl_data_channel_.HandleLeEnhancedConnectionCompleteV2Event(
-          std::move(h4_packet));
+      Result<emboss::LEEnhancedConnectionCompleteSubeventV2View> event =
+          MakeEmbossView<emboss::LEEnhancedConnectionCompleteSubeventV2View>(
+              hci_buffer);
+      if (event.ok() && event->status().Read() == emboss::StatusCode::SUCCESS) {
+        OnConnectionCompleteSuccess(event->connection_handle().Read(),
+                                    AclTransportType::kLe);
+      }
+      hci_transport_.SendToHost(std::move(h4_packet));
       return;
     }
     default:
@@ -283,21 +309,11 @@ void ProxyHost::HandleCommandFromHost(H4PacketWithH4&& h4_packet) {
 }
 
 void ProxyHost::HandleAclFromHost(H4PacketWithH4&& h4_packet) {
-  pw::span<uint8_t> hci_buffer = h4_packet.GetHciSpan();
-
-  Result<emboss::AclDataFrameWriter> acl =
-      MakeEmbossWriter<emboss::AclDataFrameWriter>(hci_buffer);
-  if (!acl.ok()) {
-    PW_LOG_ERROR(
-        "Buffer is too small for ACL header. So will pass on to controller.");
-    hci_transport_.SendToController(std::move(h4_packet));
-    return;
-  }
-
-  if (!acl_data_channel_.HandleAclData(Direction::kFromHost, *acl)) {
-    hci_transport_.SendToController(std::move(h4_packet));
-    return;
-  }
+  acl_data_channel_.HandleAclFromHost(std::move(h4_packet));
+  //  It's possible for a channel handling tx traffic to have queued tx traffic
+  //  or events.
+  l2cap_channel_manager_.DrainChannelQueuesIfNewTx();
+  l2cap_channel_manager_.DeliverPendingEvents();
 }
 
 pw::Result<L2capCoc> ProxyHost::AcquireL2capCoc(
@@ -307,6 +323,9 @@ pw::Result<L2capCoc> ProxyHost::AcquireL2capCoc(
     L2capCoc::CocConfig tx_config,
     Function<void(FlatConstMultiBuf&& payload)>&& receive_fn,
     ChannelEventCallback&& event_fn) {
+  // TODO: https://pwbug.dev/452727552 - Don't create unknown connections for
+  // clients. Only create connections on connection complete events. Return an
+  // error if the connection doesn't exist.
   Status status = acl_data_channel_.CreateAclConnection(connection_handle,
                                                         AclTransportType::kLe);
   if (status.IsResourceExhausted()) {
@@ -314,14 +333,16 @@ pw::Result<L2capCoc> ProxyHost::AcquireL2capCoc(
   }
   PW_CHECK(status.ok() || status.IsAlreadyExists());
 
-  L2capSignalingChannel* signaling_channel =
-      acl_data_channel_.FindSignalingChannel(
-          connection_handle,
-          static_cast<uint16_t>(emboss::L2capFixedCid::LE_U_SIGNALING));
-  PW_CHECK(signaling_channel);
+  status = l2cap_channel_manager_.AddConnection(connection_handle,
+                                                AclTransportType::kLe);
+  if (status.IsResourceExhausted()) {
+    PW_LOG_WARN("Couldn't add L2CAP connection: %s", status.str());
+    return pw::Status::Unavailable();
+  }
+  PW_CHECK(status.ok() || status.IsAlreadyExists());
+
   return L2capCocInternal::Create(rx_multibuf_allocator,
                                   l2cap_channel_manager_,
-                                  signaling_channel,
                                   connection_handle,
                                   rx_config,
                                   tx_config,
@@ -338,12 +359,23 @@ pw::Result<BasicL2capChannel> ProxyHost::AcquireBasicL2capChannel(
     OptionalPayloadReceiveCallback&& payload_from_controller_fn,
     OptionalPayloadReceiveCallback&& payload_from_host_fn,
     ChannelEventCallback&& event_fn) {
+  // TODO: https://pwbug.dev/452727552 - Don't create unknown connections for
+  // clients. Only create connections on connection complete events. Return an
+  // error if the connection doesn't exist.
   Status status =
       acl_data_channel_.CreateAclConnection(connection_handle, transport);
   if (status.IsResourceExhausted()) {
     return pw::Status::Unavailable();
   }
   PW_CHECK(status.ok() || status.IsAlreadyExists());
+
+  status = l2cap_channel_manager_.AddConnection(connection_handle, transport);
+  if (status.IsResourceExhausted()) {
+    PW_LOG_WARN("Couldn't add L2CAP connection: %s", status.str());
+    return pw::Status::Unavailable();
+  }
+  PW_CHECK(status.ok() || status.IsAlreadyExists());
+
   return BasicL2capChannel::Create(l2cap_channel_manager_,
                                    &rx_multibuf_allocator,
                                    /*connection_handle=*/connection_handle,
@@ -394,6 +426,22 @@ void ProxyHost::RegisterL2capStatusDelegate(L2capStatusDelegate& delegate) {
 
 void ProxyHost::UnregisterL2capStatusDelegate(L2capStatusDelegate& delegate) {
   l2cap_channel_manager_.UnregisterStatusDelegate(delegate);
+}
+
+void ProxyHost::OnConnectionCompleteSuccess(uint16_t connection_handle,
+                                            AclTransportType transport) {
+  acl_data_channel_.HandleConnectionCompleteEvent(connection_handle, transport);
+  Status l2cap_status =
+      l2cap_channel_manager_.AddConnection(connection_handle, transport);
+  if (!l2cap_status.ok()) {
+    PW_LOG_WARN("Could not add L2CAP connection for %#x: %s",
+                connection_handle,
+                l2cap_status.str());
+  }
+}
+
+void ProxyHost::OnAclTxCredits() {
+  l2cap_channel_manager_.ForceDrainChannelQueues();
 }
 
 }  // namespace pw::bluetooth::proxy

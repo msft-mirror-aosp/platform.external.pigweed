@@ -40,6 +40,7 @@ pw_add_library(pw_bluetooth_proxy STATIC
     public/pw_bluetooth_proxy/internal/l2cap_coc_internal.h
     public/pw_bluetooth_proxy/internal/l2cap_signaling_channel.h
     public/pw_bluetooth_proxy/internal/l2cap_status_tracker.h
+    public/pw_bluetooth_proxy/internal/l2cap_logical_link.h
     public/pw_bluetooth_proxy/internal/locked_l2cap_channel.h
     public/pw_bluetooth_proxy/internal/logical_transport.h
     public/pw_bluetooth_proxy/internal/recombiner.h
@@ -47,7 +48,6 @@ pw_add_library(pw_bluetooth_proxy STATIC
     public/pw_bluetooth_proxy/l2cap_coc.h
     public/pw_bluetooth_proxy/l2cap_status_delegate.h
     public/pw_bluetooth_proxy/proxy_host.h
-    public/pw_bluetooth_proxy/single_channel_proxy.h
 # LINT.ThenChange(bt-proxy.bzl, BUILD.gn)
 
   PUBLIC_INCLUDES
@@ -81,10 +81,11 @@ pw_add_library(pw_bluetooth_proxy STATIC
     l2cap_coc.cc
     l2cap_signaling_channel.cc
     l2cap_status_tracker.cc
+    l2cap_logical_link.cc
     proxy_host.cc
     recombiner.cc
-    single_channel_proxy.cc
   PRIVATE_DEPS
+    pw_containers.intrusive_map
     pw_allocator.best_fit
     pw_allocator.synchronized_allocator
     pw_bluetooth.emboss_att

@@ -16,11 +16,11 @@
 
 #include <optional>
 
+#include "pw_bluetooth_proxy/channel_proxy.h"
 #include "pw_bluetooth_proxy/internal/l2cap_channel.h"
 #include "pw_bluetooth_proxy/internal/l2cap_signaling_channel.h"
 #include "pw_bluetooth_proxy/internal/multibuf.h"
 #include "pw_bluetooth_proxy/l2cap_channel_common.h"
-#include "pw_bluetooth_proxy/single_channel_proxy.h"
 #include "pw_sync/mutex.h"
 
 namespace pw::bluetooth::proxy {
@@ -28,7 +28,7 @@ namespace pw::bluetooth::proxy {
 /// L2CAP connection-oriented channel that supports writing to and reading
 /// from a remote peer.
 
-class L2capCoc : public SingleChannelProxy {
+class L2capCoc : public ChannelProxy {
  public:
   // TODO: https://pwbug.dev/382783733 - Move downstream client to
   // `L2capChannelEvent` instead of `L2capCoc::Event` and delete this alias.
@@ -93,7 +93,6 @@ class L2capCoc : public SingleChannelProxy {
   static pw::Result<L2capCoc> Create(
       MultiBufAllocator& rx_multibuf_allocator,
       L2capChannelManager& l2cap_channel_manager,
-      L2capSignalingChannel* signaling_channel,
       uint16_t connection_handle,
       CocConfig rx_config,
       CocConfig tx_config,
@@ -107,7 +106,7 @@ class L2capCoc : public SingleChannelProxy {
 
   bool HandlePduFromHost(pw::span<uint8_t> kframe) override;
 
-  void DoClose() override;
+  void DoClose() override {}
 
   // Increment tx credits by `credits`.
   void AddTxCredits(uint16_t credits) PW_LOCKS_EXCLUDED(tx_mutex_);
@@ -115,7 +114,6 @@ class L2capCoc : public SingleChannelProxy {
  private:
   explicit L2capCoc(MultiBufAllocator& rx_multibuf_allocator,
                     L2capChannelManager& l2cap_channel_manager,
-                    L2capSignalingChannel* signaling_channel,
                     uint16_t connection_handle,
                     CocConfig rx_config,
                     CocConfig tx_config,
@@ -125,7 +123,7 @@ class L2capCoc : public SingleChannelProxy {
   // Returns max size of L2CAP PDU payload supported by this channel.
   //
   // Returns std::nullopt if ACL data channel is not yet initialized.
-  std::optional<uint16_t> MaxL2capPayloadSize() const;
+  std::optional<uint16_t> MaxBasicL2capPayloadSize() const;
 
   std::optional<H4PacketWithH4> GenerateNextTxPacket()
       PW_LOCKS_EXCLUDED(tx_mutex_)
@@ -134,8 +132,6 @@ class L2capCoc : public SingleChannelProxy {
   // Replenish some of the remote's credits.
   pw::Status ReplenishRxCredits(uint16_t additional_rx_credits)
       PW_EXCLUSIVE_LOCKS_REQUIRED(rx_mutex_);
-
-  L2capSignalingChannel* signaling_channel_ PW_GUARDED_BY(rx_mutex_);
 
   uint16_t rx_mtu_;
   uint16_t rx_mps_;

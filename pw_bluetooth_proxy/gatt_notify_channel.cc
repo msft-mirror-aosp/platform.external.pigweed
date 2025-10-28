@@ -82,7 +82,7 @@ Status GattNotifyChannel::DoCheckWriteParameter(
     const FlatConstMultiBuf& payload) {
   std::optional<uint16_t> max_l2cap_payload_size = MaxL2capPayloadSize();
   if (!max_l2cap_payload_size) {
-    PW_LOG_ERROR("Tried to write before LE_Read_Buffer_Size processed.");
+    PW_LOG_WARN("Tried to write before LE_Read_Buffer_Size processed.");
     return Status::FailedPrecondition();
   }
   if (*max_l2cap_payload_size <= emboss::AttHandleValueNtf::MinSizeInBytes()) {
@@ -92,9 +92,9 @@ Status GattNotifyChannel::DoCheckWriteParameter(
   const uint16_t max_attribute_size =
       *max_l2cap_payload_size - emboss::AttHandleValueNtf::MinSizeInBytes();
   if (payload.size() > max_attribute_size) {
-    PW_LOG_ERROR("Attribute too large (%zu > %d). So will not process.",
-                 payload.size(),
-                 max_attribute_size);
+    PW_LOG_WARN("Attribute too large (%zu > %d). So will not process.",
+                payload.size(),
+                max_attribute_size);
     return pw::Status::InvalidArgument();
   }
 
@@ -131,7 +131,7 @@ GattNotifyChannel::GattNotifyChannel(L2capChannelManager& l2cap_channel_manager,
                                      uint16_t connection_handle,
                                      uint16_t attribute_handle,
                                      ChannelEventCallback&& event_fn)
-    : SingleChannelProxy(
+    : ChannelProxy(
           /*l2cap_channel_manager=*/l2cap_channel_manager,
           /*rx_multibuf_allocator*/ nullptr,
           /*connection_handle=*/connection_handle,
