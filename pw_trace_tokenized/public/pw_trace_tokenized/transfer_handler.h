@@ -41,11 +41,14 @@ class TraceTransferHandler : public transfer::ReadOnlyHandler {
 class TraceBufferReader : public stream::NonSeekableReader {
  public:
   constexpr TraceBufferReader() = default;
-  StatusWithSize DoRead(ByteSpan dest) final;
 
  private:
-  std::byte transfer_buffer_[PW_TRACE_BUFFER_MAX_BLOCK_SIZE_BYTES] = {};
-  ConstByteSpan partial_transfer_{};
+  size_t MoveFromBlockCache(ByteSpan dest);
+  size_t MoveFromTraceBuffer(ByteSpan dest);
+  StatusWithSize DoRead(ByteSpan dest) final;
+
+  std::byte block_buffer_[PW_TRACE_BUFFER_MAX_BLOCK_SIZE_BYTES] = {};
+  ByteSpan block_cache_ = {};
 };
 
 TraceBufferReader& GetTraceBufferReader();

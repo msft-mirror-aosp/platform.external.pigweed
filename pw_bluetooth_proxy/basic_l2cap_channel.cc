@@ -55,7 +55,11 @@ pw::Result<BasicL2capChannel> BasicL2capChannel::Create(
 
 Status BasicL2capChannel::DoCheckWriteParameter(
     const FlatConstMultiBuf& payload) {
-  if (!IsOkL2capDataLength(payload.size())) {
+  std::optional<uint16_t> max_l2cap_length = MaxL2capPayloadSize();
+  if (!max_l2cap_length) {
+    return Status::FailedPrecondition();
+  }
+  if (payload.size() > max_l2cap_length) {
     PW_LOG_WARN("Payload (%zu bytes) is too large. So will not process.",
                 payload.size());
     return Status::InvalidArgument();
@@ -105,7 +109,7 @@ BasicL2capChannel::BasicL2capChannel(
     OptionalPayloadReceiveCallback&& payload_from_controller_fn,
     OptionalPayloadReceiveCallback&& payload_from_host_fn,
     ChannelEventCallback&& event_fn)
-    : SingleChannelProxy(
+    : ChannelProxy(
           l2cap_channel_manager,
           rx_multibuf_allocator,
           /*connection_handle=*/connection_handle,

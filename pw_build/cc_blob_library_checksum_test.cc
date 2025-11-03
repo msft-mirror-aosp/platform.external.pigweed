@@ -1,4 +1,4 @@
-// Copyright 2021 The Pigweed Authors
+// Copyright 2025 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -12,16 +12,19 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#pragma once
+#include <cstddef>
+#include <cstdint>
 
-#include <mbedtls/version.h>
+#include "pw_build/test_blob_with_checksum.h"
+#include "pw_unit_test/framework.h"
 
-#if MBEDTLS_VERSION_MAJOR >= 3
-#include <mbedtls/build_info.h>
-#include <mbedtls/mbedtls_config.h>
-#else
-#include <mbedtls/config.h>
-#endif
+namespace {
 
-// override some flags needed by pigweed
-#include "configs/config_pigweed_common.h"
+TEST(CcBlobLibraryChecksumTest, Crc32ChecksumGenerated) {
+  // Data in test_blob_0123.bin is {0x00, 0x01, 0x02, 0x03}
+  // CRC32 of {0x00, 0x01, 0x02, 0x03} is 0x8bb98613
+  constexpr uint32_t kExpectedCrc32 = 0x8bb98613;
+  EXPECT_EQ(test::checksum_ns::kBlobWithChecksum_crc32, kExpectedCrc32);
+}
+
+}  // namespace

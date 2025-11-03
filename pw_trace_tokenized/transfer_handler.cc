@@ -16,6 +16,9 @@
 
 #include <climits>
 
+#include "pw_assert/check.h"
+#include "pw_containers/algorithm.h"
+#include "pw_containers/inline_var_len_entry_queue.h"
 #include "pw_containers/var_len_entry_queue.h"
 #include "pw_log/log.h"
 #include "pw_trace_tokenized/trace_buffer.h"
@@ -29,39 +32,44 @@ TraceBufferReader trace_buffer_reader;
 
 TraceBufferReader& GetTraceBufferReader() { return trace_buffer_reader; }
 
-StatusWithSize TraceBufferReader::DoRead(ByteSpan dest) {
+size_t TraceBufferReader::MoveFromBlockCache(ByteSpan dest) {
+  size_t len = std::min(dest.size(), block_cache_.size());
+  if (len != 0) {
+    pw::copy(block_cache_.begin(), block_cache_.begin() + len, dest.begin());
+    block_cache_ = block_cache_.subspan(len);
+  }
+  return len;
+}
+
+size_t TraceBufferReader::MoveFromTraceBuffer(ByteSpan dest) {
+  if (dest.empty()) {
+    return 0;
+  }
   InlineVarLenEntryQueue<>& trace_buffer_queue = trace::GetBuffer()->queue();
-  if (trace_buffer_queue.empty() && partial_transfer_.empty()) {
-    return StatusWithSize::ResourceExhausted();
-  }
-  PW_LOG_DEBUG("Entry count is: %zu", trace_buffer_queue.size());
-  size_t transferred = 0;
-  while (true) {
-    if (!partial_transfer_.empty()) {
-      size_t partial_size = std::min(dest.size(), partial_transfer_.size());
-      pw::copy(partial_transfer_.begin(),
-               partial_transfer_.begin() + partial_size,
-               dest.begin());
-      partial_transfer_ = partial_transfer_.subspan(partial_size);
-      transferred += partial_size;
-    }
+  VarLenEntryQueue dest_queue(dest);
+  MoveVarLenEntries(trace_buffer_queue, dest_queue);
+  return dest_queue.encoded_size_bytes();
+}
 
-    // No more data or no room in destination.
-    if (trace_buffer_queue.empty() || !partial_transfer_.empty()) {
-      break;
-    }
-    VarLenEntryQueue dest_queue(dest);
-    MoveVarLenEntries(trace_buffer_queue, dest_queue);
-    transferred += dest_queue.encoded_size_bytes();
+StatusWithSize TraceBufferReader::DoRead(ByteSpan dest) {
+  PW_CHECK(!dest.empty());
 
-    if (!trace_buffer_queue.empty()) {
-      VarLenEntryQueue partial_queue(transfer_buffer_);
-      MoveVarLenEntries(trace_buffer_queue, partial_queue);
-      size_t partial_size = partial_queue.encoded_size_bytes();
-      partial_transfer_ = ConstByteSpan(transfer_buffer_, partial_size);
-    }
+  size_t total = 0;
+  size_t moved = MoveFromBlockCache(dest);
+  dest = dest.subspan(moved);
+  total += moved;
+
+  moved = MoveFromTraceBuffer(dest);
+  dest = dest.subspan(moved);
+  total += moved;
+
+  if (!dest.empty()) {
+    moved = MoveFromTraceBuffer(block_buffer_);
+    block_cache_ = ByteSpan(block_buffer_, moved);
+    total += MoveFromBlockCache(dest);
   }
-  return StatusWithSize(transferred);
+
+  return total == 0 ? StatusWithSize::OutOfRange() : StatusWithSize(total);
 }
 
 }  // namespace pw::trace

@@ -44,11 +44,11 @@ def pw_bluetooth_proxy_library(name, **kwargs):
             "l2cap_coc.cc",
             "l2cap_signaling_channel.cc",
             "l2cap_status_tracker.cc",
+            "l2cap_logical_link.cc",
             "multibuf_v1.cc",
             "multibuf_v2.cc",
             "proxy_host.cc",
             "recombiner.cc",
-            "single_channel_proxy.cc",
         ],
         # LINT.ThenChange(Android.bp, BUILD.gn, CMakeLists.txt)
 
@@ -61,6 +61,7 @@ def pw_bluetooth_proxy_library(name, **kwargs):
             "public/pw_bluetooth_proxy/gatt_notify_channel.h",
             "public/pw_bluetooth_proxy/h4_packet.h",
             "public/pw_bluetooth_proxy/internal/acl_data_channel.h",
+            "public/pw_bluetooth_proxy/internal/l2cap_logical_link.h",
             "public/pw_bluetooth_proxy/internal/gatt_notify_channel_internal.h",
             "public/pw_bluetooth_proxy/internal/hci_transport.h",
             "public/pw_bluetooth_proxy/internal/l2cap_channel.h",
@@ -76,7 +77,6 @@ def pw_bluetooth_proxy_library(name, **kwargs):
             "public/pw_bluetooth_proxy/l2cap_coc.h",
             "public/pw_bluetooth_proxy/l2cap_status_delegate.h",
             "public/pw_bluetooth_proxy/proxy_host.h",
-            "public/pw_bluetooth_proxy/single_channel_proxy.h",
         ],
         features = ["-conversion_warnings"],
         # LINT.ThenChange(BUILD.gn, CMakeLists.txt)
@@ -107,6 +107,7 @@ def pw_bluetooth_proxy_library(name, **kwargs):
             "//pw_containers:inline_queue",
             "//pw_containers:intrusive_forward_list",
             "//pw_containers:vector",
+            "//pw_containers:intrusive_map",
             "//pw_function",
             "//pw_multibuf:allocator",
             "//pw_multibuf:multibuf_v1",

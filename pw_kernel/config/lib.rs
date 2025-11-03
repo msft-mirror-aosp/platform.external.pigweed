@@ -12,6 +12,7 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 #![no_std]
+use memory_config::MemoryRegion;
 
 /// Kernel configuration common to all architectures.
 pub trait KernelConfigInterface {
@@ -56,6 +57,9 @@ pub trait RiscVKernelConfigInterface {
     /// regions, which is 2**(G+2) bytes (That is, when G=0, the minimum size is 4 bytes).
     const PMP_GRANULARITY: usize;
 
+    /// Non-locked memory regions to configure during kernel execution.
+    const KERNEL_MEMORY_REGIONS: &'static [MemoryRegion];
+
     /// mtvec exception mode. When in direct mode, base address will be set
     /// to the `_start_trap` address.
     /// When in vectored mode, the address of the vector table is passed
@@ -83,6 +87,9 @@ pub trait PlicConfigInterface {
 
     /// The number of IRQs the interrupt controller handles.
     const NUM_IRQS: u32;
+
+    // TODO: investigate removing the need for these now
+    // that the interrupt table in codegend.
 
     /// The size of the table which store the interrupt handlers.
     /// To save space, the table doesn't need to be the size of

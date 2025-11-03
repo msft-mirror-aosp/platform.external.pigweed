@@ -28,6 +28,7 @@ bazel_dep(name = "gazelle", version = "0.40.0", repo_name = "bazel_gazelle")
 # When this version is bumped, remove the patch referenced below if included
 bazel_dep(name = "googletest", version = "1.16.0", repo_name = "com_google_googletest")
 bazel_dep(name = "nanopb", version = "0.4.9.1.bcr.2")
+bazel_dep(name = "mbedtls", version = "3.6.0")
 bazel_dep(name = "pico-sdk", version = "2.2.1-develop.bcr.20250915-8fcd44a1")
 bazel_dep(name = "picotool", version = "2.2.0")
 bazel_dep(name = "platforms", version = "1.0.0")
@@ -154,7 +155,10 @@ cipd_repository = use_repo_rule("//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl"
 cipd_composite_repository = use_repo_rule("//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl", "cipd_composite_repository")
 
 # Fetch llvm toolchain.
-LLVM_VERSION = "git_revision:03b0f55d9c6319a851a60bb084faca0e32a38f2b"
+# ROLL: Warning: this variable is automatically updated.
+# ROLL: Last updated 2025-10-21.
+# ROLL: By https://cr-buildbucket.appspot.com/build/8700380280784363249.
+LLVM_VERSION = "git_revision:62adc83c918b1b55f70e4ee33c727b040da2a9ed"
 
 cipd_composite_repository(
     name = "llvm_toolchain",
@@ -211,7 +215,10 @@ register_toolchains(
 # Rust toolchains
 pw_rust = use_extension("//pw_toolchain/rust:extensions.bzl", "pw_rust")
 
-RUST_VERSION = "git_revisions:fe5c95d4ae33ec9d7831921e448e2daf8264ea42,7b074fc9362a4a6a5f172dd8936a22fb25eff96b"
+# ROLL: Warning: this variable is automatically updated.
+# ROLL: Last updated 2025-10-21.
+# ROLL: By https://cr-buildbucket.appspot.com/build/8700380280784363249.
+RUST_VERSION = "git_revisions:a41214f9bd7ce869d21898f31107f92c90a9112f,62adc83c918b1b55f70e4ee33c727b040da2a9ed"
 
 pw_rust.toolchain(cipd_tag = RUST_VERSION)
 use_repo(pw_rust, "pw_rust_toolchains")
@@ -384,15 +391,6 @@ cipd_repository(
 # TODO: https://pwbug.dev/378531541 - These are one-off external libraries that
 # are NOT in the BCR that downstream users may need to override/unify to their
 # expected version.
-
-# TODO: https://pwbug.dev/354749299 - Use the BCR version of mbedtls.
-http_archive(
-    name = "mbedtls",
-    build_file = "//:third_party/mbedtls/mbedtls.BUILD.bazel",
-    sha256 = "241c68402cef653e586be3ce28d57da24598eb0df13fcdea9d99bfce58717132",
-    strip_prefix = "mbedtls-2.28.8",
-    url = "https://github.com/Mbed-TLS/mbedtls/releases/download/v2.28.8/mbedtls-2.28.8.tar.bz2",
-)
 
 # TODO: https://github.com/bazelbuild/bazel/issues/23077 - Make these
 # bazel_deps dev_dependencies once archive_override has a build_file argument.
