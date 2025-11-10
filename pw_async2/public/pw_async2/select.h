@@ -20,6 +20,7 @@
 
 #include "pw_async2/dispatcher.h"
 #include "pw_async2/future.h"
+#include "pw_async2/poll.h"
 #include "pw_containers/optional_tuple.h"
 
 namespace pw::async2 {
@@ -29,12 +30,8 @@ namespace pw::async2 {
 template <typename... Pendables>
 class Selector;
 
-namespace experimental {
-
 template <typename... Futures>
 class SelectFuture;
-
-}  // namespace experimental
 
 /// The poll result of a ``Pendable`` within a ``Selector``.
 /// This type stores both the index of the pendable, and its returned value on
@@ -48,7 +45,7 @@ struct SelectResult {
   template <typename... Pendables>
   friend class Selector;
   template <typename... Futures>
-  friend class experimental::SelectFuture;
+  friend class SelectFuture;
 
   explicit SelectResult(T&& val) : value(std::move(val)) {}
 };
@@ -138,7 +135,7 @@ void VisitSelectResult(ResultVariant&& variant,
 ///   }
 /// @endcode
 template <typename... Pendables>
-class Selector {
+class [[deprecated("Use future-based Select instead")]] Selector {
  public:
   static_assert(sizeof...(Pendables) > 0,
                 "Cannot select over an empty set of pendables");
@@ -197,10 +194,11 @@ Selector(Pendables&&...) -> Selector<Pendables...>;
 
 /// Returns the result of the first of the provided pendables which completes.
 ///
-/// This ``Select`` function is intended for single use only. To iterate over
-/// all ready pendables, use ``Selector`` directly.
+/// This ``SelectPendable`` function is intended for single use only.
+/// To iterate over all ready pendables, use ``Selector`` directly.
 template <typename... Pendables>
-auto Select(Context& cx, Pendables&&... pendables) {
+[[deprecated("Use future-based Select instead")]]
+auto SelectPendable(Context& cx, Pendables&&... pendables) {
   Selector selector(std::forward<Pendables>(pendables)...);
   return selector.Pend(cx);
 }
@@ -223,11 +221,6 @@ void VisitSelectResult(
       std::forward_as_tuple(std::forward<ReadyHandler>(on_ready)...),
       std::make_index_sequence<sizeof...(ReadyHandler)>{});
 }
-
-/// @}
-
-namespace experimental {
-
 template <typename... Futures>
 class SelectFuture
     : public Future<SelectFuture<Futures...>,
@@ -311,6 +304,6 @@ SelectFuture<Futures...> Select(Futures&&... futures) {
   return SelectFuture(std::forward<Futures>(futures)...);
 }
 
-}  // namespace experimental
+/// @}
 
 }  // namespace pw::async2

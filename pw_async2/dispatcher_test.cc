@@ -25,7 +25,6 @@ class MockTask : public Task {
   bool should_complete = false;
   bool unschedule = false;
   int polled = 0;
-  int destroyed = 0;
   Waker last_waker;
 
   MockTask() : Task(PW_ASYNC_TASK_NAME("MockTask")) {}
@@ -42,8 +41,6 @@ class MockTask : public Task {
     }
     return Pending();
   }
-
-  void DoDestroy() override { ++destroyed; }
 };
 
 class MockPendable {
@@ -66,9 +63,8 @@ TEST(Dispatcher, RunUntilStalledPendsPostedTask) {
   Dispatcher dispatcher;
   dispatcher.Post(task);
   EXPECT_TRUE(task.IsRegistered());
-  EXPECT_TRUE(dispatcher.RunUntilStalled(task).IsReady());
+  EXPECT_TRUE(dispatcher.RunUntilStalled().IsReady());
   EXPECT_EQ(task.polled, 1);
-  EXPECT_EQ(task.destroyed, 1);
   EXPECT_FALSE(task.IsRegistered());
   EXPECT_EQ(dispatcher.tasks_polled(), 1u);
   EXPECT_EQ(dispatcher.tasks_completed(), 1u);
@@ -79,9 +75,8 @@ TEST(Dispatcher, RunUntilStalledReturnsOnNotReady) {
   task.should_complete = false;
   Dispatcher dispatcher;
   dispatcher.Post(task);
-  EXPECT_FALSE(dispatcher.RunUntilStalled(task).IsReady());
+  EXPECT_FALSE(dispatcher.RunUntilStalled().IsReady());
   EXPECT_EQ(task.polled, 1);
-  EXPECT_EQ(task.destroyed, 0);
   EXPECT_EQ(dispatcher.tasks_polled(), 1u);
   EXPECT_EQ(dispatcher.tasks_completed(), 0u);
 }
@@ -92,23 +87,20 @@ TEST(Dispatcher, RunUntilStalledDoesNotPendSleepingTask) {
   Dispatcher dispatcher;
   dispatcher.Post(task);
 
-  EXPECT_FALSE(dispatcher.RunUntilStalled(task).IsReady());
+  EXPECT_FALSE(dispatcher.RunUntilStalled().IsReady());
   EXPECT_EQ(task.polled, 1);
-  EXPECT_EQ(task.destroyed, 0);
   EXPECT_EQ(dispatcher.tasks_polled(), 1u);
   EXPECT_EQ(dispatcher.tasks_completed(), 0u);
 
   task.should_complete = true;
-  EXPECT_FALSE(dispatcher.RunUntilStalled(task).IsReady());
+  EXPECT_FALSE(dispatcher.RunUntilStalled().IsReady());
   EXPECT_EQ(task.polled, 1);
-  EXPECT_EQ(task.destroyed, 0);
   EXPECT_EQ(dispatcher.tasks_polled(), 1u);
   EXPECT_EQ(dispatcher.tasks_completed(), 0u);
 
   std::move(task.last_waker).Wake();
-  EXPECT_TRUE(dispatcher.RunUntilStalled(task).IsReady());
+  EXPECT_TRUE(dispatcher.RunUntilStalled().IsReady());
   EXPECT_EQ(task.polled, 2);
-  EXPECT_EQ(task.destroyed, 1);
   EXPECT_EQ(dispatcher.tasks_polled(), 2u);
   EXPECT_EQ(dispatcher.tasks_completed(), 1u);
 }
@@ -187,13 +179,6 @@ TEST(Dispatcher, RunPendableUntilStalledReturnsPending) {
   EXPECT_EQ(result, Pending());
 }
 
-TEST(Dispatcher, RunPendableToCompletionReturnsOutput) {
-  MockPendable pollable(Ready(5));
-  Dispatcher dispatcher;
-  int result = dispatcher.RunPendableToCompletion(pollable);
-  EXPECT_EQ(result, 5);
-}
-
 TEST(Dispatcher, PostToDispatcherFromInsidePendSucceeds) {
   class TaskPoster : public Task {
    public:
@@ -215,7 +200,6 @@ TEST(Dispatcher, PostToDispatcherFromInsidePendSucceeds) {
   dispatcher.Post(task_poster);
   EXPECT_TRUE(dispatcher.RunUntilStalled().IsReady());
   EXPECT_EQ(posted_task.polled, 1);
-  EXPECT_EQ(posted_task.destroyed, 1);
   EXPECT_EQ(dispatcher.tasks_polled(), 2u);
 }
 
@@ -224,9 +208,8 @@ TEST(Dispatcher, RunToCompletionPendsPostedTask) {
   task.should_complete = true;
   Dispatcher dispatcher;
   dispatcher.Post(task);
-  dispatcher.RunToCompletion(task);
+  dispatcher.RunToCompletion();
   EXPECT_EQ(task.polled, 1);
-  EXPECT_EQ(task.destroyed, 1);
   EXPECT_EQ(dispatcher.tasks_polled(), 1u);
 }
 
@@ -240,7 +223,6 @@ TEST(Dispatcher, RunToCompletionIgnoresDeregisteredTask) {
   EXPECT_FALSE(task.IsRegistered());
   dispatcher.RunToCompletion();
   EXPECT_EQ(task.polled, 0);
-  EXPECT_EQ(task.destroyed, 0);
   EXPECT_EQ(dispatcher.tasks_polled(), 0u);
 }
 

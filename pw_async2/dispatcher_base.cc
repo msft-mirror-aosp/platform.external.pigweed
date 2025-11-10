@@ -22,6 +22,7 @@
 
 #include "pw_assert/check.h"
 #include "pw_async2/internal/config.h"
+#include "pw_async2/owned_task.h"
 #include "pw_async2/waker.h"
 #include "pw_log/log.h"
 #include "pw_log/tokenized_args.h"
@@ -38,19 +39,16 @@ void NativeDispatcherBase::Post(Task& task) {
   bool wake_dispatcher = false;
   {
     std::lock_guard lock(impl::dispatcher_lock());
-    PW_DASSERT(task.state_ == Task::State::kUnposted);
-    PW_DASSERT(task.dispatcher_ == nullptr);
-    task.state_ = Task::State::kWoken;
-    task.dispatcher_ = this;
+    task.PostTo(*this);
     woken_.push_back(task);
     if (wants_wake_) {
       wake_dispatcher = true;
       wants_wake_ = false;
     }
   }
-  // Note: unlike in ``WakeTask``, here we know that the ``Dispatcher`` will
-  // not be destroyed out from under our feet because we're in a method being
-  // called on the ``Dispatcher`` by a user.
+  // Unlike in `WakeTask`, here we know that the `Dispatcher` will not be
+  // destroyed out from under our feet because we're in a method being called on
+  // the `Dispatcher` by a user.
   if (wake_dispatcher) {
     Wake();
   }
@@ -68,102 +66,56 @@ NativeDispatcherBase::SleepInfo NativeDispatcherBase::AttemptRequestWake(
     PW_LOG_DEBUG("Dispatcher will not sleep due to empty sleep queue");
     return SleepInfo::DontSleep();
   }
-  /// Indicate that the ``Dispatcher`` is sleeping and will need a ``DoWake``
-  /// call once more work can be done.
+  /// Indicate that the `Dispatcher` is sleeping and will need a `DoWake` call
+  /// once more work can be done.
   wants_wake_ = true;
   sleep_count_.Increment();
   // Once timers are added, this should check them.
   return SleepInfo::Indefinitely();
 }
 
-NativeDispatcherBase::RunOneTaskResult NativeDispatcherBase::RunOneTask(
-    Dispatcher& dispatcher, Task* task_to_look_for) {
-  std::lock_guard task_lock(task_execution_lock_);
+NativeDispatcherBase::RunTaskResult NativeDispatcherBase::RunOneTask(
+    Dispatcher& dispatcher) {
   Task* task;
+  Task::RunResult run_result;
+  RunTaskResult task_state;
+
   {
     std::lock_guard lock(impl::dispatcher_lock());
+
     task = PopWokenTask();
     if (task == nullptr) {
       PW_LOG_DEBUG("Dispatcher has no woken tasks to run");
-      bool all_complete = woken_.empty() && sleeping_.empty();
-      return RunOneTaskResult(
-          /*completed_all_tasks=*/all_complete,
-          /*completed_main_task=*/false,
-          /*ran_a_task=*/false);
+      return sleeping_.empty() ? kNoTasks : kNoReadyTasks;
     }
-    task->state_ = Task::State::kRunning;
-  }
 
-  bool complete;
-  bool requires_waker;
-  {
-    Waker waker(*task);
-    Context context(dispatcher, waker);
+    run_result = task->RunInDispatcher(dispatcher);
     tasks_polled_.Increment();
-    complete = task->Pend(context).IsReady();
-    requires_waker = context.requires_waker_;
-  }
 
-  if (complete) {
-    tasks_completed_.Increment();
-    bool all_complete;
-    {
-      std::lock_guard lock(impl::dispatcher_lock());
-      switch (task->state_) {
-        case Task::State::kUnposted:
-        case Task::State::kSleeping:
-          PW_DASSERT(false);
-          PW_UNREACHABLE;
-        case Task::State::kRunning:
-          break;
-        case Task::State::kWoken:
-          RemoveWokenTaskLocked(*task);
-          break;
-      }
-      task->state_ = Task::State::kUnposted;
-      task->dispatcher_ = nullptr;
-      task->RemoveAllWakersLocked();
-      all_complete = woken_.empty() && sleeping_.empty();
-    }
-    task->DoDestroy();
-    return RunOneTaskResult(
-        /*completed_all_tasks=*/all_complete,
-        /*completed_main_task=*/task == task_to_look_for,
-        /*ran_a_task=*/true);
-  }
-
-  std::lock_guard lock(impl::dispatcher_lock());
-  if (task->state_ == Task::State::kRunning) {
-    PW_LOG_DEBUG(
-        "Dispatcher adding task " PW_LOG_TOKEN_FMT() ":%p to sleep queue",
-        task->name_,
-        static_cast<const void*>(task));
-
-    if (requires_waker) {
-      PW_CHECK(!task->wakers_.empty(),
-               "Task " PW_LOG_TOKEN_FMT()
-               ":%p returned Pending() without registering a waker",
-               task->name_, static_cast<const void*>(task));
-      task->state_ = Task::State::kSleeping;
-      sleeping_.push_front(*task);
+    if (!woken_.empty()) {
+      task_state = kReadyTasks;
+    } else if (!sleeping_.empty()) {
+      task_state = kNoReadyTasks;
     } else {
-      // Require the task to be manually re-posted.
-      task->state_ = Task::State::kUnposted;
-      task->dispatcher_ = nullptr;
+      task_state = kNoTasks;
     }
   }
-  return RunOneTaskResult(
-      /*completed_all_tasks=*/false,
-      /*completed_main_task=*/false,
-      /*ran_a_task=*/true);
+
+  // If this is an OwnedTask, then no other threads should be accessing it, so
+  // it is safe destroy it without holding impl::dispatcher_lock().
+  if (run_result == Task::kCompletedNeedsDestroy) {
+    static_cast<OwnedTask&>(*task).Destroy();
+    tasks_completed_.Increment();
+  } else if (run_result == Task::kCompleted) {
+    tasks_completed_.Increment();
+  }
+
+  return task_state;
 }
 
 void NativeDispatcherBase::UnpostTaskList(IntrusiveList<Task>& list) {
   while (!list.empty()) {
-    Task& task = list.front();
-    task.state_ = Task::State::kUnposted;
-    task.dispatcher_ = nullptr;
-    task.RemoveAllWakersLocked();
+    list.front().Unpost();
     list.pop_front();
   }
 }
@@ -176,36 +128,22 @@ void NativeDispatcherBase::RemoveSleepingTaskLocked(Task& task) {
   sleeping_.remove(task);
 }
 
-void NativeDispatcherBase::WakeTask(Task& task) {
-  PW_LOG_DEBUG("Dispatcher waking task " PW_LOG_TOKEN_FMT() ":%p",
-               task.name_,
-               static_cast<const void*>(&task));
+void NativeDispatcherBase::AddSleepingTaskLocked(Task& task) {
+  sleeping_.push_front(task);
+}
 
-  switch (task.state_) {
-    case Task::State::kWoken:
-      // Do nothing-- this has already been woken.
-      return;
-    case Task::State::kUnposted:
-      // This should be unreachable.
-      PW_CHECK(false);
-    case Task::State::kRunning:
-      // Wake again to indicate that this task should be run once more,
-      // as the state of the world may have changed since the task
-      // started running.
-      break;
-    case Task::State::kSleeping:
-      RemoveSleepingTaskLocked(task);
-      // Wake away!
-      break;
+void NativeDispatcherBase::WakeTask(Task& task) {
+  if (!task.Wake()) {
+    return;
   }
-  task.state_ = Task::State::kWoken;
+
   woken_.push_back(task);
   if (wants_wake_) {
-    // Note: it's quite annoying to make this call under the lock, as it can
-    // result in extra thread wakeup/sleep cycles.
+    // It's quite annoying to make this call under the lock, as it can result in
+    // extra thread wakeup/sleep cycles.
     //
     // However, releasing the lock first would allow for the possibility that
-    // the ``Dispatcher`` has been destroyed, making the call invalid.
+    // the `Dispatcher` has been destroyed, making the call invalid.
     Wake();
   }
 }
@@ -219,6 +157,8 @@ Task* NativeDispatcherBase::PopWokenTask() {
   return &task;
 }
 
+// TODO: b/456478818 - Provide task iteration API and rework LogRegisteredTasks
+//     to use it.
 void NativeDispatcherBase::LogRegisteredTasks() {
   PW_LOG_INFO("pw::async2::Dispatcher");
   std::lock_guard lock(impl::dispatcher_lock());
@@ -239,14 +179,12 @@ void NativeDispatcherBase::LogRegisteredTasks() {
                 static_cast<const void*>(&task),
                 waker_count);
 
-#if PW_ASYNC2_DEBUG_WAIT_REASON
     LogTaskWakers(task);
-#endif  // PW_ASYNC2_DEBUG_WAIT_REASON
   }
 }
 
+void NativeDispatcherBase::LogTaskWakers([[maybe_unused]] const Task& task) {
 #if PW_ASYNC2_DEBUG_WAIT_REASON
-void NativeDispatcherBase::LogTaskWakers(const Task& task) {
   int i = 0;
   for (const Waker& waker : task.wakers_) {
     i++;
@@ -256,7 +194,7 @@ void NativeDispatcherBase::LogTaskWakers(const Task& task) {
                   waker.wait_reason_);
     }
   }
-}
 #endif  // PW_ASYNC2_DEBUG_WAIT_REASON
+}
 
 }  // namespace pw::async2

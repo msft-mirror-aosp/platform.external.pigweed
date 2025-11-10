@@ -54,6 +54,7 @@ pw_add_facade(pw_async2.dispatcher STATIC
     public/pw_async2/dispatcher_base.h
     public/pw_async2/future.h
     public/pw_async2/lock.h
+    public/pw_async2/owned_task.h
     public/pw_async2/task.h
     public/pw_async2/waker.h
   PUBLIC_INCLUDES
@@ -67,12 +68,12 @@ pw_add_facade(pw_async2.dispatcher STATIC
     pw_metric
     pw_sync.interrupt_spin_lock
     pw_sync.lock_annotations
-    pw_sync.mutex
     pw_tokenizer
     pw_toolchain.no_destructor
   PRIVATE_DEPS
     pw_assert.check
     pw_async2.config
+    pw_thread.sleep
   SOURCES
     context.cc
     dispatcher_base.cc
@@ -86,16 +87,6 @@ pw_add_test(pw_async2.dispatcher_test
   PRIVATE_DEPS
     pw_async2.dispatcher
     pw_containers.vector
-)
-
-pw_add_test(pw_async2.dispatcher_thread_test
-  SOURCES
-    dispatcher_thread_test.cc
-  PRIVATE_DEPS
-    pw_async2.dispatcher
-    pw_function
-    pw_thread.sleep
-    pw_thread.thread
 )
 
 pw_add_library(pw_async2.pendable INTERFACE
@@ -176,6 +167,7 @@ pw_add_test(pw_async2.callback_task_test
     callback_task_test.cc
   PRIVATE_DEPS
     pw_async2.callback_task
+    pw_async2.value_future
     pw_function
 )
 
@@ -241,6 +233,7 @@ pw_add_library(pw_async2.once_sender INTERFACE
   PUBLIC_DEPS
     pw_async2.dispatcher
     pw_function
+    pw_sync.mutex
   PUBLIC_INCLUDES
     public
 )
@@ -492,6 +485,17 @@ pw_add_test(pw_async2.channel_test
     pw_async2.poll
     pw_allocator.testing
     pw_containers.vector
+)
+
+pw_add_test(pw_async2.task_test
+  SOURCES
+    task_test.cc
+  PRIVATE_DEPS
+    pw_async2.dispatcher
+    pw_sync.binary_semaphore
+    pw_thread.sleep
+    pw_thread.test_thread_context
+    pw_thread.thread
 )
 
 if("cxx_std_20" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
