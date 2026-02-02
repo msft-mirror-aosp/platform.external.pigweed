@@ -176,18 +176,17 @@ constexpr std::array<T, N> MakeArrayWithValue(Args&&... args) {
 
 }  // namespace
 
-Connection::Connection(stream::ReaderWriter& socket,
+Connection::Connection(stream::Reader& reader,
+                       SendQueue& send_queue,
                        RequestCallbacks& callbacks,
                        Allocator* message_assembly_allocator,
                        Allocator& send_allocator)
-    : socket_(socket),
-      send_allocator_(send_allocator),
-      send_queue_(socket, send_allocator_),
+    : send_allocator_(send_allocator),
       shared_state_(std::in_place,
                     message_assembly_allocator,
                     send_allocator_,
-                    send_queue_),
-      reader_(*this, callbacks),
+                    send_queue),
+      reader_(*this, callbacks, reader),
       writer_(*this) {}
 
 Connection::SharedState::SharedState(
@@ -239,7 +238,7 @@ Status Connection::Reader::ProcessFrame() {
     return Status::FailedPrecondition();
   }
 
-  PW_TRY_ASSIGN(auto frame, ReadFrameHeader(connection_.socket_.as_reader()));
+  PW_TRY_ASSIGN(auto frame, ReadFrameHeader(reader_));
   switch (frame.type) {
     // Frames that we handle.
     case FrameType::DATA:
@@ -326,6 +325,15 @@ Status Connection::SharedState::DrainResponseQueue(Stream& stream) {
 
     if (static_cast<int32_t>(message_size) > stream.send_window ||
         static_cast<int32_t>(message_size) > connection_send_window_) {
+      // TODO(b/471320234): remove after debugging
+      if (!stream.debug_logged_no_window) {
+        stream.debug_logged_no_window = true;
+        PW_LOG_WARN("stream id=%d not enough window: msg=%zu ssw=%d csw=%d",
+                    stream.id,
+                    message_size,
+                    stream.send_window,
+                    connection_send_window_);
+      }
       break;
     }
 
@@ -647,7 +655,7 @@ Status Connection::Reader::ProcessConnectionPreface() {
   auto literal = span{payload_scratch_}.subspan(
       0, kExpectedConnectionPrefaceLiteral.size());
 
-  PW_TRY(ReadExactly(connection_.socket_.as_reader(), literal));
+  PW_TRY(ReadExactly(reader_, literal));
   if (std::memcmp(literal.data(),
                   kExpectedConnectionPrefaceLiteral.data(),
                   kExpectedConnectionPrefaceLiteral.size()) != 0) {
@@ -658,8 +666,7 @@ Status Connection::Reader::ProcessConnectionPreface() {
   PW_LOG_DEBUG("Conn.Preface received literal");
 
   // Client must send a SETTINGS frames.
-  PW_TRY_ASSIGN(auto client_frame,
-                ReadFrameHeader(connection_.socket_.as_reader()));
+  PW_TRY_ASSIGN(auto client_frame, ReadFrameHeader(reader_));
   if (client_frame.type != FrameType::SETTINGS) {
     PW_LOG_ERROR(
         "Connection preface missing SETTINGS frame, found frame.type=%d",
@@ -812,7 +819,7 @@ Status Connection::Reader::ProcessDataFrame(const FrameHeader& frame) {
           std::min(5 - static_cast<size_t>(stream->assembly.prefix.received),
                    payload.size());
       std::copy(payload.begin(),
-                payload.begin() + read,
+                payload.begin() + static_cast<ptrdiff_t>(read),
                 stream->assembly.prefix.buffer.data() +
                     stream->assembly.prefix.received);
       stream->assembly.prefix.received += read;
@@ -1375,7 +1382,7 @@ Status Connection::Reader::ProcessIgnoredFrame(const FrameHeader& frame) {
   while (to_read > 0) {
     auto chunk = span{payload_scratch_}.subspan(
         0, std::min(payload_scratch_.size(), to_read));
-    PW_TRY(ReadExactly(connection_.socket_.as_reader(), chunk));
+    PW_TRY(ReadExactly(reader_, chunk));
     to_read -= chunk.size();
   }
   return OkStatus();
@@ -1395,7 +1402,7 @@ Result<ByteSpan> Connection::Reader::ReadFramePayload(
     return Status::Internal();
   }
   auto payload = span{payload_scratch_}.subspan(0, frame.payload_length);
-  PW_TRY(ReadExactly(connection_.socket_.as_reader(), payload));
+  PW_TRY(ReadExactly(reader_, payload));
   return payload;
 }
 

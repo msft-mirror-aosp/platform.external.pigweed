@@ -42,7 +42,7 @@ class WakerQueueBase;
 
 }  // namespace internal
 
-/// @submodule{pw_async2,core}
+/// @submodule{pw_async2,context}
 
 /// Context for an asynchronous ``Task``.
 ///
@@ -76,7 +76,7 @@ class Context {
   /// ```
   /// Waker waker;
   /// PW_ASYNC_STORE_WAKER(cx, waker, ...);
-  /// std::move(waker).Wake();
+  /// waker.Wake();
   /// ```
   void ReEnqueue();
 
@@ -104,6 +104,6 @@ class Context {
   bool requires_waker_;
 };
 
-/// @}
+/// @endsubmodule
 
 }  // namespace pw::async2

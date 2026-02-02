@@ -14,7 +14,7 @@
 
 #include "pw_async2/value_future.h"
 
-#include "pw_async2/dispatcher.h"
+#include "pw_async2/dispatcher_for_test.h"
 #include "pw_async2/pend_func_task.h"
 #include "pw_async2/try.h"
 #include "pw_unit_test/framework.h"
@@ -23,9 +23,8 @@ namespace {
 
 using pw::async2::BroadcastValueProvider;
 using pw::async2::Context;
-using pw::async2::Dispatcher;
+using pw::async2::DispatcherForTest;
 using pw::async2::PendFuncTask;
-using pw::async2::Pending;
 using pw::async2::Poll;
 using pw::async2::Ready;
 using pw::async2::ValueFuture;
@@ -33,7 +32,7 @@ using pw::async2::ValueProvider;
 using pw::async2::VoidFuture;
 
 TEST(ValueFuture, Pend) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   BroadcastValueProvider<int> provider;
 
   ValueFuture<int> future = provider.Get();
@@ -46,15 +45,15 @@ TEST(ValueFuture, Pend) {
   });
 
   dispatcher.Post(task);
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Pending());
+  EXPECT_TRUE(dispatcher.RunUntilStalled());
 
   provider.Resolve(27);
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
+  dispatcher.RunToCompletion();
   EXPECT_EQ(result, 27);
 }
 
 TEST(ValueFuture, Resolved) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   auto future = ValueFuture<int>::Resolved(42);
   int result = -1;
 
@@ -65,12 +64,12 @@ TEST(ValueFuture, Resolved) {
   });
 
   dispatcher.Post(task);
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
+  dispatcher.RunToCompletion();
   EXPECT_EQ(result, 42);
 }
 
 TEST(ValueFuture, ResolvedInPlace) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   auto future = ValueFuture<std::pair<int, int>>::Resolved(9, 3);
 
   std::optional<std::pair<int, int>> result;
@@ -81,14 +80,14 @@ TEST(ValueFuture, ResolvedInPlace) {
   });
 
   dispatcher.Post(task);
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
+  dispatcher.RunToCompletion();
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(result->first, 9);
   EXPECT_EQ(result->second, 3);
 }
 
 TEST(ValueProvider, VendsAndResolvesFuture) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   ValueProvider<int> provider;
 
   std::optional<ValueFuture<int>> future = provider.Get();
@@ -102,15 +101,15 @@ TEST(ValueProvider, VendsAndResolvesFuture) {
   });
 
   dispatcher.Post(task);
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Pending());
+  EXPECT_TRUE(dispatcher.RunUntilStalled());
 
   provider.Resolve(91);
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
+  dispatcher.RunToCompletion();
   EXPECT_EQ(result, 91);
 }
 
 TEST(ValueProvider, OnlyAllowsOneFutureToExist) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   ValueProvider<int> provider;
 
   {
@@ -132,10 +131,10 @@ TEST(ValueProvider, OnlyAllowsOneFutureToExist) {
   });
 
   dispatcher.Post(task);
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Pending());
+  EXPECT_TRUE(dispatcher.RunUntilStalled());
 
   provider.Resolve(82);
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
+  dispatcher.RunToCompletion();
   EXPECT_EQ(result, 82);
 
   // The operation has resolved, so a new future should be obtainable.
@@ -144,7 +143,7 @@ TEST(ValueProvider, OnlyAllowsOneFutureToExist) {
 }
 
 TEST(ValueProvider, ResolveInPlace) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   ValueProvider<std::pair<int, int>> provider;
 
   std::optional<ValueFuture<std::pair<int, int>>> future = provider.Get();
@@ -158,10 +157,10 @@ TEST(ValueProvider, ResolveInPlace) {
   });
 
   dispatcher.Post(task);
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Pending());
+  EXPECT_TRUE(dispatcher.RunUntilStalled());
 
   provider.Resolve(9, 3);
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
+  dispatcher.RunToCompletion();
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(result->first, 9);
   EXPECT_EQ(result->second, 3);
@@ -170,7 +169,7 @@ TEST(ValueProvider, ResolveInPlace) {
 }  // namespace
 
 TEST(VoidFuture, Pend) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   BroadcastValueProvider<void> provider;
 
   VoidFuture future = provider.Get();
@@ -183,16 +182,16 @@ TEST(VoidFuture, Pend) {
   });
 
   dispatcher.Post(task);
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Pending());
+  EXPECT_TRUE(dispatcher.RunUntilStalled());
   EXPECT_FALSE(completed);
 
   provider.Resolve();
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
+  dispatcher.RunToCompletion();
   EXPECT_TRUE(completed);
 }
 
 TEST(VoidFuture, Resolved) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   auto future = VoidFuture::Resolved();
   bool completed = false;
 
@@ -203,12 +202,12 @@ TEST(VoidFuture, Resolved) {
   });
 
   dispatcher.Post(task);
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
+  dispatcher.RunToCompletion();
   EXPECT_TRUE(completed);
 }
 
 TEST(ValueProviderVoid, VendsAndResolvesFuture) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   ValueProvider<void> provider;
 
   std::optional<VoidFuture> future = provider.Get();
@@ -222,10 +221,10 @@ TEST(ValueProviderVoid, VendsAndResolvesFuture) {
   });
 
   dispatcher.Post(task);
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Pending());
+  EXPECT_TRUE(dispatcher.RunUntilStalled());
   EXPECT_FALSE(completed);
 
   provider.Resolve();
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
+  dispatcher.RunToCompletion();
   EXPECT_TRUE(completed);
 }

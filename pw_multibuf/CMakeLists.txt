@@ -187,7 +187,7 @@ pw_add_library(pw_multibuf.allocator_async STATIC
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
-    pw_async2.dispatcher
+    pw_async2
     pw_async2.poll
     pw_multibuf.allocator
     pw_multibuf.config
@@ -200,8 +200,9 @@ pw_add_test(pw_multibuf.allocator_test
   SOURCES
     allocator_test.cc
   PRIVATE_DEPS
-    pw_async2.dispatcher
+    pw_async2
     pw_async2.poll
+    pw_async2.testing
     pw_multibuf.allocator
     pw_multibuf.allocator_async
     pw_multibuf.v1_config
@@ -345,6 +346,7 @@ pw_add_library(pw_multibuf._iterators INTERFACE
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
+    pw_allocator
     pw_assert.assert
     pw_bytes
     pw_containers.dynamic_deque
@@ -396,6 +398,7 @@ pw_add_library(pw_multibuf.multibuf_v2 STATIC
     pw_allocator
     pw_allocator.null_allocator
     pw_bytes
+    pw_containers.algorithm
     pw_containers.dynamic_deque
     pw_multibuf._iterators
     pw_multibuf.properties

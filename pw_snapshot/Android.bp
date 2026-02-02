@@ -125,10 +125,10 @@ genrule {
     name: "pw_snapshot_metadata_proto_with_prefix",
     defaults: ["pw_rpc_add_prefix_to_proto"],
     srcs: [
-        "pw_snapshot_protos/snapshot_metadata.proto",
+        "pw_snapshot_protos/snapshot_metadata.proto"
     ],
     out: [
-        "pw_snapshot_metadata_proto/snapshot_metadata.proto",
+        "pw_snapshot_metadata_proto/snapshot_metadata.proto"
     ],
 }
 

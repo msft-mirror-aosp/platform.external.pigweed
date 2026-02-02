@@ -22,6 +22,7 @@
 #include "pw_bytes/span.h"
 #include "pw_containers/dynamic_queue.h"
 #include "pw_function/function.h"
+#include "pw_grpc/default_send_queue.h"
 #include "pw_grpc/send_queue.h"
 #include "pw_result/result.h"
 #include "pw_status/status.h"
@@ -64,10 +65,9 @@ inline constexpr uint32_t kMaxMethodNameSize = 127;
 // Basic usage:
 // * Provide a Connection::RequestCallbacks implementation that handles RPC
 //   events.
-// * Provide a readable/writeable stream object that will be used like a
-//   socket over which the HTTP2 frames are read/written. When the underlying
-//   stream should be closed, the provided connection_close_callback will be
-//   called.
+// * Provide a readable stream object over which HTTP2 frames are read. When the
+//   stream is closed, the provided connection_close_callback will be called.
+// * Provide a SendQueue implementation over which HTTP2 frames are written.
 // * Drive the connection by calling ProcessConnectionPreface then ProcessFrame
 //   in a loop while status is Ok on one thread.
 // * RPC responses can be sent from any thread by calling
@@ -114,7 +114,8 @@ class Connection {
     virtual void OnCancel(StreamId id) = 0;
   };
 
-  Connection(stream::ReaderWriter& socket,
+  Connection(stream::Reader& reader,
+             SendQueue& send_queue,
              RequestCallbacks& callbacks,
              Allocator* message_assembly_allocator,
              Allocator& send_allocator);
@@ -159,10 +160,6 @@ class Connection {
     return writer_.SendResponseComplete(stream_id, response_code);
   }
 
-  // Access SendQueue for this connection. Should be used to start and stop the
-  // thread.
-  SendQueue& send_queue() { return send_queue_; }
-
  private:
   // RFC 9113 §6.9.2. Flow control windows are unsigned 31-bit numbers, but
   // because of the following requirement from §6.9.2, we track flow control
@@ -205,6 +202,7 @@ class Connection {
     StreamId id = 0;
     bool half_closed = false;
     bool started_response = false;
+    bool debug_logged_no_window = false;
     int32_t send_window = 0;
     int32_t recv_window = kTargetStreamWindowSize;
 
@@ -232,6 +230,7 @@ class Connection {
       id = 0;
       half_closed = false;
       started_response = false;
+      debug_logged_no_window = false;
       send_window = 0;
       recv_window = kTargetStreamWindowSize;
       response_queue.clear();
@@ -335,8 +334,10 @@ class Connection {
 
   class Reader {
    public:
-    Reader(Connection& connection, RequestCallbacks& callbacks)
-        : connection_(connection), callbacks_(callbacks) {}
+    Reader(Connection& connection,
+           RequestCallbacks& callbacks,
+           stream::Reader& reader)
+        : connection_(connection), callbacks_(callbacks), reader_(reader) {}
 
     Status ProcessConnectionPreface();
     Status ProcessFrame();
@@ -361,6 +362,7 @@ class Connection {
 
     Connection& connection_;
     RequestCallbacks& callbacks_;
+    stream::Reader& reader_;
     int32_t initial_send_window_ = kDefaultInitialWindowSize;
     bool received_connection_preface_ = false;
 
@@ -378,9 +380,7 @@ class Connection {
   }
 
   // Shared state that is thread-safe.
-  stream::ReaderWriter& socket_;
   allocator::SynchronizedAllocator<sync::Mutex> send_allocator_;
-  SendQueue send_queue_;
   sync::InlineBorrowable<SharedState> shared_state_;
   Reader reader_;
   Writer writer_;
@@ -399,19 +399,24 @@ class ConnectionThread : public Connection, public thread::ThreadCore {
                    ConnectionCloseCallback&& connection_close_callback,
                    allocator::Allocator* message_assembly_allocator,
                    Allocator& send_allocator)
-      : Connection(
-            stream, callbacks, message_assembly_allocator, send_allocator),
+      : Connection(stream.as_reader(),
+                   send_queue_,
+                   callbacks,
+                   message_assembly_allocator,
+                   send_allocator),
         send_queue_thread_options_(send_thread_options),
-        connection_close_callback_(std::move(connection_close_callback)) {}
+        connection_close_callback_(std::move(connection_close_callback)),
+        send_queue_(stream, send_allocator) {}
 
   // Process the connection. Does not return until the connection is closed.
   void Run() override {
-    Thread send_thread(send_queue_thread_options_, send_queue());
+    Thread send_thread(send_queue_thread_options_,
+                       [this]() { send_queue_.Run(); });
     Status status = ProcessConnectionPreface();
     while (status.ok()) {
       status = ProcessFrame();
     }
-    send_queue().RequestStop();
+    send_queue_.RequestStop();
     send_thread.join();
     if (connection_close_callback_) {
       connection_close_callback_();
@@ -421,6 +426,7 @@ class ConnectionThread : public Connection, public thread::ThreadCore {
  private:
   const thread::Options& send_queue_thread_options_;
   ConnectionCloseCallback connection_close_callback_;
+  DefaultSendQueue send_queue_;
 };
 
 }  // namespace pw::grpc

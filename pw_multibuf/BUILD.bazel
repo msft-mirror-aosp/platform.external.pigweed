@@ -216,7 +216,7 @@ cc_library(
     deps = [
         ":allocator",
         ":config",
-        "//pw_async2:dispatcher",
+        "//pw_async2",
         "//pw_async2:poll",
     ],
 )
@@ -230,8 +230,8 @@ pw_cc_test(
         ":allocator",
         ":allocator_async",
         ":v1_config",
-        "//pw_async2:dispatcher",
         "//pw_async2:poll",
+        "//pw_async2:testing",
     ],
 )
 # LINT.ThenChange(BUILD.gn, CMakeLists.txt)
@@ -265,8 +265,8 @@ pw_cc_test(
         ":v1_config",
         "//pw_allocator:null_allocator",
         "//pw_allocator:testing",
-        "//pw_async2:dispatcher",
         "//pw_async2:poll",
+        "//pw_async2:testing",
     ],
 )
 
@@ -380,6 +380,7 @@ cc_library(
     strip_include_prefix = "public",
     visibility = ["//visibility:private"],
     deps = [
+        "//pw_allocator",
         "//pw_assert:assert",
         "//pw_bytes",
         "//pw_containers:dynamic_deque",
@@ -443,6 +444,7 @@ cc_library(
         "//pw_allocator",
         "//pw_allocator:null_allocator",
         "//pw_bytes",
+        "//pw_containers:algorithm",
         "//pw_containers:dynamic_deque",
     ],
 )

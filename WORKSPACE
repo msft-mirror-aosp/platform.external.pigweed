@@ -22,10 +22,9 @@ load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 # TODO: https://pwbug.dev/308624902 - This piece lacks bzlmod support.
 git_repository(
     name = "fuchsia_infra",
-    # ROLL: Warning: this entry is automatically updated.
-    # ROLL: Last updated 2025-11-02.
-    # ROLL: By https://cr-buildbucket.appspot.com/build/8699350619934973745.
-    commit = "20fc84cfaf657c3a52aeb2a3d737d34dd0ec1e85",
+    # ROLL: Warning: this entry is automatically updated by
+    # ROLL: https://cr-buildbucket.appspot.com/builder/pigweed/tools.roll/fuchsia-infra-bazel-rules-roller
+    commit = "235caa422aba9b160712aacdbff73f65b36c1743",
     remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
 )
 
