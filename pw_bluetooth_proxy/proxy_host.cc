@@ -14,17 +14,11 @@
 
 #include "pw_bluetooth_proxy/proxy_host.h"
 
-#include "pw_assert/check.h"
 #include "pw_bluetooth/emboss_util.h"
 #include "pw_bluetooth/hci_commands.emb.h"
 #include "pw_bluetooth/hci_common.emb.h"
-#include "pw_bluetooth/hci_data.emb.h"
 #include "pw_bluetooth/hci_h4.emb.h"
-#include "pw_bluetooth/l2cap_frames.emb.h"
-#include "pw_bluetooth_proxy/direction.h"
 #include "pw_bluetooth_proxy/h4_packet.h"
-#include "pw_bluetooth_proxy/internal/gatt_notify_channel_internal.h"
-#include "pw_bluetooth_proxy/internal/l2cap_coc_internal.h"
 #include "pw_bluetooth_proxy/internal/logical_transport.h"
 #include "pw_bluetooth_proxy/l2cap_channel_common.h"
 #include "pw_log/log.h"
@@ -37,13 +31,14 @@ ProxyHost::ProxyHost(
     uint16_t le_acl_credits_to_reserve,
     uint16_t br_edr_acl_credits_to_reserve,
     pw::Allocator* allocator)
-    : hci_transport_(std::move(send_to_host_fn),
+    : impl_(*this),
+      hci_transport_(std::move(send_to_host_fn),
                      std::move(send_to_controller_fn)),
       acl_data_channel_(hci_transport_,
                         le_acl_credits_to_reserve,
                         br_edr_acl_credits_to_reserve,
                         /*on_tx_credits_fn=*/[this]() { OnAclTxCredits(); }),
-      l2cap_channel_manager_(acl_data_channel_, allocator) {
+      l2cap_channel_manager_(acl_data_channel_, *allocator) {
   PW_LOG_INFO(
       "btproxy: ProxyHost ctor - le_acl_credits_to_reserve: %u, "
       "br_edr_acl_credits_to_reserve: %u",
@@ -58,7 +53,7 @@ ProxyHost::~ProxyHost() {
       L2capChannelEvent::kChannelClosedByOther);
 }
 
-void ProxyHost::Reset() {
+void ProxyHost::DoReset() {
   // Reset AclDataChannel first, so that send credits are reset to 0 until
   // reinitialized by controller event. This way, new channels can still be
   // registered, but they cannot erroneously use invalidated send credits.
@@ -66,7 +61,7 @@ void ProxyHost::Reset() {
   l2cap_channel_manager_.DeregisterAndCloseChannels(L2capChannelEvent::kReset);
 }
 
-void ProxyHost::HandleH4HciFromHost(H4PacketWithH4&& h4_packet) {
+void ProxyHost::DoHandleH4HciFromHost(H4PacketWithH4&& h4_packet) {
   switch (h4_packet.GetH4Type()) {
     case emboss::H4PacketType::COMMAND:
       HandleCommandFromHost(std::move(h4_packet));
@@ -84,7 +79,7 @@ void ProxyHost::HandleH4HciFromHost(H4PacketWithH4&& h4_packet) {
   }
 }
 
-void ProxyHost::HandleH4HciFromController(H4PacketWithHci&& h4_packet) {
+void ProxyHost::DoHandleH4HciFromController(H4PacketWithHci&& h4_packet) {
   switch (h4_packet.GetH4Type()) {
     case emboss::H4PacketType::EVENT:
       HandleEventFromController(std::move(h4_packet));
@@ -316,41 +311,22 @@ void ProxyHost::HandleAclFromHost(H4PacketWithH4&& h4_packet) {
   l2cap_channel_manager_.DeliverPendingEvents();
 }
 
-pw::Result<L2capCoc> ProxyHost::AcquireL2capCoc(
+pw::Result<L2capCoc> ProxyHost::DoAcquireL2capCoc(
     MultiBufAllocator& rx_multibuf_allocator,
     uint16_t connection_handle,
     L2capCoc::CocConfig rx_config,
     L2capCoc::CocConfig tx_config,
     Function<void(FlatConstMultiBuf&& payload)>&& receive_fn,
     ChannelEventCallback&& event_fn) {
-  // TODO: https://pwbug.dev/452727552 - Don't create unknown connections for
-  // clients. Only create connections on connection complete events. Return an
-  // error if the connection doesn't exist.
-  Status status = acl_data_channel_.CreateAclConnection(connection_handle,
-                                                        AclTransportType::kLe);
-  if (status.IsResourceExhausted()) {
-    return pw::Status::Unavailable();
-  }
-  PW_CHECK(status.ok() || status.IsAlreadyExists());
-
-  status = l2cap_channel_manager_.AddConnection(connection_handle,
-                                                AclTransportType::kLe);
-  if (status.IsResourceExhausted()) {
-    PW_LOG_WARN("Couldn't add L2CAP connection: %s", status.str());
-    return pw::Status::Unavailable();
-  }
-  PW_CHECK(status.ok() || status.IsAlreadyExists());
-
-  return L2capCocInternal::Create(rx_multibuf_allocator,
-                                  l2cap_channel_manager_,
-                                  connection_handle,
-                                  rx_config,
-                                  tx_config,
-                                  std::move(event_fn),
-                                  /*receive_fn=*/std::move(receive_fn));
+  return l2cap_channel_manager_.AcquireL2capCoc(rx_multibuf_allocator,
+                                                connection_handle,
+                                                rx_config,
+                                                tx_config,
+                                                std::move(receive_fn),
+                                                std::move(event_fn));
 }
 
-pw::Result<BasicL2capChannel> ProxyHost::AcquireBasicL2capChannel(
+pw::Result<BasicL2capChannel> ProxyHost::DoAcquireBasicL2capChannel(
     MultiBufAllocator& rx_multibuf_allocator,
     uint16_t connection_handle,
     uint16_t local_cid,
@@ -359,72 +335,46 @@ pw::Result<BasicL2capChannel> ProxyHost::AcquireBasicL2capChannel(
     OptionalPayloadReceiveCallback&& payload_from_controller_fn,
     OptionalPayloadReceiveCallback&& payload_from_host_fn,
     ChannelEventCallback&& event_fn) {
-  // TODO: https://pwbug.dev/452727552 - Don't create unknown connections for
-  // clients. Only create connections on connection complete events. Return an
-  // error if the connection doesn't exist.
-  Status status =
-      acl_data_channel_.CreateAclConnection(connection_handle, transport);
-  if (status.IsResourceExhausted()) {
-    return pw::Status::Unavailable();
-  }
-  PW_CHECK(status.ok() || status.IsAlreadyExists());
-
-  status = l2cap_channel_manager_.AddConnection(connection_handle, transport);
-  if (status.IsResourceExhausted()) {
-    PW_LOG_WARN("Couldn't add L2CAP connection: %s", status.str());
-    return pw::Status::Unavailable();
-  }
-  PW_CHECK(status.ok() || status.IsAlreadyExists());
-
-  return BasicL2capChannel::Create(l2cap_channel_manager_,
-                                   &rx_multibuf_allocator,
-                                   /*connection_handle=*/connection_handle,
-                                   /*transport=*/transport,
-                                   /*local_cid=*/local_cid,
-                                   /*remote_cid=*/remote_cid,
-                                   /*payload_from_controller_fn=*/
-                                   std::move(payload_from_controller_fn),
-                                   /*payload_from_host_fn=*/
-                                   std::move(payload_from_host_fn),
-                                   /*event_fn=*/std::move(event_fn));
+  return l2cap_channel_manager_.AcquireBasicL2capChannel(
+      rx_multibuf_allocator,
+      connection_handle,
+      local_cid,
+      remote_cid,
+      transport,
+      std::move(payload_from_controller_fn),
+      std::move(payload_from_host_fn),
+      std::move(event_fn));
 }
 
-pw::Result<GattNotifyChannel> ProxyHost::AcquireGattNotifyChannel(
+pw::Result<GattNotifyChannel> ProxyHost::DoAcquireGattNotifyChannel(
     int16_t connection_handle,
     uint16_t attribute_handle,
     ChannelEventCallback&& event_fn) {
-  Status status = acl_data_channel_.CreateAclConnection(connection_handle,
-                                                        AclTransportType::kLe);
-  if (status != OkStatus() && status != Status::AlreadyExists()) {
-    return pw::Status::Unavailable();
-  }
-  return GattNotifyChannelInternal::Create(l2cap_channel_manager_,
-                                           connection_handle,
-                                           attribute_handle,
-                                           std::move(event_fn));
+  return l2cap_channel_manager_.AcquireGattNotifyChannel(
+      connection_handle, attribute_handle, std::move(event_fn));
 }
 
-bool ProxyHost::HasSendLeAclCapability() const {
+bool ProxyHost::DoHasSendLeAclCapability() const {
   return acl_data_channel_.HasSendAclCapability(AclTransportType::kLe);
 }
 
-bool ProxyHost::HasSendBrEdrAclCapability() const {
+bool ProxyHost::DoHasSendBrEdrAclCapability() const {
   return acl_data_channel_.HasSendAclCapability(AclTransportType::kBrEdr);
 }
 
-uint16_t ProxyHost::GetNumFreeLeAclPackets() const {
+uint16_t ProxyHost::DoGetNumFreeLeAclPackets() const {
   return acl_data_channel_.GetNumFreeAclPackets(AclTransportType::kLe);
 }
 
-uint16_t ProxyHost::GetNumFreeBrEdrAclPackets() const {
+uint16_t ProxyHost::DoGetNumFreeBrEdrAclPackets() const {
   return acl_data_channel_.GetNumFreeAclPackets(AclTransportType::kBrEdr);
 }
 
-void ProxyHost::RegisterL2capStatusDelegate(L2capStatusDelegate& delegate) {
+void ProxyHost::DoRegisterL2capStatusDelegate(L2capStatusDelegate& delegate) {
   l2cap_channel_manager_.RegisterStatusDelegate(delegate);
 }
 
-void ProxyHost::UnregisterL2capStatusDelegate(L2capStatusDelegate& delegate) {
+void ProxyHost::DoUnregisterL2capStatusDelegate(L2capStatusDelegate& delegate) {
   l2cap_channel_manager_.UnregisterStatusDelegate(delegate);
 }
 
@@ -442,6 +392,39 @@ void ProxyHost::OnConnectionCompleteSuccess(uint16_t connection_handle,
 
 void ProxyHost::OnAclTxCredits() {
   l2cap_channel_manager_.ForceDrainChannelQueues();
+}
+
+Result<UniquePtr<ChannelProxy>> ProxyHost::InternalDoInterceptBasicModeChannel(
+    ConnectionHandle connection_handle,
+    uint16_t local_channel_id,
+    uint16_t remote_channel_id,
+    AclTransportType transport,
+    BufferReceiveFunction&& payload_from_controller_fn,
+    BufferReceiveFunction&& payload_from_host_fn,
+    ChannelEventCallback&& event_fn) {
+  return l2cap_channel_manager_.InterceptBasicModeChannel(
+      connection_handle,
+      local_channel_id,
+      remote_channel_id,
+      transport,
+      std::move(payload_from_controller_fn),
+      std::move(payload_from_host_fn),
+      std::move(event_fn));
+}
+
+Result<UniquePtr<ChannelProxy>>
+ProxyHost::DoInterceptCreditBasedFlowControlChannel(
+    ConnectionHandle connection_handle,
+    ConnectionOrientedChannelConfig rx_config,
+    ConnectionOrientedChannelConfig tx_config,
+    MultiBufReceiveFunction&& receive_fn,
+    ChannelEventCallback&& event_fn) {
+  return l2cap_channel_manager_.InterceptCreditBasedFlowControlChannel(
+      connection_handle,
+      rx_config,
+      tx_config,
+      std::move(receive_fn),
+      std::move(event_fn));
 }
 
 }  // namespace pw::bluetooth::proxy

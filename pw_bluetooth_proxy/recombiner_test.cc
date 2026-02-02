@@ -18,16 +18,21 @@
 #include <mutex>
 #include <optional>
 
+#include "pw_assert/check.h"
 #include "pw_bluetooth_proxy/internal/locked_l2cap_channel.h"
+#include "pw_bluetooth_proxy/internal/mutex.h"
 #include "pw_bluetooth_proxy/proxy_host.h"
 #include "pw_bluetooth_proxy_private/test_utils.h"
 #include "pw_containers/to_array.h"
 #include "pw_span/cast.h"
 #include "pw_status/status.h"
+#include "pw_sync/mutex.h"
 #include "pw_unit_test/framework.h"
 
 namespace pw::bluetooth::proxy {
 namespace {
+
+constexpr uint16_t kConnectionHandle = 0x123;
 
 using pw::containers::to_array;
 
@@ -43,10 +48,17 @@ TEST_F(RecombinerTest, Start) {
   ProxyHost proxy_{[]([[maybe_unused]] H4PacketWithHci&& packet) {},
                    []([[maybe_unused]] H4PacketWithH4&& packet) {},
                    0,
-                   0};
-  BasicL2capChannel channel = BuildBasicL2capChannel(proxy_, {});
-  pw::sync::Mutex mutex;
-  LockedL2capChannel locked_channel{channel, std::unique_lock(mutex)};
+                   0,
+                   GetProxyHostAllocator()};
+  StartDispatcherOnCurrentThread(proxy_);
+  PW_TEST_ASSERT_OK(SendLeConnectionCompleteEvent(
+      proxy_, kConnectionHandle, emboss::StatusCode::SUCCESS));
+  BasicL2capChannel channel =
+      BuildBasicL2capChannel(proxy_, {.handle = kConnectionHandle});
+
+  internal::Mutex mutex;
+  LockedL2capChannel locked_channel{*channel.InternalForTesting(),
+                                    std::unique_lock(mutex)};
 
   Recombiner recombiner{Direction::kFromHost};
 
@@ -61,11 +73,16 @@ TEST_F(RecombinerTest, GetLocalCid) {
   ProxyHost proxy_{[]([[maybe_unused]] H4PacketWithHci&& packet) {},
                    []([[maybe_unused]] H4PacketWithH4&& packet) {},
                    0,
-                   0};
-  BasicL2capChannel channel =
-      BuildBasicL2capChannel(proxy_, {.local_cid = kLocalCid});
-  pw::sync::Mutex mutex;
-  LockedL2capChannel locked_channel{channel, std::unique_lock(mutex)};
+                   0,
+                   GetProxyHostAllocator()};
+  StartDispatcherOnCurrentThread(proxy_);
+  PW_TEST_ASSERT_OK(SendLeConnectionCompleteEvent(
+      proxy_, kConnectionHandle, emboss::StatusCode::SUCCESS));
+  BasicL2capChannel channel = BuildBasicL2capChannel(
+      proxy_, {.handle = kConnectionHandle, .local_cid = kLocalCid});
+  internal::Mutex mutex;
+  LockedL2capChannel locked_channel{*channel.InternalForTesting(),
+                                    std::unique_lock(mutex)};
 
   Recombiner recombiner{Direction::kFromController};
 
@@ -78,11 +95,16 @@ TEST_F(RecombinerTest, EndWithChannel) {
   ProxyHost proxy_{[]([[maybe_unused]] H4PacketWithHci&& packet) {},
                    []([[maybe_unused]] H4PacketWithH4&& packet) {},
                    0,
-                   0};
-  BasicL2capChannel channel = BuildBasicL2capChannel(proxy_, {});
-  pw::sync::Mutex mutex;
-  std::optional<LockedL2capChannel> locked_channel{
-      LockedL2capChannel{channel, std::unique_lock(mutex)}};
+                   0,
+                   GetProxyHostAllocator()};
+  StartDispatcherOnCurrentThread(proxy_);
+  PW_TEST_ASSERT_OK(SendLeConnectionCompleteEvent(
+      proxy_, kConnectionHandle, emboss::StatusCode::SUCCESS));
+  BasicL2capChannel channel =
+      BuildBasicL2capChannel(proxy_, {.handle = kConnectionHandle});
+  internal::Mutex mutex;
+  std::optional<LockedL2capChannel> locked_channel{LockedL2capChannel{
+      *channel.InternalForTesting(), std::unique_lock(mutex)}};
 
   Recombiner recombiner{Direction::kFromController};
 
@@ -100,14 +122,19 @@ TEST_F(RecombinerTest, EndWithoutChannel) {
   ProxyHost proxy_{[]([[maybe_unused]] H4PacketWithHci&& packet) {},
                    []([[maybe_unused]] H4PacketWithH4&& packet) {},
                    0,
-                   0};
+                   0,
+                   GetProxyHostAllocator()};
+  StartDispatcherOnCurrentThread(proxy_);
+  PW_TEST_ASSERT_OK(SendLeConnectionCompleteEvent(
+      proxy_, kConnectionHandle, emboss::StatusCode::SUCCESS));
   Recombiner recombiner{Direction::kFromController};
 
   {
-    BasicL2capChannel channel = BuildBasicL2capChannel(proxy_, {});
-    pw::sync::Mutex mutex;
-    std::optional<LockedL2capChannel> locked_channel{
-        LockedL2capChannel{channel, std::unique_lock(mutex)}};
+    BasicL2capChannel channel =
+        BuildBasicL2capChannel(proxy_, {.handle = kConnectionHandle});
+    internal::Mutex mutex;
+    std::optional<LockedL2capChannel> locked_channel{LockedL2capChannel{
+        *channel.InternalForTesting(), std::unique_lock(mutex)}};
 
     PW_TEST_EXPECT_OK(recombiner.StartRecombination(*locked_channel, 8u, 0u));
   }
@@ -126,13 +153,18 @@ TEST_F(RecombinerTest, WriteThenTake) {
   ProxyHost proxy_{[]([[maybe_unused]] H4PacketWithHci&& packet) {},
                    []([[maybe_unused]] H4PacketWithH4&& packet) {},
                    0,
-                   0};
+                   0,
+                   GetProxyHostAllocator()};
+  StartDispatcherOnCurrentThread(proxy_);
+  PW_TEST_ASSERT_OK(SendLeConnectionCompleteEvent(
+      proxy_, kConnectionHandle, emboss::StatusCode::SUCCESS));
   Direction kDirection = Direction::kFromController;
   Recombiner recombiner{kDirection};
-  BasicL2capChannel channel = BuildBasicL2capChannel(proxy_, {});
-  pw::sync::Mutex mutex;
-  std::optional<LockedL2capChannel> locked_channel{
-      LockedL2capChannel{channel, std::unique_lock(mutex)}};
+  BasicL2capChannel channel =
+      BuildBasicL2capChannel(proxy_, {.handle = kConnectionHandle});
+  internal::Mutex mutex;
+  std::optional<LockedL2capChannel> locked_channel{LockedL2capChannel{
+      *channel.InternalForTesting(), std::unique_lock(mutex)}};
 
   PW_TEST_EXPECT_OK(recombiner.StartRecombination(*locked_channel, 8u, 0u));
 
@@ -175,14 +207,19 @@ TEST_F(RecombinerTest, WriteCompleteWithoutChannel) {
   ProxyHost proxy_{[]([[maybe_unused]] H4PacketWithHci&& packet) {},
                    []([[maybe_unused]] H4PacketWithH4&& packet) {},
                    0,
-                   0};
+                   0,
+                   GetProxyHostAllocator()};
+  StartDispatcherOnCurrentThread(proxy_);
+  PW_TEST_ASSERT_OK(SendLeConnectionCompleteEvent(
+      proxy_, kConnectionHandle, emboss::StatusCode::SUCCESS));
   Recombiner recombiner{Direction::kFromController};
 
   {
-    BasicL2capChannel channel = BuildBasicL2capChannel(proxy_, {});
-    pw::sync::Mutex mutex;
-    std::optional<LockedL2capChannel> locked_channel{
-        LockedL2capChannel{channel, std::unique_lock(mutex)}};
+    BasicL2capChannel channel =
+        BuildBasicL2capChannel(proxy_, {.handle = kConnectionHandle});
+    internal::Mutex mutex;
+    std::optional<LockedL2capChannel> locked_channel{LockedL2capChannel{
+        *channel.InternalForTesting(), std::unique_lock(mutex)}};
 
     PW_TEST_EXPECT_OK(recombiner.StartRecombination(*locked_channel, 8u, 0u));
 
@@ -217,13 +254,18 @@ TEST_F(RecombinerTest, RecombinedPduIsLargerThanSpecified) {
   ProxyHost proxy_{[]([[maybe_unused]] H4PacketWithHci&& packet) {},
                    []([[maybe_unused]] H4PacketWithH4&& packet) {},
                    0,
-                   0};
+                   0,
+                   GetProxyHostAllocator()};
+  StartDispatcherOnCurrentThread(proxy_);
+  PW_TEST_ASSERT_OK(SendLeConnectionCompleteEvent(
+      proxy_, kConnectionHandle, emboss::StatusCode::SUCCESS));
   Recombiner recombiner{Direction::kFromController};
 
-  BasicL2capChannel channel = BuildBasicL2capChannel(proxy_, {});
-  pw::sync::Mutex mutex;
-  std::optional<LockedL2capChannel> locked_channel{
-      LockedL2capChannel{channel, std::unique_lock(mutex)}};
+  BasicL2capChannel channel =
+      BuildBasicL2capChannel(proxy_, {.handle = kConnectionHandle});
+  internal::Mutex mutex;
+  std::optional<LockedL2capChannel> locked_channel{LockedL2capChannel{
+      *channel.InternalForTesting(), std::unique_lock(mutex)}};
 
   PW_TEST_EXPECT_OK(recombiner.StartRecombination(*locked_channel, 8u, 0u));
 
@@ -259,13 +301,18 @@ TEST_F(RecombinerTest, CanClaimExtraHeader) {
   ProxyHost proxy_{[]([[maybe_unused]] H4PacketWithHci&& packet) {},
                    []([[maybe_unused]] H4PacketWithH4&& packet) {},
                    0,
-                   0};
+                   0,
+                   GetProxyHostAllocator()};
+  StartDispatcherOnCurrentThread(proxy_);
+  PW_TEST_ASSERT_OK(SendLeConnectionCompleteEvent(
+      proxy_, kConnectionHandle, emboss::StatusCode::SUCCESS));
   Direction kDirection = Direction::kFromController;
   Recombiner recombiner{kDirection};
-  BasicL2capChannel channel = BuildBasicL2capChannel(proxy_, {});
-  pw::sync::Mutex mutex;
-  std::optional<LockedL2capChannel> locked_channel{
-      LockedL2capChannel{channel, std::unique_lock(mutex)}};
+  BasicL2capChannel channel =
+      BuildBasicL2capChannel(proxy_, {.handle = kConnectionHandle});
+  internal::Mutex mutex;
+  std::optional<LockedL2capChannel> locked_channel{LockedL2capChannel{
+      *channel.InternalForTesting(), std::unique_lock(mutex)}};
 
   constexpr size_t kExtraHeaderSize = 4;
   PW_TEST_EXPECT_OK(
