@@ -42,10 +42,8 @@ The following code example demonstrates basic usage:
    :start-after: [pw_async2-examples-basic-coro]
    :end-before: [pw_async2-examples-basic-coro]
 
-Any value with a ``Poll<T> Pend(Context&)`` method can be passed to
-``co_await``, which will return with a ``T`` when the result is ready. The
-:cc:`PendFuncAwaitable <pw::async2::PendFuncAwaitable>` class can also be
-used to ``co_await`` on a provided delegate function.
+Any :ref:`future <module-pw_async2-futures>` can be passed to ``co_await``,
+which will return with a ``T`` when the result is ready.
 
 To return from a coroutine, ``co_return <expression>`` must be used instead of
 the usual ``return <expression>`` syntax. Because of this, the
@@ -82,24 +80,3 @@ patterns for sending data between coroutines, with very much the same solutions.
 This section just briefly describes how to ``co_await`` the data, as all the
 details around construction and sending a value are the same as
 :ref:`module-pw_async2-guides-passing-data`.
-
-.. _module-pw_async2-coro-passing-single-values:
-
-Single values
-=============
-As with the non-coroutine case, ``pw_async2`` provides the
-:cc:`OnceSender <pw::async2::OnceSender>` and :cc:`OnceReceiver
-<pw::async2::OnceReceiver>` helpers for sending and receiving a one-time value.
-
-As :cc:`OnceReceiver <pw::async2::OnceReceiver>` satisfies the ``Pend()``
-interface. This means your coroutine can just ``co_await`` the receiver instance
-to obtain the value.
-
-.. literalinclude:: examples/once_send_recv_test.cc
-   :language: cpp
-   :linenos:
-   :start-after: [pw_async2-examples-once-send-recv-coro-await]
-   :end-before: [pw_async2-examples-once-send-recv-coro-await]
-
-Like in the non-coroutine case, the value is wrapped as a ``Result<T>`` in case
-of error.

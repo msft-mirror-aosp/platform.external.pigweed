@@ -23,7 +23,7 @@
 #include "pw_assert/check.h"
 #include "pw_async2/allocate_task.h"
 #include "pw_async2/basic_dispatcher.h"
-#include "pw_async2/pend_func_task.h"
+#include "pw_async2/func_task.h"
 #include "pw_log/log.h"
 #include "pw_rpc/echo_service_pwpb.h"
 #include "pw_sync/interrupt_spin_lock.h"
@@ -70,7 +70,7 @@ internal::PacketIO& InitializePacketIoGlobal(
 // be moved to `pw::system::AsyncCore`.
 template <typename Func>
 [[nodiscard]] bool PostTaskFunction(Func&& func) {
-  async2::Task* task = async2::AllocateTask<async2::PendFuncTask<Func>>(
+  async2::Task* task = async2::AllocateTask<async2::FuncTask<Func>>(
       System().allocator(), std::forward<Func>(func));
   if (task == nullptr) {
     return false;

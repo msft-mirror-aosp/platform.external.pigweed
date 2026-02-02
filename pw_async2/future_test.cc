@@ -15,7 +15,7 @@
 #include "pw_async2/future.h"
 
 #include "pw_async2/dispatcher_for_test.h"
-#include "pw_async2/pend_func_task.h"
+#include "pw_async2/func_task.h"
 #include "pw_async2/try.h"
 #include "pw_compilation_testing/negative_compilation.h"
 #include "pw_unit_test/framework.h"
@@ -24,8 +24,8 @@ namespace {
 
 using pw::async2::Context;
 using pw::async2::DispatcherForTest;
+using pw::async2::FuncTask;
 using pw::async2::Future;
-using pw::async2::PendFuncTask;
 using pw::async2::Pending;
 using pw::async2::Poll;
 using pw::async2::Ready;
@@ -37,6 +37,7 @@ class FakeFuture {
  public:
   using value_type = int;
   Poll<int> Pend(Context& cx);
+  bool is_pendable() const;
   bool is_complete() const;
 };
 static_assert(Future<FakeFuture>);
@@ -44,6 +45,7 @@ static_assert(Future<FakeFuture>);
 class MissingValueType {
  public:
   Poll<int> Pend(Context& cx);
+  bool is_pendable() const;
   bool is_complete() const;
 };
 static_assert(!Future<MissingValueType>);
@@ -51,6 +53,7 @@ static_assert(!Future<MissingValueType>);
 class MissingPend {
  public:
   using value_type = int;
+  bool is_pendable() const;
   bool is_complete() const;
 };
 static_assert(!Future<MissingPend>);
@@ -59,14 +62,33 @@ class ExtraArgIsComplete {
  public:
   using value_type = int;
   Poll<int> Pend(Context& cx);
+  bool is_pendable() const;
   bool is_complete(bool maybe_not = false) const;
 };
 static_assert(!Future<ExtraArgIsComplete>);
+
+class MissingPendable {
+ public:
+  using value_type = int;
+  Poll<int> Pend(Context& cx);
+  bool is_complete() const;
+};
+static_assert(!Future<MissingPendable>);
+
+class WrongReturnPendable {
+ public:
+  using value_type = int;
+  Poll<int> Pend(Context& cx);
+  int is_pendable() const;
+  bool is_complete() const;
+};
+static_assert(!Future<WrongReturnPendable>);
 
 class NonConstIsComplete {
  public:
   using value_type = int;
   Poll<int> Pend(Context& cx);
+  bool is_pendable() const;
   bool is_complete();
 };
 static_assert(!Future<NonConstIsComplete>);
@@ -75,6 +97,7 @@ class MissingIsComplete {
  public:
   using value_type = int;
   Poll<int> Pend(Context& cx);
+  bool is_pendable() const;
 };
 static_assert(!Future<MissingIsComplete>);
 
@@ -82,6 +105,7 @@ class WrongPendSignature {
  public:
   using value_type = int;
   Poll<int> Pend();  // Missing Context&
+  bool is_pendable() const;
   bool is_complete() const;
 };
 static_assert(!Future<WrongPendSignature>);
@@ -90,6 +114,7 @@ class WrongPendReturnType {
  public:
   using value_type = int;
   void Pend(Context& cx);
+  bool is_pendable() const;
   bool is_complete() const;
 };
 static_assert(!Future<WrongPendReturnType>);
@@ -98,9 +123,32 @@ class ExtraArgPend {
  public:
   using value_type = int;
   Poll<int> Pend(Context& cx, int extra = 0);
+  bool is_pendable() const;
   bool is_complete() const;
 };
 static_assert(!Future<ExtraArgPend>);
+
+class NonDestructible {
+ public:
+  ~NonDestructible() = delete;
+
+  using value_type = int;
+  Poll<int> Pend(Context& cx);
+  bool is_pendable() const;
+  bool is_complete() const;
+};
+static_assert(!Future<NonDestructible>);
+
+class NotDefaultConstructible {
+ public:
+  NotDefaultConstructible() = delete;
+
+  using value_type = int;
+  Poll<int> Pend(Context& cx);
+  bool is_pendable() const;
+  bool is_complete() const;
+};
+static_assert(!Future<NotDefaultConstructible>);
 
 #if PW_NC_TEST(FutureWaitReasonMustBeProvided)
 PW_NC_EXPECT("kWaitReason");
@@ -119,7 +167,7 @@ class BadFuture {
 
 [[maybe_unused]] void ShouldAssert() {
   BadFuture future;
-  PendFuncTask task([&](Context& cx) { return future.Pend(cx).Readiness(); });
+  FuncTask task([&](Context& cx) { return future.Pend(cx).Readiness(); });
 }
 #endif  // PW_NC_TEST
 
@@ -129,7 +177,7 @@ class TestIntFuture {
  public:
   using value_type = int;
 
-  TestIntFuture() = default;
+  constexpr TestIntFuture() : async_int_(nullptr) {}
 
   TestIntFuture(TestIntFuture&& other) noexcept
       : core_(std::move(other.core_)),
@@ -147,6 +195,8 @@ class TestIntFuture {
 
   // Exposed for testing.
   const pw::async2::FutureCore& core() const { return core_; }
+
+  [[nodiscard]] bool is_pendable() const { return core_.is_pendable(); }
 
   [[nodiscard]] bool is_complete() const { return core_.is_complete(); }
 
@@ -226,7 +276,7 @@ TEST(FutureCore, Pend) {
   EXPECT_FALSE(future.core().is_ready());
   EXPECT_FALSE(future.core().is_complete());
 
-  PendFuncTask task([&](Context& cx) -> Poll<> {
+  FuncTask task([&](Context& cx) -> Poll<> {
     PW_TRY_READY_ASSIGN(int value, future.Pend(cx));
     EXPECT_EQ(value, 42);
     return Ready();
@@ -251,7 +301,7 @@ TEST(FutureCore, PendReady) {
   EXPECT_TRUE(future.core().is_ready());
   EXPECT_FALSE(future.core().is_complete());
 
-  PendFuncTask task([&](Context& cx) -> Poll<> {
+  FuncTask task([&](Context& cx) -> Poll<> {
     PW_TRY_READY_ASSIGN(int value, future.Pend(cx));
     EXPECT_EQ(value, 65535);
     return Ready();
@@ -274,7 +324,7 @@ TEST(FutureCore, MoveAssign) {
   future1 = std::move(future2);
 
   int result = -1;
-  PendFuncTask task([&](Context& cx) -> Poll<> {
+  FuncTask task([&](Context& cx) -> Poll<> {
     PW_TRY_READY_ASSIGN(int value, future1.Pend(cx));
     result = value;
     return Ready();
@@ -296,7 +346,7 @@ TEST(FutureCore, MoveConstruct) {
   TestIntFuture future2(std::move(future1));
 
   int result = -1;
-  PendFuncTask task([&](Context& cx) -> Poll<> {
+  FuncTask task([&](Context& cx) -> Poll<> {
     PW_TRY_READY_ASSIGN(int value, future2.Pend(cx));
     result = value;
     return Ready();
@@ -319,13 +369,13 @@ TEST(FutureCore, MultipleFutures) {
   int result1 = -1;
   int result2 = -1;
 
-  PendFuncTask task1([&](Context& cx) -> Poll<> {
+  FuncTask task1([&](Context& cx) -> Poll<> {
     PW_TRY_READY_ASSIGN(int value, future1.Pend(cx));
     result1 = value;
     return Ready();
   });
 
-  PendFuncTask task2([&](Context& cx) -> Poll<> {
+  FuncTask task2([&](Context& cx) -> Poll<> {
     PW_TRY_READY_ASSIGN(int value, future2.Pend(cx));
     result2 = value;
     return Ready();
@@ -348,7 +398,7 @@ TEST(FutureCore, RelistsItselfOnPending) {
   TestIntFuture future = provider.Get();
 
   int result = -1;
-  PendFuncTask task([&](Context& cx) -> Poll<> {
+  FuncTask task([&](Context& cx) -> Poll<> {
     PW_TRY_READY_ASSIGN(int value, future.Pend(cx));
     result = value;
     return Ready();

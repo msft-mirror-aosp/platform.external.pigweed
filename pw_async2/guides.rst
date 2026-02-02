@@ -95,7 +95,7 @@ To test ``pw_async2`` code:
 #. Declare a :cc:`pw::async2::DispatcherForTest`.
 #. Create a task to run the async code under test. Either implement
    :cc:`Task <pw::async2::Task>` or use
-   :cc:`PendFuncTask <pw::async2::PendFuncTask>` to wrap a lambda.
+   :cc:`FuncTask <pw::async2::FuncTask>` to wrap a lambda.
 #. Post the task to the dispatcher.
 #. Call :cc:`RunUntilStalled <pw::async2::RunnableDispatcher::RunUntilStalled>`
    to execute the task until it can make no further progress, or
@@ -178,13 +178,13 @@ clock.
 
 .. _module-pw_async2-guides-time-and-timers-time-future:
 
-TimeFuture, time-bound pendable objects
-=======================================
-A :cc:`TimeFuture <pw::async2::TimeFuture>` is a pendable object that
-completes at a specific time. A task can ``Pend`` on a ``TimeFuture`` to
-suspend itself until the time designated by the future. When the time is
-reached, the ``TimeProvider`` wakes the task, and its next poll of the
-``TimeFuture`` will return ``Ready(timestamp)``.
+TimeFuture, time-bound futures
+==============================
+A :cc:`TimeFuture <pw::async2::TimeFuture>` is a future that completes at a
+specific time. A task can ``Pend`` on a ``TimeFuture`` to suspend itself until
+the time designated by the future. When the time is reached, the
+``TimeProvider`` wakes the task, and its next poll of the ``TimeFuture`` will
+return ``Ready(timestamp)``.
 
 .. _module-pw_async2-guides-time-and-timers-example:
 
@@ -276,3 +276,13 @@ Poll aliases
 
    :cc:`PollResult <pw::async2::PollResult>`, ``Poll<pw::Result<T>>``
    :cc:`PollOptional <pw::async2::PollOptional>`, ``Poll<std::optional<T>>``
+
+---------------------
+Configuring pw_async2
+---------------------
+``pw_async2`` offers compile-time configuration options to adapt to different
+platforms and constraints.
+
+- :cc:`PW_ASYNC2_LOG_LEVEL` sets the log level for ``pw_async2``.
+- :cc:`PW_ASYNC2_DEBUG_WAIT_REASON` controls whether to include debug
+  information for blocked tasks.

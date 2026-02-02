@@ -12,10 +12,10 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#define PW_LOG_MODULE_NAME "PW_ASYNC2"
+#include "pw_async2/internal/logging.h"
+// logging.h must be included first
 
 #include "pw_async2/coro.h"
-
 #include "pw_log/log.h"
 
 namespace pw::async2::internal {

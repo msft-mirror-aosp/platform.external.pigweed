@@ -18,7 +18,7 @@
 #include "pw_assert/check.h"
 #include "pw_async2/basic_dispatcher.h"
 #include "pw_async2/dispatcher.h"
-#include "pw_async2/pend_func_task.h"
+#include "pw_async2/func_task.h"
 #include "pw_async2/size_report/size_report.h"
 #include "pw_bloat/bloat_this_binary.h"
 
@@ -36,7 +36,7 @@ int SingleTypeValueFuture(uint32_t mask) {
   ValueFuture<int> future = provider.Get();
 
   Poll<int> result = Pending();
-  PendFuncTask task([&](Context& cx) {
+  FuncTask task([&](Context& cx) {
     result = future.Pend(cx);
     return result.Readiness();
   });
@@ -65,7 +65,7 @@ int MultiTypeValueFuture(uint32_t mask) {
   ValueFuture<float> future = provider.Get();
 
   Poll<float> result = Pending();
-  PendFuncTask task([&](Context& cx) {
+  FuncTask task([&](Context& cx) {
     result = future.Pend(cx);
     return result.Readiness();
   });
@@ -97,7 +97,7 @@ int VoidFutureReport(uint32_t mask) {
   ValueFuture<void> future = provider.Get();
 
   Poll<> result = Pending();
-  PendFuncTask task([&](Context& cx) {
+  FuncTask task([&](Context& cx) {
     result = future.Pend(cx);
     return result.Readiness();
   });

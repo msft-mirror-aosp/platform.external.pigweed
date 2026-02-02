@@ -17,7 +17,8 @@
 #include <lib/fit/function.h>
 #include <pw_log/log.h>
 
-namespace bt::l2cap::internal {
+namespace bt::l2cap {
+namespace internal {
 namespace {
 using pw::bluetooth::emboss::AclConnectionMode;
 
@@ -240,9 +241,18 @@ void Autosniff::RemoveSuppression() {
   }
 }
 
+}  // namespace internal
 AutosniffSuppressInterest::AutosniffSuppressInterest(
-    Autosniff::WeakPtr autosniff, const char* reason)
-    : reason_(reason), autosniff_(autosniff) {}
+    internal::Autosniff::WeakPtr autosniff, const char* reason)
+    : reason_(reason), autosniff_(std::move(autosniff)) {
+  if (autosniff.is_alive()) {
+    bt_log(DEBUG,
+           "autosniff",
+           "Autosniff suppress interest (handle %#x): %s",
+           autosniff->handle_,
+           reason_);
+  }
+}
 
 void AutosniffSuppressInterest::AttachInspect(inspect::Node& parent,
                                               std::string name) {
@@ -254,6 +264,7 @@ void AutosniffSuppressInterest::AttachInspect(inspect::Node& parent,
 
 void AutosniffSuppressInterest::Release() {
   if (autosniff_.is_alive()) {
+    bt_log(DEBUG, "autosniff", "Removing autosniff suppression: %s", reason_);
     autosniff_->RemoveSuppression();
     autosniff_.reset();
   }
@@ -261,4 +272,4 @@ void AutosniffSuppressInterest::Release() {
 
 AutosniffSuppressInterest::~AutosniffSuppressInterest() { Release(); }
 
-}  // namespace bt::l2cap::internal
+}  // namespace bt::l2cap

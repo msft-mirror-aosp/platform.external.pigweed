@@ -39,7 +39,7 @@ namespace pw::async2 {
 /// When used as the `TimeoutResolution` type parameter, causes the
 /// `FutureWithTimeout` wrapper to return `Ready()` when there is a timeout.
 struct EmptyReadyResolution {
-  using value_type = ReadyType;
+  using value_type = void;
   constexpr Poll<> operator()() const { return Ready(); }
 };
 
@@ -52,6 +52,10 @@ struct EmptyReadyResolution {
 template <typename T>
 struct ReadyFunctionResultResolution {
   using value_type = T;
+
+  /// Cannot be invoked when default constructed; will crash.
+  constexpr ReadyFunctionResultResolution() = default;
+
   constexpr explicit ReadyFunctionResultResolution(
       pw::Function<T()> ready_value_fn)
       : ready_(std::move(ready_value_fn)) {}
@@ -130,10 +134,7 @@ template <
     typename = std::enable_if_t<!std::is_lvalue_reference_v<PrimaryFuture>>,
     typename = std::enable_if_t<!std::is_lvalue_reference_v<TimeoutFuture>>,
     typename = std::enable_if_t<!std::is_lvalue_reference_v<TimeoutResolution>>>
-class [[nodiscard]] FutureWithTimeout
-    : public internal::FutureBase<
-          FutureWithTimeout<T, PrimaryFuture, TimeoutFuture, TimeoutResolution>,
-          T> {
+class [[nodiscard]] FutureWithTimeout {
   static_assert(
       Future<PrimaryFuture>,
       "FutureWithTimeout can only be used when PrimaryFuture is a Future type");
@@ -142,44 +143,47 @@ class [[nodiscard]] FutureWithTimeout
       "FutureWithTimeout can only be used when TimeoutFuture is a Future type");
 
  public:
+  using value_type = T;
+
+  constexpr FutureWithTimeout() = default;
+
   FutureWithTimeout(PrimaryFuture&& primary_future,
                     TimeoutFuture&& timeout_future,
                     TimeoutResolution&& timeout_resolution)
-      : state_{std::in_place,
-               State{.primary_future = std::move(primary_future),
-                     .timeout_future_ = std::move(timeout_future),
-                     .timeout_resolution_ = std::move(timeout_resolution)}} {}
+      : primary_future_(std::move(primary_future)),
+        timeout_future_(std::move(timeout_future)),
+        timeout_resolution_(std::move(timeout_resolution)),
+        state_(FutureState::kPending) {}
 
- private:
-  using Base = internal::FutureBase<
-      FutureWithTimeout<T, PrimaryFuture, TimeoutFuture, TimeoutResolution>,
-      T>;
-  friend Base;
+  [[nodiscard]] constexpr bool is_pendable() const {
+    return state_.is_pendable();
+  }
 
-  Poll<typename Base::value_type> DoPend(Context& cx) {
-    PW_DASSERT(state_.has_value());
-    auto result = state_->primary_future.Pend(cx);
+  [[nodiscard]] constexpr bool is_complete() const {
+    return state_.is_complete();
+  }
+
+  Poll<value_type> Pend(Context& cx) {
+    PW_ASSERT(is_pendable());
+    auto result = primary_future_.Pend(cx);
     if (result.IsReady()) {
-      return Ready<typename Base::value_type>(std::in_place_t{},
-                                              std::move(result).value());
+      state_.MarkComplete();
+      return Ready<value_type>(std::in_place, std::move(result).value());
     }
 
-    if (state_->timeout_future_.Pend(cx).IsReady()) {
-      return state_->timeout_resolution_();
+    if (timeout_future_.Pend(cx).IsReady()) {
+      state_.MarkComplete();
+      return timeout_resolution_();
     }
 
     return Pending();
   }
 
-  void DoMarkComplete() { state_.reset(); }
-  [[nodiscard]] bool DoIsComplete() const { return !state_.has_value(); }
-
-  struct State {
-    PrimaryFuture primary_future;
-    TimeoutFuture timeout_future_;
-    PW_NO_UNIQUE_ADDRESS TimeoutResolution timeout_resolution_;
-  };
-  std::optional<State> state_;
+ private:
+  PrimaryFuture primary_future_;
+  TimeoutFuture timeout_future_;
+  PW_NO_UNIQUE_ADDRESS TimeoutResolution timeout_resolution_;
+  FutureState state_;
 };
 
 /// Helper class to construct a `FutureWithTimeout` instance given the value
@@ -228,7 +232,7 @@ template <
 auto Timeout(PrimaryFuture&& primary_future,
              TimeProvider& time_provider,
              Duration delay) {
-  using ResultType = Result<typename std::decay_t<PrimaryFuture>::value_type>;
+  using ResultType = Result<FutureValue<std::decay_t<PrimaryFuture>>>;
   return CreateFutureWithTimeout<ResultType>(
       std::forward<PrimaryFuture>(primary_future),
       time_provider.WaitFor(delay),
@@ -252,7 +256,7 @@ template <
     typename = std::enable_if_t<!std::is_lvalue_reference_v<PrimaryFuture>>>
 auto Timeout(PrimaryFuture&& primary_future,
              typename chrono::SystemClock::duration delay) {
-  using ResultType = Result<typename std::decay_t<PrimaryFuture>::value_type>;
+  using ResultType = Result<FutureValue<std::decay_t<PrimaryFuture>>>;
   return CreateFutureWithTimeout<ResultType>(
       std::forward<PrimaryFuture>(primary_future),
       GetSystemTimeProvider().WaitFor(delay),
@@ -436,6 +440,28 @@ using ValueFutureWithTimeout =
 template <typename T, typename U, typename Clock = chrono::SystemClock>
 using ValueFutureWithTimeoutOr =
     decltype(TimeoutOr(std::declval<ValueFuture<T>&&>(),
+                       std::declval<TimeProvider<Clock>&>(),
+                       std::declval<typename Clock::duration>(),
+                       std::declval<U&&>()));
+
+/// `OptionalValueFutureWithTimeout<T>` is an alias for the type you get if you
+/// invoke `Timeout()` with `OptionalValueFuture<T>` as the future to add a
+/// timeout to.
+template <typename T, typename Clock = chrono::SystemClock>
+using OptionalValueFutureWithTimeout =
+    decltype(Timeout(std::declval<OptionalValueFuture<T>&&>(),
+                     std::declval<TimeProvider<Clock>&>(),
+                     std::declval<typename Clock::duration>()));
+
+/// `OptionalValueFutureWithTimeoutOr<T, U>` is an alias for the type you get if
+/// you invoke `TimeoutOr(..., U&&)` with `OptionalValueFuture<T>` as the future
+/// to add a timeout to.
+///
+/// `U` is either the sentinel value type if you specify a constant value, or
+/// `Function<T()>` if you use a function to generate the sentinel value.
+template <typename T, typename U, typename Clock = chrono::SystemClock>
+using OptionalValueFutureWithTimeoutOr =
+    decltype(TimeoutOr(std::declval<OptionalValueFuture<T>&&>(),
                        std::declval<TimeProvider<Clock>&>(),
                        std::declval<typename Clock::duration>(),
                        std::declval<U&&>()));

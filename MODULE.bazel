@@ -19,7 +19,7 @@ module(
 
 bazel_dep(name = "aspect_bazel_lib", version = "2.8.1")
 bazel_dep(name = "aspect_rules_js", version = "2.1.0")
-bazel_dep(name = "bazel_skylib", version = "1.8.1")
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
 bazel_dep(name = "boringssl", version = "0.20240913.0")
 bazel_dep(name = "freertos", version = "10.5.1.bcr.2")
 bazel_dep(name = "fuzztest", version = "20250214.0")
@@ -34,7 +34,7 @@ bazel_dep(name = "picotool", version = "2.2.0")
 bazel_dep(name = "platforms", version = "1.0.0")
 
 # LINT.IfChange(protobuf)
-bazel_dep(name = "protobuf", version = "29.0", repo_name = "com_google_protobuf")
+bazel_dep(name = "protobuf", version = "29.1", repo_name = "com_google_protobuf")
 # LINT.ThenChange(pw_env_setup/py/pw_env_setup/cipd_setup/pigweed.json,pw_env_setup/py/pw_env_setup/virtualenv_setup/constraint.list:protobuf)
 
 bazel_dep(name = "re2", version = "2024-07-02.bcr.1")
@@ -45,13 +45,14 @@ bazel_dep(name = "rules_go", version = "0.52.0", repo_name = "io_bazel_rules_go"
 bazel_dep(name = "rules_java", version = "8.6.1")
 bazel_dep(name = "rules_jni", version = "0.11.0")
 bazel_dep(name = "rules_jvm_external", version = "6.6")
-bazel_dep(name = "rules_libusb", version = "0.1.0-rc2")
+bazel_dep(name = "rules_libusb", version = "0.1.0-rc2.bcr.1")
 bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "rules_nodejs", version = "6.3.0")
 bazel_dep(name = "rules_platform", version = "0.1.0")
 bazel_dep(name = "rules_probe_rs", version = "0.0.6")
 bazel_dep(name = "rules_python", version = "1.1.0")
 bazel_dep(name = "rules_rust", version = "0.65.0")
+bazel_dep(name = "rules_rust_prost", version = "0.65.0")
 bazel_dep(name = "rules_shell", version = "0.4.0")
 
 bazel_dep(name = "rules_doxygen", version = "2.4.2", dev_dependency = True)
@@ -147,9 +148,9 @@ pw_cxx_toolchain = use_extension("//pw_toolchain/cc:pw_cxx_toolchain.bzl", "pw_c
 
 # Fetch llvm toolchain.
 # ROLL: Warning: this variable is automatically updated.
-# ROLL: Last updated 2026-01-08.
-# ROLL: By https://cr-buildbucket.appspot.com/build/8693208335718132913.
-LLVM_VERSION = "git_revision:5bf5657a97d9c0efc0f18826ca9ee9db17acb514"
+# ROLL: Last updated 2026-01-21.
+# ROLL: By https://cr-buildbucket.appspot.com/build/8692029222103556049.
+LLVM_VERSION = "git_revision:b153f17b8aeb23ae45b05d8f5e6b4dfd76442dc4"
 
 pw_cxx_toolchain.llvm(cipd_tag = LLVM_VERSION)
 pw_cxx_toolchain.arm_gcc(cipd_tag = "version:2@12.2.MPACBTI-Rel1.1")
@@ -186,9 +187,9 @@ register_toolchains(
 pw_rust = use_extension("//pw_toolchain/rust:extensions.bzl", "pw_rust")
 
 # ROLL: Warning: this variable is automatically updated.
-# ROLL: Last updated 2026-01-08.
-# ROLL: By https://cr-buildbucket.appspot.com/build/8693208335718132913.
-RUST_VERSION = "git_revisions:58b270bebef86316f70174d5a1ea4eb19ef91b62,5bf5657a97d9c0efc0f18826ca9ee9db17acb514"
+# ROLL: Last updated 2026-01-21.
+# ROLL: By https://cr-buildbucket.appspot.com/build/8692029222103556049.
+RUST_VERSION = "git_revisions:a6acf0f07f0ed1c12e26dc0db3b9bf1d0504a0bb,b153f17b8aeb23ae45b05d8f5e6b4dfd76442dc4"
 
 pw_rust.toolchain(cipd_tag = RUST_VERSION)
 use_repo(pw_rust, "pw_rust_toolchains")
@@ -223,11 +224,6 @@ crate.from_cargo(
 )
 use_repo(crate, "crates_no_std")
 
-# Enable necessary features for `compiler_builtins` to build.
-crate.annotation(
-    crate = "compiler_builtins",
-    rustc_flags = ["-Zallow-features=abi_unadjusted,asm_experimental_arch,naked_functions,repr_simd,cfg_target_has_atomic,compiler_builtins,core_intrinsics,linkage"],
-)
 crate.from_cargo(
     name = "crates_std",
     cargo_lockfile = "//third_party/crates_io/crates_std:Cargo.lock",
@@ -241,6 +237,12 @@ crate.from_cargo(
     ],
 )
 use_repo(crate, "crates_std")
+
+crate.annotation(
+    crate = "protoc-gen-prost",
+    gen_binaries = ["protoc-gen-prost"],
+    repositories = ["crates_std"],
+)
 
 pw_rust_crates = use_extension("@pigweed//pw_build:pw_rust_crates_extension.bzl", "pw_rust_crates_extension")
 use_repo(pw_rust_crates, "rust_crates")
@@ -414,7 +416,7 @@ cipd_repository(
 cipd_repository(
     name = "buildifier",
     path = "infra/3pp/tools/buildifier/${platform}",
-    tag = "version:3@v8.0.3",
+    tag = "version:3@v8.2.1",
 )
 
 # GN is only used to format GN build files.
@@ -532,7 +534,7 @@ use_repo(pnpm, "pnpm")
 
 # Setup Fuchsia SDK.
 # ==================
-FUCHSIA_SDK_VERSION = "version:30.20251105.4.1"
+FUCHSIA_SDK_VERSION = "version:30.20260128.1.1"
 
 cipd_repository(
     name = "fuchsia_sdk",

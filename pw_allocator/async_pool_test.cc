@@ -19,7 +19,7 @@
 #include "pw_allocator/chunk_pool.h"
 #include "pw_allocator/testing.h"
 #include "pw_async2/dispatcher_for_test.h"
-#include "pw_async2/pend_func_task.h"
+#include "pw_async2/func_task.h"
 #include "pw_unit_test/framework.h"
 
 namespace {
@@ -65,7 +65,7 @@ TEST(AsyncPoolTest, PendAllocateIsNotReadyUntilDeallocate) {
 
   pw::async2::DispatcherForTest dispatcher;
   void* async_ptr = nullptr;
-  pw::async2::PendFuncTask task(
+  pw::async2::FuncTask task(
       [&](pw::async2::Context& context) -> pw::async2::Poll<> {
         auto poll = pool.PendAllocate(context);
         if (poll.IsPending()) {

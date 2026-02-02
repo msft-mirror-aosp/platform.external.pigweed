@@ -19,27 +19,36 @@
 
 namespace codelab {
 
-pw::async2::Poll<int> Keypad::Pend(pw::async2::Context& cx) {
-  return key_pressed_;
+pw::async2::Poll<int> KeyPressFuture::Pend(pw::async2::Context& cx) {
+  if (key_pressed_.has_value()) {
+    return pw::async2::Ready(key_pressed_.value());
+  }
+  return pw::async2::Pending();
 }
+
+KeyPressFuture Keypad::WaitForKeyPress() { return KeyPressFuture(-1); }
 
 void Keypad::Press(int key) {}
 
 pw::async2::Poll<> VendingMachineTask::DoPend(pw::async2::Context& cx) {
-  if (!displayed_welcome_message_) {
-    PW_LOG_INFO("Welcome to the Pigweed Vending Machine!");
-    PW_LOG_INFO("Please insert a coin.");
-    displayed_welcome_message_ = true;
-  }
-
   if (coins_inserted_ == 0) {
-    PW_TRY_READY_ASSIGN(unsigned coins, coin_slot_.Pend(cx));
+    if (!coin_future_.is_pendable()) {
+      PW_LOG_INFO("Welcome to the Pigweed Vending Machine!");
+      PW_LOG_INFO("Please insert a coin.");
+      coin_future_ = coin_slot_.GetCoins();
+    }
+
+    PW_TRY_READY_ASSIGN(unsigned coins, coin_future_.Pend(cx));
     PW_LOG_INFO("Received %u coin%s.", coins, coins > 1 ? "s" : "");
     PW_LOG_INFO("Please press a keypad key.");
     coins_inserted_ += coins;
   }
 
-  PW_TRY_READY_ASSIGN(int key, keypad_.Pend(cx));
+  if (!key_future_.is_pendable()) {
+    key_future_ = keypad_.WaitForKeyPress();
+  }
+
+  PW_TRY_READY_ASSIGN(int key, key_future_.Pend(cx));
   PW_LOG_INFO("Keypad %d was pressed. Dispensing an item.", key);
 
   return pw::async2::Ready();

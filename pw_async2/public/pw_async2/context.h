@@ -24,20 +24,12 @@ class Dispatcher;
 
 namespace internal {
 
-class WakerQueueBase;
-
 /// INTERNAL-ONLY: users should use the `PW_ASYNC_STORE_WAKER` macro instead.
 ///
 /// Saves a ``Waker`` into ``waker_out`` which, when awoken, will cause the
 /// current task to be ``Pend``'d by its dispatcher.
 [[nodiscard]] bool StoreWaker(Context& cx,
                               Waker& waker_out,
-                              log::Token wait_reason);
-
-// Overload of StoreWaker taking a queue, allowing PW_ASYNC_STORE_WAKER to be
-// used with a WakerQueue as the target.
-[[nodiscard]] bool StoreWaker(Context& cx,
-                              WakerQueueBase& queue,
                               log::Token wait_reason);
 
 }  // namespace internal
@@ -84,7 +76,7 @@ class Context {
   /// to register a waker and go to sleep. This results in the task being
   /// removed from the dispatcher, requiring it to be manually re-posted to run
   /// again.
-  template <typename T = ReadyType>
+  template <typename T = void>
   Poll<T> Unschedule() {
     requires_waker_ = false;
     return Pending();
@@ -94,9 +86,6 @@ class Context {
   friend class Task;
   friend bool internal::StoreWaker(Context& cx,
                                    Waker& waker_out,
-                                   log::Token wait_reason);
-  friend bool internal::StoreWaker(Context& cx,
-                                   internal::WakerQueueBase& queue,
                                    log::Token wait_reason);
 
   Dispatcher* dispatcher_;

@@ -1,4 +1,4 @@
-// Copyright 2025 The Pigweed Authors
+// Copyright 2026 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -12,11 +12,15 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_toolchain/busy_wait_forever.h"
+#include "context_usage.h"
 
-int pw_TestBusyWaitForeverC(int loop_infinitely_if_0) {
-  if (loop_infinitely_if_0 != 0) {
-    return loop_infinitely_if_0;
-  }
-  pw_BusyWaitForever();  // No return statement needed because of infinite loop.
-}
+#include "pw_interrupt/context.h"
+
+// This is a trivial library that uses //pw_interrupt:context, and that
+// can be tested by a unit test using the /pw_interrupt:fake_context backend.
+
+namespace pw::interrupt::examples {
+
+bool ExampleInInterruptContext() { return pw::interrupt::InInterruptContext(); }
+
+}  // namespace pw::interrupt::examples

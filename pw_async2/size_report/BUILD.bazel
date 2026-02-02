@@ -33,7 +33,6 @@ cc_library(
         "//pw_allocator:allocator",
         "//pw_allocator:first_fit",
         "//pw_async2",
-        "//pw_async2:pendable",
         "//pw_bloat:bloat_this_binary",
         "//pw_containers:intrusive_forward_list",
         "//pw_log",
@@ -61,8 +60,7 @@ pw_cc_size_binary(
         "//pw_assert:check",
         "//pw_async2",
         "//pw_async2:basic_dispatcher",
-        "//pw_async2:pend_func_task",
-        "//pw_async2:pendable",
+        "//pw_async2:func_task",
         "//pw_bloat:bloat_this_binary",
     ],
 )
@@ -76,43 +74,7 @@ pw_cc_size_binary(
         "//pw_assert:check",
         "//pw_async2",
         "//pw_async2:basic_dispatcher",
-        "//pw_async2:pend_func_task",
-        "//pw_async2:pendable",
-        "//pw_bloat:bloat_this_binary",
-    ],
-)
-
-pw_cc_size_binary(
-    name = "async2_core_once_sender",
-    srcs = ["async2_core.cc"],
-    defines = ["_PW_ASYNC2_SIZE_REPORT_ONCE_SENDER=1"],
-    deps = [
-        ":size_report",
-        "//pw_assert:check",
-        "//pw_async2",
-        "//pw_async2:basic_dispatcher",
-        "//pw_async2:once_sender",
-        "//pw_async2:pend_func_task",
-        "//pw_async2:pendable",
-        "//pw_bloat:bloat_this_binary",
-    ],
-)
-
-pw_cc_size_binary(
-    name = "async2_core_once_sender_incremental",
-    srcs = ["async2_core.cc"],
-    defines = [
-        "_PW_ASYNC2_SIZE_REPORT_ONCE_SENDER=1",
-        "_PW_ASYNC2_SIZE_REPORT_ONCE_SENDER_INCREMENTAL=1",
-    ],
-    deps = [
-        ":size_report",
-        "//pw_assert:check",
-        "//pw_async2",
-        "//pw_async2:basic_dispatcher",
-        "//pw_async2:once_sender",
-        "//pw_async2:pend_func_task",
-        "//pw_async2:pendable",
+        "//pw_async2:func_task",
         "//pw_bloat:bloat_this_binary",
     ],
 )
@@ -127,9 +89,26 @@ pw_cc_size_binary(
         "//pw_async2",
         "//pw_async2:basic_dispatcher",
         "//pw_async2:coro",
-        "//pw_async2:pend_func_task",
-        "//pw_async2:pendable",
+        "//pw_async2:func_task",
         "//pw_bloat:bloat_this_binary",
+    ],
+)
+
+pw_cc_size_binary(
+    name = "select_size_report_base",
+    srcs = ["select.cc"],
+    defines = [],
+    deps = [
+        ":size_report",
+        "//pw_assert:check",
+        "//pw_async2",
+        "//pw_async2:basic_dispatcher",
+        "//pw_async2:func_task",
+        "//pw_async2:poll",
+        "//pw_async2:select",
+        "//pw_async2:value_future",
+        "//pw_bloat:bloat_this_binary",
+        "//pw_log",
     ],
 )
 
@@ -142,9 +121,10 @@ pw_cc_size_binary(
         "//pw_assert:check",
         "//pw_async2",
         "//pw_async2:basic_dispatcher",
-        "//pw_async2:pend_func_task",
-        "//pw_async2:pendable",
+        "//pw_async2:func_task",
+        "//pw_async2:poll",
         "//pw_async2:select",
+        "//pw_async2:value_future",
         "//pw_bloat:bloat_this_binary",
         "//pw_log",
     ],
@@ -162,9 +142,10 @@ pw_cc_size_binary(
         "//pw_assert:check",
         "//pw_async2",
         "//pw_async2:basic_dispatcher",
-        "//pw_async2:pend_func_task",
-        "//pw_async2:pendable",
+        "//pw_async2:func_task",
+        "//pw_async2:poll",
         "//pw_async2:select",
+        "//pw_async2:value_future",
         "//pw_bloat:bloat_this_binary",
         "//pw_log",
     ],
@@ -179,9 +160,10 @@ pw_cc_size_binary(
         "//pw_assert:check",
         "//pw_async2",
         "//pw_async2:basic_dispatcher",
-        "//pw_async2:pend_func_task",
-        "//pw_async2:pendable",
+        "//pw_async2:func_task",
+        "//pw_async2:poll",
         "//pw_async2:select",
+        "//pw_async2:value_future",
         "//pw_bloat:bloat_this_binary",
         "//pw_log",
     ],
@@ -196,9 +178,10 @@ pw_cc_size_binary(
         "//pw_assert:check",
         "//pw_async2",
         "//pw_async2:basic_dispatcher",
-        "//pw_async2:pend_func_task",
-        "//pw_async2:pendable",
+        "//pw_async2:func_task",
+        "//pw_async2:poll",
         "//pw_async2:select",
+        "//pw_async2:value_future",
         "//pw_bloat:bloat_this_binary",
         "//pw_log",
     ],
@@ -213,8 +196,8 @@ pw_cc_size_binary(
         "//pw_assert:check",
         "//pw_async2",
         "//pw_async2:basic_dispatcher",
+        "//pw_async2:func_task",
         "//pw_async2:join",
-        "//pw_async2:pend_func_task",
         "//pw_async2:value_future",
         "//pw_bloat:bloat_this_binary",
         "//pw_log",
@@ -230,8 +213,8 @@ pw_cc_size_binary(
         "//pw_assert:check",
         "//pw_async2",
         "//pw_async2:basic_dispatcher",
+        "//pw_async2:func_task",
         "//pw_async2:join",
-        "//pw_async2:pend_func_task",
         "//pw_async2:value_future",
         "//pw_bloat:bloat_this_binary",
         "//pw_log",
@@ -250,8 +233,8 @@ pw_cc_size_binary(
         "//pw_assert:check",
         "//pw_async2",
         "//pw_async2:basic_dispatcher",
+        "//pw_async2:func_task",
         "//pw_async2:join",
-        "//pw_async2:pend_func_task",
         "//pw_async2:value_future",
         "//pw_bloat:bloat_this_binary",
         "//pw_log",
@@ -267,7 +250,7 @@ pw_cc_size_binary(
         "//pw_assert:check",
         "//pw_async2",
         "//pw_async2:basic_dispatcher",
-        "//pw_async2:pend_func_task",
+        "//pw_async2:func_task",
         "//pw_async2:value_future",
         "//pw_bloat:bloat_this_binary",
     ],
@@ -285,7 +268,7 @@ pw_cc_size_binary(
         "//pw_assert:check",
         "//pw_async2",
         "//pw_async2:basic_dispatcher",
-        "//pw_async2:pend_func_task",
+        "//pw_async2:func_task",
         "//pw_async2:value_future",
         "//pw_bloat:bloat_this_binary",
     ],
@@ -300,7 +283,7 @@ pw_cc_size_binary(
         "//pw_assert:check",
         "//pw_async2",
         "//pw_async2:basic_dispatcher",
-        "//pw_async2:pend_func_task",
+        "//pw_async2:func_task",
         "//pw_async2:value_future",
         "//pw_bloat:bloat_this_binary",
     ],
@@ -321,20 +304,6 @@ pw_size_diff(
 )
 
 pw_size_diff(
-    name = "once_sender_row",
-    base = ":async2_core",
-    label = "Size of OnceSender / OnceReceiver",
-    target = ":async2_core_once_sender",
-)
-
-pw_size_diff(
-    name = "incremental_once_sender_row",
-    base = ":async2_core_once_sender",
-    label = "Cost of additional OnceSender / OnceReceiver template specialization",
-    target = ":async2_core_once_sender_incremental",
-)
-
-pw_size_diff(
     name = "coroutine_row",
     base = ":async2_core",
     label = "Size of pw_async2's C++ coroutine adapters",
@@ -343,22 +312,22 @@ pw_size_diff(
 
 pw_size_diff(
     name = "select_row",
-    base = ":async2_core",
-    label = "Size of calling Select() with several pendables of the same type",
+    base = ":select_size_report_base",
+    label = "Size of calling Select() with several futures of the same type",
     target = ":select_size_report",
 )
 
 pw_size_diff(
     name = "incremental_select_row",
     base = ":select_size_report",
-    label = "Size of an additional a call to Select() with pendables of different types",
+    label = "Size of an additional a call to Select() with futures of different types",
     target = ":incremental_select_size_report",
 )
 
 pw_size_diff(
     name = "select_comparison_row",
     base = ":select_comparison_manual_size_report",
-    label = "Cost of using Select() versus manually polling each pendable",
+    label = "Cost of using Select() versus manually polling each future",
     target = ":select_comparison_helper_size_report",
 )
 
@@ -385,14 +354,6 @@ pw_size_table(
         "//pw_toolchain/cc:c++20_enabled": [":coroutine_row"],
         "//conditions:default": [],
     }),
-)
-
-pw_size_table(
-    name = "once_sender_size_report",
-    reports = [
-        ":once_sender_row",
-        ":incremental_once_sender_row",
-    ],
 )
 
 pw_size_table(
@@ -441,7 +402,7 @@ CHANNEL_DEPS = [
     "//pw_async2:basic_dispatcher",
     "//pw_async2:channel",
     "//pw_async2",
-    "//pw_async2:pend_func_task",
+    "//pw_async2:func_task",
     "//pw_bloat:bloat_this_binary",
 ]
 

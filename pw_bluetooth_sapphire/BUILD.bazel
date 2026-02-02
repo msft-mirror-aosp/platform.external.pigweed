@@ -51,6 +51,7 @@ cc_library(
     deps = [
         ":connection",
         ":uuid",
+        "//pw_async2:value_future",
         "//pw_bluetooth:pw_bluetooth2",
         "//pw_bluetooth_sapphire/host/gap",
         "//pw_multibuf:allocator",
@@ -73,6 +74,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":uuid",
+        "//pw_async2:value_future",
         "//pw_bluetooth:pw_bluetooth2",
         "//pw_bluetooth_sapphire/host/gap",
     ],
@@ -191,7 +193,7 @@ pw_cc_test(
         ":discovery_filter",
         ":uuid",
         "//pw_async:fake_dispatcher",
-        "//pw_async2:pend_func_task",
+        "//pw_async2:func_task",
         "//pw_async2:testing",
         "//pw_bluetooth_sapphire/host/gap:testing",
         "//pw_multibuf:testing",
@@ -206,6 +208,7 @@ cc_library(
     includes = ["public"],
     tags = ["noclangtidy"],
     deps = [
+        "//pw_async2:value_future",
         "//pw_bluetooth:pw_bluetooth2",
         "//pw_bluetooth_sapphire/host/gap",
         "//pw_sync:mutex",
@@ -220,7 +223,7 @@ pw_cc_test(
     deps = [
         ":peripheral",
         "//pw_async:fake_dispatcher",
-        "//pw_async2:pend_func_task",
+        "//pw_async2:func_task",
         "//pw_async2:testing",
         "//pw_bluetooth_sapphire/host/gap:testing",
     ],

@@ -34,7 +34,7 @@ Pigweed provides the following concrete subclasses of ``Task``:
   when the task is :cc:`posted <pw::async2::Dispatcher::Post>`. The task must
   implement :cc:`DoDestroy() <pw::async2::OwnedTask::DoDestroy>`, which the
   dispatcher invokes after the task completes.
-* :cc:`PendFuncTask <pw::async2::PendFuncTask>`: Delegates to a provided
+* :cc:`FuncTask <pw::async2::FuncTask>`: Delegates to a provided
   function.
 
 You can also :ref:`create your own subclass
@@ -129,15 +129,15 @@ flexibility in how tasks are allocated and stored. Common patterns include:
 Dynamically allocating tasks
 ============================
 :cc:`AllocateTask() <pw::async2::AllocateTask>` creates a concrete subclass of
-``Task``, just like ``PendableAsTask``, but the created task is dynamically
-allocated using a provided :cc:`pw::Allocator`. Upon completion the associated
-memory is automatically freed by calling the allocator's ``Delete`` method.
-This simplifies memory management for "fire-and-forget" tasks.
+``Task``,  but the created task is dynamically allocated using a provided
+:cc:`pw::Allocator`. Upon completion the associated memory is automatically
+freed by calling the allocator's ``Delete`` method.  This simplifies memory
+management for "fire-and-forget" tasks.
 
 .. code-block:: cpp
 
    // This task will be deallocated from the provided allocator when it's done.
-   Task* task = AllocateTask<MyPendable>(my_allocator, arg1, arg2);
+   Task* task = AllocateTask<MyFunction>(my_allocator, arg1, arg2);
    dispatcher.Post(*task);
 
 .. _module-pw_async2-guides-implementing-tasks:
