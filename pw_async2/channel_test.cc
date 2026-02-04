@@ -15,7 +15,7 @@
 #include "pw_async2/channel.h"
 
 #include "pw_allocator/testing.h"
-#include "pw_async2/dispatcher.h"
+#include "pw_async2/dispatcher_for_test.h"
 #include "pw_async2/pend_func_task.h"
 #include "pw_async2/try.h"
 #include "pw_containers/vector.h"
@@ -23,14 +23,18 @@
 
 namespace {
 
+using pw::async2::ChannelHandle;
 using pw::async2::ChannelStorage;
 using pw::async2::Context;
 using pw::async2::CreateMpmcChannel;
 using pw::async2::CreateMpscChannel;
 using pw::async2::CreateSpmcChannel;
 using pw::async2::CreateSpscChannel;
-using pw::async2::Dispatcher;
+using pw::async2::DispatcherForTest;
+using pw::async2::McChannelHandle;
+using pw::async2::MpChannelHandle;
 using pw::async2::MpmcChannelHandle;
+using pw::async2::MpscChannelHandle;
 using pw::async2::PendFuncTask;
 using pw::async2::Pending;
 using pw::async2::Poll;
@@ -41,6 +45,8 @@ using pw::async2::ReserveSendFuture;
 using pw::async2::Sender;
 using pw::async2::SendFuture;
 using pw::async2::SendReservation;
+using pw::async2::SpmcChannelHandle;
+using pw::async2::SpscChannelHandle;
 using pw::async2::Task;
 
 class SenderTask : public Task {
@@ -155,7 +161,7 @@ void ExpectReceived1To6(const pw::Vector<int>& received) {
 }
 
 TEST(StaticChannel, SingleProducerSingleConsumer) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
 
   ChannelStorage<int, 2> storage;
   auto [channel, sender, receiver] = CreateSpscChannel(storage);
@@ -174,7 +180,7 @@ TEST(StaticChannel, SingleProducerSingleConsumer) {
 }
 
 TEST(StaticChannel, MultiProducerSingleConsumer) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   ChannelStorage<int, 2> storage;
   auto [channel, receiver] = CreateMpscChannel(storage);
 
@@ -199,7 +205,7 @@ TEST(StaticChannel, MultiProducerSingleConsumer) {
 }
 
 TEST(StaticChannel, SingleProducerMultiConsumer) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   ChannelStorage<int, 2> storage;
   auto [channel, sender] = CreateSpmcChannel(storage);
 
@@ -230,7 +236,7 @@ TEST(StaticChannel, SingleProducerMultiConsumer) {
 }
 
 TEST(StaticChannel, MultiProducerMultiConsumer) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   ChannelStorage<int, 2> storage;
   auto channel = CreateMpmcChannel(storage);
 
@@ -268,7 +274,7 @@ TEST(StaticChannel, MultiProducerMultiConsumer) {
 }
 
 TEST(StaticChannel, NonAsyncTrySend) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   ChannelStorage<int, 2> storage;
   auto channel = CreateMpmcChannel(storage);
 
@@ -278,26 +284,86 @@ TEST(StaticChannel, NonAsyncTrySend) {
 
   dispatcher.Post(receiver_task);
 
-  EXPECT_TRUE(sender.TrySend(1));
-  EXPECT_TRUE(sender.TrySend(2));
-  EXPECT_FALSE(sender.TrySend(3));
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Pending());
+  PW_TEST_EXPECT_OK(sender.TrySend(1));
+  PW_TEST_EXPECT_OK(sender.TrySend(2));
+  EXPECT_EQ(sender.TrySend(3), pw::Status::Unavailable());
+  EXPECT_TRUE(dispatcher.RunUntilStalled());
 
-  EXPECT_TRUE(sender.TrySend(3));
-  EXPECT_TRUE(sender.TrySend(4));
-  EXPECT_FALSE(sender.TrySend(5));
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Pending());
+  PW_TEST_EXPECT_OK(sender.TrySend(3));
+  PW_TEST_EXPECT_OK(sender.TrySend(4));
+  EXPECT_EQ(sender.TrySend(5), pw::Status::Unavailable());
+  EXPECT_TRUE(dispatcher.RunUntilStalled());
 
-  EXPECT_TRUE(sender.TrySend(5));
-  EXPECT_TRUE(sender.TrySend(6));
+  PW_TEST_EXPECT_OK(sender.TrySend(5));
+  PW_TEST_EXPECT_OK(sender.TrySend(6));
   sender.Disconnect();
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
+  dispatcher.RunToCompletion();
 
   ExpectReceived1To6(receiver_task.received());
 }
 
+TEST(StaticChannel, TryReserveSend) {
+  ChannelStorage<int, 2> storage;
+  auto channel = CreateMpmcChannel(storage);
+
+  Sender<int> sender = channel.CreateSender();
+  Receiver<int> receiver = channel.CreateReceiver();
+  channel.Release();
+
+  auto r1 = sender.TryReserveSend();
+  PW_TEST_EXPECT_OK(r1);
+  EXPECT_EQ(sender.remaining_capacity(), 1u);
+  auto r2 = sender.TryReserveSend();
+  PW_TEST_EXPECT_OK(r2);
+  EXPECT_EQ(sender.remaining_capacity(), 0u);
+  auto r3 = sender.TryReserveSend();
+  EXPECT_EQ(r3.status(), pw::Status::Unavailable());
+  EXPECT_EQ(sender.remaining_capacity(), 0u);
+
+  r1->Commit(1);
+  EXPECT_EQ(sender.remaining_capacity(), 0u);
+
+  // Read then reserve again.
+  auto result = receiver.TryReceive();
+  ASSERT_TRUE(result.ok());
+  EXPECT_EQ(*result, 1);
+  auto r4 = sender.TryReserveSend();
+  PW_TEST_ASSERT_OK(r4);
+
+  // Disconnect receiver to close the channel.
+  receiver.Disconnect();
+
+  auto r5 = sender.TryReserveSend();
+  ASSERT_EQ(r5.status(), pw::Status::FailedPrecondition());
+}
+
+TEST(StaticChannel, TryReceive) {
+  ChannelStorage<int, 2> storage;
+  auto channel = CreateMpmcChannel(storage);
+
+  Sender<int> sender = channel.CreateSender();
+  Receiver<int> receiver = channel.CreateReceiver();
+  channel.Release();
+
+  auto result = receiver.TryReceive();
+  EXPECT_TRUE(result.status().IsUnavailable());
+
+  PW_TEST_EXPECT_OK(sender.TrySend(1));
+  result = receiver.TryReceive();
+  ASSERT_TRUE(result.ok());
+  EXPECT_EQ(*result, 1);
+
+  result = receiver.TryReceive();
+  EXPECT_TRUE(result.status().IsUnavailable());
+
+  // Close the channel.
+  sender.Disconnect();
+  result = receiver.TryReceive();
+  EXPECT_TRUE(result.status().IsFailedPrecondition());
+}
+
 TEST(StaticChannel, ReceiverDisconnects) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   ChannelStorage<int, 2> storage;
   auto channel = CreateMpmcChannel(storage);
 
@@ -357,7 +423,7 @@ class ReservedSenderTask : public Task {
 };
 
 TEST(StaticChannel, ReserveSend) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   ChannelStorage<int, 2> storage;
   auto channel = CreateMpmcChannel(storage);
 
@@ -375,7 +441,7 @@ TEST(StaticChannel, ReserveSend) {
 }
 
 TEST(StaticChannel, ReserveSendReservesSpace) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   ChannelStorage<int, 2> storage;
   auto channel = CreateMpmcChannel(storage);
 
@@ -424,7 +490,7 @@ TEST(StaticChannel, ReserveSendReservesSpace) {
 }
 
 TEST(StaticChannel, ReserveSendReleasesSpaceWhenDropped) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   ChannelStorage<int, 2> storage;
   auto channel = CreateMpmcChannel(storage);
 
@@ -475,7 +541,7 @@ TEST(StaticChannel, ReserveSendReleasesSpaceWhenDropped) {
 }
 
 TEST(StaticChannel, ReserveSendManualCancel) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   ChannelStorage<int, 2> storage;
   auto channel = CreateMpmcChannel(storage);
 
@@ -534,7 +600,7 @@ TEST(StaticChannel, RemainingCapacity) {
   EXPECT_EQ(sender.remaining_capacity(), 2u);
   EXPECT_EQ(sender.capacity(), 2u);
 
-  EXPECT_TRUE(sender.TrySend(1));
+  PW_TEST_EXPECT_OK(sender.TrySend(1));
   EXPECT_EQ(sender.remaining_capacity(), 1u);
   EXPECT_EQ(sender.capacity(), 2u);
 
@@ -562,7 +628,7 @@ class MoveOnly {
 };
 
 TEST(StaticChannel, MoveOnly) {
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   ChannelStorage<MoveOnly, 3> storage;
   auto channel = CreateMpmcChannel(storage);
 
@@ -611,15 +677,90 @@ TEST(StaticChannel, MoveOnly) {
       });
 
   dispatcher.Post(sender_task);
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
+  dispatcher.RunToCompletion();
 
   dispatcher.Post(receiver_task);
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
+  dispatcher.RunToCompletion();
+}
+
+TEST(StaticChannel, CanPollReceiveFuturesTwice) {
+  DispatcherForTest dispatcher;
+  ChannelStorage<int, 2> storage;
+  auto [channel, channel_sender, channel_receiver] = CreateSpscChannel(storage);
+  channel.Release();
+
+  PendFuncTask poll_task(
+      [receiver = std::move(channel_receiver)](Context& cx) mutable -> Poll<> {
+        auto future = receiver.Receive();
+        EXPECT_EQ(future.Pend(cx), Pending());
+        // As long as the value is Pending(), Pend() should be safe to call
+        // repeatedly.
+        EXPECT_EQ(future.Pend(cx), Pending());
+
+        receiver.Disconnect();
+        return Ready();
+      });
+
+  dispatcher.Post(poll_task);
+  dispatcher.RunToCompletion();
+}
+
+TEST(StaticChannel, CanPollSendFuturesTwice) {
+  DispatcherForTest dispatcher;
+  ChannelStorage<int, 2> storage;
+  auto [channel, channel_sender, channel_receiver] = CreateSpscChannel(storage);
+  channel.Release();
+
+  ASSERT_TRUE(channel_sender.TrySend(1).ok());
+  ASSERT_TRUE(channel_sender.TrySend(2).ok());
+
+  PendFuncTask poll_task(
+      [sender = std::move(channel_sender)](Context& cx) mutable -> Poll<> {
+        auto future = sender.Send(3);
+        EXPECT_EQ(future.Pend(cx), Pending());
+        // As long as the value is Pending(), Pend() should be safe to call
+        // repeatedly.
+        EXPECT_EQ(future.Pend(cx), Pending());
+
+        sender.Disconnect();
+        return Ready();
+      });
+
+  dispatcher.Post(poll_task);
+  dispatcher.RunToCompletion();
+}
+
+TEST(StaticChannel, CanPollReserveSendFutureTwice) {
+  DispatcherForTest dispatcher;
+  ChannelStorage<int, 2> storage;
+  auto channel = CreateMpmcChannel(storage);
+
+  Sender<int> channel_sender = channel.CreateSender();
+  Receiver<int> channel_receiver = channel.CreateReceiver();
+  channel.Release();
+
+  ASSERT_TRUE(channel_sender.TrySend(1).ok());
+  ASSERT_TRUE(channel_sender.TrySend(2).ok());
+
+  PendFuncTask poll_task(
+      [sender = std::move(channel_sender)](Context& cx) mutable -> Poll<> {
+        auto future = sender.ReserveSend();
+        EXPECT_EQ(future.Pend(cx), Pending());
+        // As long as the value is Pending(), Pend() should be safe to call
+        // repeatedly.
+        EXPECT_EQ(future.Pend(cx), Pending());
+
+        sender.Disconnect();
+        return Ready();
+      });
+
+  dispatcher.Post(poll_task);
+  dispatcher.RunToCompletion();
 }
 
 TEST(DynamicChannel, ForwardsDataAndAutomaticallyDeallocates) {
   pw::allocator::test::AllocatorForTest<1024> alloc;
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
 
   std::optional<MpmcChannelHandle<int>> channel =
       CreateMpmcChannel<int>(alloc, 2);
@@ -659,7 +800,7 @@ TEST(DynamicChannel, RemainingCapacity) {
   EXPECT_EQ(sender.remaining_capacity(), 2u);
   EXPECT_EQ(sender.capacity(), 2u);
 
-  EXPECT_TRUE(sender.TrySend(1));
+  PW_TEST_EXPECT_OK(sender.TrySend(1));
   EXPECT_EQ(sender.remaining_capacity(), 1u);
   EXPECT_EQ(sender.capacity(), 2u);
 
@@ -684,6 +825,248 @@ TEST(DynamicChannel, AllocationFailure) {
   EXPECT_EQ(deque_only_alloc.metrics().allocated_bytes.value(), 0u);
   EXPECT_EQ(deque_only_alloc.metrics().num_allocations.value(), 1u);
   EXPECT_EQ(deque_only_alloc.metrics().num_deallocations.value(), 1u);
+}
+
+TEST(ChannelHandles, DefaultConstruct) {
+  SpscChannelHandle<int> channel1;
+  EXPECT_FALSE(channel1.is_open());
+  SpmcChannelHandle<int> channel2;
+  EXPECT_FALSE(channel2.is_open());
+  MpscChannelHandle<int> channel3;
+  EXPECT_FALSE(channel3.is_open());
+  MpmcChannelHandle<int> channel4;
+  EXPECT_FALSE(channel4.is_open());
+
+  Sender<int> sender;
+  EXPECT_FALSE(sender.is_open());
+
+  Receiver<int> receiver;
+  EXPECT_FALSE(receiver.is_open());
+}
+
+TEST(StaticChannel, SendOnClosedReturnsFalse) {
+  DispatcherForTest dispatcher;
+  ChannelStorage<int, 2> storage;
+  auto channel = CreateMpmcChannel(storage);
+
+  Sender<int> sender = channel.CreateSender();
+  channel.Release();
+  sender.Disconnect();
+
+  EXPECT_FALSE(sender.is_open());
+  EXPECT_EQ(sender.TrySend(1), pw::Status::FailedPrecondition());
+  EXPECT_EQ(sender.TryReserveSend().status(), pw::Status::FailedPrecondition());
+
+  PendFuncTask task([&sender](Context& cx) -> Poll<> {
+    auto send_future = sender.Send(1);
+    PW_TRY_READY_ASSIGN(bool sent, send_future.Pend(cx));
+    EXPECT_FALSE(sent);
+
+    auto reserve_future = sender.ReserveSend();
+    PW_TRY_READY_ASSIGN(auto reservation, reserve_future.Pend(cx));
+    EXPECT_FALSE(reservation.has_value());
+
+    return Ready();
+  });
+
+  dispatcher.Post(task);
+  dispatcher.RunToCompletion();
+}
+
+TEST(StaticChannel, Receive_Closed) {
+  DispatcherForTest dispatcher;
+  ChannelStorage<int, 2> storage;
+  auto channel = CreateMpmcChannel(storage);
+
+  Receiver<int> receiver = channel.CreateReceiver();
+  channel.Release();
+  receiver.Disconnect();
+  ASSERT_FALSE(receiver.is_open());
+
+  EXPECT_EQ(receiver.TryReceive().status(), pw::Status::FailedPrecondition());
+
+  PendFuncTask task([&receiver](Context& cx) -> Poll<> {
+    auto receive_future = receiver.Receive();
+    PW_TRY_READY_ASSIGN(auto result, receive_future.Pend(cx));
+    EXPECT_FALSE(result.has_value());
+    return Ready();
+  });
+
+  dispatcher.Post(task);
+  dispatcher.RunToCompletion();
+}
+
+TEST(StaticChannel, TryReceive_ClosedWithData) {
+  DispatcherForTest dispatcher;
+  ChannelStorage<int, 2> storage;
+  auto channel = CreateMpmcChannel(storage);
+
+  Sender<int> sender = channel.CreateSender();
+  Receiver<int> receiver = channel.CreateReceiver();
+  channel.Release();
+
+  PW_TEST_ASSERT_OK(sender.TrySend(1));
+  sender.Disconnect();
+  ASSERT_FALSE(receiver.is_open());
+
+  auto result = receiver.TryReceive();
+  ASSERT_TRUE(result.ok());
+  EXPECT_EQ(*result, 1);
+
+  EXPECT_EQ(receiver.TryReceive().status(), pw::Status::FailedPrecondition());
+}
+
+TEST(StaticChannel, Receive_ClosedWithData) {
+  DispatcherForTest dispatcher;
+  ChannelStorage<int, 2> storage;
+  auto channel = CreateMpmcChannel(storage);
+
+  Sender<int> sender = channel.CreateSender();
+  Receiver<int> receiver = channel.CreateReceiver();
+  channel.Release();
+
+  PW_TEST_ASSERT_OK(sender.TrySend(1));
+  sender.Disconnect();
+  EXPECT_FALSE(channel.is_open());
+
+  PendFuncTask task([&receiver](Context& cx) -> Poll<> {
+    auto result = receiver.Receive().Pend(cx);
+    EXPECT_TRUE(result.IsReady());
+    EXPECT_TRUE(result->has_value());
+    EXPECT_EQ(*result, 1);
+
+    PW_TRY_READY_ASSIGN(result, receiver.Receive().Pend(cx));
+    EXPECT_TRUE(result.IsReady());
+    EXPECT_FALSE(result->has_value());
+
+    return Ready();
+  });
+
+  dispatcher.Post(task);
+  dispatcher.RunToCompletion();
+}
+
+TEST(StaticChannel, CreateSenderWhenClosed) {
+  ChannelStorage<int, 2> storage;
+  auto channel = CreateMpmcChannel(storage);
+  channel.Close();
+
+  Sender<int> sender = channel.CreateSender();
+  EXPECT_FALSE(sender.is_open());
+}
+
+TEST(StaticChannel, CreateReceiverWhenClosed) {
+  ChannelStorage<int, 2> storage;
+  auto channel = CreateMpmcChannel(storage);
+  channel.Close();
+
+  Receiver<int> receiver = channel.CreateReceiver();
+  EXPECT_FALSE(receiver.is_open());
+}
+
+TEST(ChannelHandles, MpChannelHandle_CopyAndMove) {
+  pw::allocator::test::AllocatorForTest<256> alloc;
+  auto channel_opt = CreateMpmcChannel<int>(alloc, 2);
+  ASSERT_TRUE(channel_opt.has_value());
+  MpmcChannelHandle<int>& handle = *channel_opt;
+
+  MpChannelHandle<int> mp1 = handle;
+  EXPECT_TRUE(mp1.is_open());
+
+  MpChannelHandle<int> mp2;
+  mp2 = handle;
+  EXPECT_TRUE(mp2.is_open());
+
+  MpChannelHandle<int> mp3 = std::move(handle);
+  EXPECT_TRUE(mp3.is_open());
+  EXPECT_FALSE(handle.is_open());  // NOLINT(bugprone-use-after-move)
+}
+
+TEST(ChannelHandles, McChannelHandle_CopyAndMove) {
+  pw::allocator::test::AllocatorForTest<256> alloc;
+  auto channel_opt = CreateMpmcChannel<int>(alloc, 2);
+  ASSERT_TRUE(channel_opt.has_value());
+  MpmcChannelHandle<int>& handle = *channel_opt;
+
+  McChannelHandle<int> mc1 = handle;
+  EXPECT_TRUE(mc1.is_open());
+
+  McChannelHandle<int> mc2;
+  mc2 = handle;
+  EXPECT_TRUE(mc2.is_open());
+
+  McChannelHandle<int> mc3 = std::move(handle);
+  EXPECT_FALSE(handle.is_open());  // NOLINT(bugprone-use-after-move)
+  EXPECT_TRUE(mc3.is_open());
+}
+
+TEST(ChannelHandles, MpscCopyToAsMpHandle) {
+  pw::allocator::test::AllocatorForTest<256> alloc;
+  auto [handle, receiver] = CreateMpscChannel<int>(alloc, 2).value();
+
+  MpChannelHandle<int> mp_handle = handle;
+  EXPECT_TRUE(handle.is_open());
+  EXPECT_TRUE(mp_handle.is_open());
+
+  mp_handle.Close();
+  EXPECT_FALSE(handle.is_open());
+  EXPECT_FALSE(mp_handle.is_open());
+}
+
+TEST(ChannelHandles, MpmcMoveToMpHandle) {
+  pw::allocator::test::AllocatorForTest<256> alloc;
+  MpmcChannelHandle<int> handle = CreateMpmcChannel<int>(alloc, 2).value();
+
+  MpChannelHandle<int> mp_handle = std::move(handle);
+  EXPECT_FALSE(handle.is_open());  // NOLINT(bugprone-use-after-move)
+  EXPECT_TRUE(mp_handle.is_open());
+}
+
+TEST(ChannelHandles, SpmcCopyToMcHandle) {
+  pw::allocator::test::AllocatorForTest<256> alloc;
+  auto [handle, sender] = CreateSpmcChannel<int>(alloc, 2).value();
+
+  McChannelHandle<int> mc_handle = handle;
+  EXPECT_TRUE(handle.is_open());
+  EXPECT_TRUE(mc_handle.is_open());
+
+  mc_handle.Close();
+  EXPECT_FALSE(handle.is_open());
+  EXPECT_FALSE(mc_handle.is_open());
+}
+
+TEST(ChannelHandles, MpmcMoveToMcHandle) {
+  pw::allocator::test::AllocatorForTest<256> alloc;
+  MpmcChannelHandle<int> handle = CreateMpmcChannel<int>(alloc, 2).value();
+
+  McChannelHandle<int> mc_handle = std::move(handle);
+  EXPECT_FALSE(handle.is_open());  // NOLINT(bugprone-use-after-move)
+  EXPECT_TRUE(mc_handle.is_open());
+}
+
+TEST(ChannelHandles, SpccCopyToChannelHandle) {
+  pw::allocator::test::AllocatorForTest<256> alloc;
+  MpmcChannelHandle<int> mpmc_handle = CreateMpmcChannel<int>(alloc, 2).value();
+
+  ChannelHandle<int> handle;
+  EXPECT_FALSE(handle.is_open());
+
+  handle = mpmc_handle;
+  EXPECT_TRUE(mpmc_handle.is_open());
+  EXPECT_TRUE(handle.is_open());
+
+  handle.Close();
+  EXPECT_FALSE(mpmc_handle.is_open());
+  EXPECT_FALSE(handle.is_open());
+}
+
+TEST(ChannelHandles, MpmcMoveToChannelHandle) {
+  pw::allocator::test::AllocatorForTest<256> alloc;
+  MpmcChannelHandle<int> mpmc_handle = CreateMpmcChannel<int>(alloc, 2).value();
+
+  ChannelHandle<int> handle = std::move(mpmc_handle);
+  EXPECT_FALSE(mpmc_handle.is_open());  // NOLINT(bugprone-use-after-move)
+  EXPECT_TRUE(handle.is_open());
 }
 
 }  // namespace

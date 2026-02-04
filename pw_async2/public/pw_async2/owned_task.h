@@ -16,7 +16,7 @@
 #include "pw_async2/task.h"
 #include "pw_log/tokenized_args.h"
 
-/// @submodule{pw_async2,core}
+/// @submodule{pw_async2,tasks}
 
 namespace pw::async2 {
 
@@ -34,7 +34,7 @@ class OwnedTask : public Task {
       : Task(name, Task::OwnedTag{}) {}
 
  private:
-  friend NativeDispatcherBase;
+  friend Dispatcher;
 
   // Deregister is private on OwnedTask because it's unsafe to call after the
   // task is posted. The dispatcher could delete the task at any time, so posted
@@ -56,5 +56,7 @@ class OwnedTask : public Task {
   /// `Task`s delegating to other `OwnedTask`s.
   virtual void DoDestroy() = 0;
 };
+
+/// @endsubmodule
 
 }  // namespace pw::async2

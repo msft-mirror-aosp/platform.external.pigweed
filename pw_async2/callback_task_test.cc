@@ -16,70 +16,107 @@
 
 #include <optional>
 
-#include "pw_async2/dispatcher.h"
+#include "pw_async2/dispatcher_for_test.h"
+#include "pw_async2/future.h"
 #include "pw_async2/value_future.h"
 #include "pw_unit_test/framework.h"
 
 namespace {
 
-using ::pw::async2::Dispatcher;
-using ::pw::async2::FutureCallbackTask;
-using ::pw::async2::Pending;
-using ::pw::async2::Ready;
+using ::pw::async2::CallbackTask;
+using ::pw::async2::DispatcherForTest;
 using ::pw::async2::ValueFuture;
 using ::pw::async2::ValueProvider;
 
-TEST(FutureCallbackTask, PendsFutureUntilReady) {
+TEST(CallbackTask, PendsFutureUntilReady) {
   ValueProvider<char> provider;
   char result = '\0';
 
-  FutureCallbackTask<ValueFuture<char>> task(provider.Get(),
-                                             [&result](char c) { result = c; });
+  CallbackTask<ValueFuture<char>> task([&result](char c) { result = c; },
+                                       provider.Get());
 
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   dispatcher.Post(task);
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Pending());
+  EXPECT_TRUE(dispatcher.RunUntilStalled());
   EXPECT_EQ(result, '\0');
 
   provider.Resolve('b');
 
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
+  dispatcher.RunToCompletion();
   EXPECT_EQ(result, 'b');
 
   EXPECT_FALSE(task.IsRegistered());
 }
 
-TEST(FutureCallbackTask, ImmediatelyReturnsReady) {
+TEST(CallbackTask, ImmediatelyReturnsReady) {
   char result = '\0';
 
-  FutureCallbackTask<ValueFuture<char>> task(ValueFuture<char>::Resolved('b'),
-                                             [&result](char c) { result = c; });
+  CallbackTask<ValueFuture<char>> task([&result](char c) { result = c; },
+                                       ValueFuture<char>::Resolved('b'));
 
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   dispatcher.Post(task);
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
+  dispatcher.RunToCompletion();
   EXPECT_EQ(result, 'b');
 
   EXPECT_FALSE(task.IsRegistered());
 }
 
-TEST(FutureCallbackTask, VoidFuture) {
+TEST(CallbackTask, VoidFuture) {
   ValueProvider<void> provider;
 
   bool completed = false;
 
-  FutureCallbackTask<ValueFuture<void>> task(
-      provider.Get(), [&completed]() { completed = true; });
+  CallbackTask<ValueFuture<void>> task([&completed]() { completed = true; },
+                                       provider.Get());
 
-  Dispatcher dispatcher;
+  DispatcherForTest dispatcher;
   dispatcher.Post(task);
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Pending());
+  EXPECT_TRUE(dispatcher.RunUntilStalled());
   EXPECT_FALSE(completed);
 
   provider.Resolve();
 
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
+  dispatcher.RunToCompletion();
   EXPECT_TRUE(completed);
+
+  EXPECT_FALSE(task.IsRegistered());
+}
+
+class TestFuture {
+ public:
+  TestFuture() = default;
+
+  using value_type = int;
+
+  TestFuture(int number_one, int number_two)
+      : state_(pw::async2::FutureState::kPending),
+        number_one_(number_one),
+        number_two_(number_two) {}
+
+  pw::async2::Poll<value_type> Pend(pw::async2::Context&) {
+    PW_ASSERT(state_.is_pendable());
+    state_.MarkComplete();
+    return number_one_ + number_two_;
+  }
+
+  bool is_complete() const { return state_.is_complete(); }
+
+ private:
+  pw::async2::FutureState state_;
+  int number_one_;
+  int number_two_;
+};
+
+TEST(CallbackTask, Emplace) {
+  int result = 0;
+  auto task = CallbackTask<TestFuture>::Emplace(
+      [&result](int c) { result = c; }, 40, 2);
+
+  DispatcherForTest dispatcher;
+  dispatcher.Post(task);
+  dispatcher.RunToCompletion();
+  EXPECT_EQ(result, 42);
 
   EXPECT_FALSE(task.IsRegistered());
 }
