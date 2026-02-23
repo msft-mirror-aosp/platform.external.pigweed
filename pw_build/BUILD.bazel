@@ -13,8 +13,8 @@
 # the License.
 
 load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
+load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("@rules_python//python:proto.bzl", "py_proto_library")
 load("@rules_python//python/entry_points:py_console_script_binary.bzl", "py_console_script_binary")
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
@@ -26,6 +26,7 @@ load("//pw_build:pw_cc_blob_library.bzl", "pw_cc_blob_info", "pw_cc_blob_library
 load("//pw_build:pw_copy_and_patch_file_test.bzl", "pw_copy_and_patch_file_test")
 load("//pw_build:pw_py_importable_runfile.bzl", "pw_py_importable_runfile")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
+load(":pw_pylint_test.bzl", "pw_pylint_test_suite")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -468,3 +469,15 @@ sphinx_docs_library(
     prefix = "pw_build/",
     target_compatible_with = incompatible_with_mcu(),
 )
+
+# This target is used by the analysis tests in pw_pylint_test to confirm that
+# pw_pylint.bzl is working.
+py_console_script_binary(
+    name = "pw_pylint_test_test_target",
+    pkg = "@pigweed_python_packages//pylint",
+    script = "pylint",
+    tags = ["manual"],
+    visibility = ["//visibility:private"],
+)
+
+pw_pylint_test_suite(name = "pw_pylint_test")

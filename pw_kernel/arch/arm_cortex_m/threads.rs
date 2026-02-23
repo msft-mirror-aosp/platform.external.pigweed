@@ -121,7 +121,7 @@ impl Arch for crate::Arch {
         mut sched_state: SpinLockGuard<'a, Self, SchedulerState<Self>>,
         old_thread_state: *mut ArchThreadState,
         new_thread_state: *mut ArchThreadState,
-    ) -> SpinLockGuard<'a, Self, SchedulerState<Self>> {
+    ) -> (SpinLockGuard<'a, Self, SchedulerState<Self>>, bool) {
         pw_assert::assert!(unsafe {
             new_thread_state == sched_state.get_current_arch_thread_state()
         });
@@ -158,11 +158,16 @@ impl Arch for crate::Arch {
             // old thread is context switched back to.
 
             sched_state = crate::Arch::get_scheduler(crate::Arch).lock(crate::Arch);
+            (sched_state, true)
         } else {
-            // in interrupt context the pendsv should have already triggered it
-            pw_assert::assert!(SCB::is_pendsv_pending());
+            // In interrupt context, a PendSV is queued but will happen at a
+            // lower priority. Previously we asserted that it was pending
+            // (`SCB::is_pendsv_pending()`).  However an interrupt may fire
+            // between when PendSV is vectored and when it disables interrupts
+            // resulting in a state where `ACTIVE_THREAD` is set but PendSV
+            // is not pending.
+            (sched_state, false)
         }
-        sched_state
     }
 
     fn thread_local_state(self) -> &'static ThreadLocalState<Self> {
@@ -227,15 +232,18 @@ impl Arch for crate::Arch {
             // Note: Higher values have lower priority
             let mut scb = p.SCB;
 
-            // Set SVCall (system calls) to the lowest priority.
-            scb.set_priority(scb::SystemHandler::SVCall, 0b1111_1111);
+            // Set PendSV (used by context switching) to the lowest priority.
+            // This is necessary so that context switches do not happen while
+            // anything is executing in handler mode.
+            scb.set_priority(scb::SystemHandler::PendSV, 0b1111_1111);
 
-            // Set PendSV (used by context switching) to just above SVCall so
-            // that system calls can context switch.
-            scb.set_priority(scb::SystemHandler::PendSV, 0b1011_1111);
+            // Set SVCall (system calls) to between PendSV and SysTick to
+            // give interrupts a higher priority than the system call preamble.
+            // Note: the system call iteself does not execute in handler mode
+            // and this priority just affects the trampoline preamble.
+            scb.set_priority(scb::SystemHandler::SVCall, 0b1011_1111);
 
-            // Set IRQs to a priority above SVCall and PendSV so that they
-            // can preempt them.
+            // Set SysTick to a priority above SVCall and PendSV
             scb.set_priority(scb::SystemHandler::SysTick, 0b0111_1111);
 
             // External IRQ priorities are set by the interrupt controller.

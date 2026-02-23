@@ -30,10 +30,27 @@ using pw::allocator::test::Counter;
 using pw::allocator::test::CounterSink;
 using pw::allocator::test::CounterWithBuffer;
 
+// Test fixtures
+
 class SharedPtrTest : public pw::allocator::test::TestWithCounters {
  protected:
   pw::allocator::test::AllocatorForTest<256> allocator_;
 };
+
+struct Foo {
+  int foo() const { return val + 1; }
+  int val = 0;
+};
+
+struct Bar : public Foo {
+  int bar() const { return val + 2; }
+};
+
+struct Baz : public Bar {
+  int baz() const { return val + 3; }
+};
+
+// Unit tests
 
 TEST_F(SharedPtrTest, DefaultInitializationIsNullptr) {
   pw::SharedPtr<int> empty;
@@ -84,6 +101,19 @@ TEST_F(SharedPtrTest, CopyAssignmentIncreasesUseCount) {
   EXPECT_EQ(ptr2.use_count(), 2);
   EXPECT_EQ(Counter::TakeNumCtorCalls(), 1U);
   EXPECT_EQ(Counter::TakeNumDtorCalls(), 0U);
+}
+
+TEST_F(SharedPtrTest, CopyAssignmentDecreasesOldUseCount) {
+  auto ptr1 = allocator_.MakeShared<Counter>(42u);
+  EXPECT_EQ(ptr1.use_count(), 1);
+  auto ptr2 = allocator_.MakeShared<Counter>(67u);
+  EXPECT_EQ(ptr2.use_count(), 1);
+  ptr2 = ptr1;
+  EXPECT_EQ(ptr1.get(), ptr2.get());
+  EXPECT_EQ(ptr1->value(), 42u);
+  EXPECT_EQ(ptr2->value(), 42u);
+  EXPECT_EQ(Counter::TakeNumCtorCalls(), 2U);
+  EXPECT_EQ(Counter::TakeNumDtorCalls(), 1U);
 }
 
 TEST_F(SharedPtrTest, MakeSharedForwardsConstructorArguments) {
@@ -269,28 +299,35 @@ TEST_F(SharedPtrTest, CanSwapWhenBothAreEmpty) {
   EXPECT_EQ(ptr2, nullptr);
 }
 
-TEST_F(SharedPtrTest, Conversions) {
-  struct Foo {
-    int foo() const { return 1; }
-  };
-  struct Bar : public Foo {
-    int bar() const { return 2; }
-  };
-  struct Baz : public Bar {
-    int baz() const { return 3; }
-  };
-
+TEST_F(SharedPtrTest, AutomaticallyUpCasts) {
   pw::SharedPtr<Bar> bar = allocator_.MakeShared<Baz>();
-
-  // Upcast.
   pw::SharedPtr<Foo> foo = bar;
   EXPECT_EQ(static_cast<pw::SharedPtr<Bar>>(foo), bar);
+}
 
-  // Downcast.
+TEST_F(SharedPtrTest, CanExplicitlyDownCast) {
+  pw::SharedPtr<Foo> foo = allocator_.MakeShared<Baz>();
   pw::SharedPtr<Baz> baz = static_cast<pw::SharedPtr<Baz>>(foo);
   EXPECT_EQ(baz->foo(), 1);
   EXPECT_EQ(baz->bar(), 2);
   EXPECT_EQ(baz->baz(), 3);
+}
+
+TEST_F(SharedPtrTest, CanStaticPointerCast) {
+  pw::SharedPtr<Foo> foo = allocator_.MakeShared<Baz>();
+  pw::SharedPtr<Baz> baz = pw::static_pointer_cast<Baz>(foo);
+  EXPECT_EQ(baz->foo(), 1);
+  EXPECT_EQ(baz->bar(), 2);
+  EXPECT_EQ(baz->baz(), 3);
+}
+
+TEST_F(SharedPtrTest, CanConstPointerCast) {
+  pw::SharedPtr<const Foo> const_foo = allocator_.MakeShared<Foo>();
+  EXPECT_EQ(const_foo->val, 0);
+
+  pw::SharedPtr<Foo> foo = pw::const_pointer_cast<Foo>(const_foo);
+  foo->val = 1;
+  EXPECT_EQ(const_foo->val, 1);
 }
 
 TEST_F(SharedPtrTest, SharedFromUniquePtr) {
@@ -309,6 +346,12 @@ TEST_F(SharedPtrTest, SharedFromUniquePtr) {
   EXPECT_EQ(metrics.num_deallocations.value(), 2u);
 }
 
+TEST_F(SharedPtrTest, SharedFromUniquePtrToArray) {
+  auto owned = allocator_.MakeUnique<int[]>(5);
+  pw::SharedPtr<int[]> shared(owned);
+  EXPECT_EQ(shared.size(), 5u);
+}
+
 TEST_F(SharedPtrTest, SharedFromUniquePtrFailsOnAllocationFailure) {
   const auto& metrics = allocator_.metrics();
   EXPECT_EQ(metrics.num_allocations.value(), 0u);
@@ -325,6 +368,14 @@ TEST_F(SharedPtrTest, SharedFromUniquePtrFailsOnAllocationFailure) {
     EXPECT_EQ(owned->value(), 5u);
   }
   EXPECT_EQ(metrics.num_deallocations.value(), 1u);
+}
+
+TEST_F(SharedPtrTest, Allocator) {
+  pw::SharedPtr<Counter> ptr1;
+  EXPECT_EQ(ptr1.allocator(), nullptr);
+
+  pw::SharedPtr<Counter> ptr2 = allocator_.MakeShared<Counter>(100u);
+  EXPECT_EQ(ptr2.allocator(), &allocator_);
 }
 
 }  // namespace

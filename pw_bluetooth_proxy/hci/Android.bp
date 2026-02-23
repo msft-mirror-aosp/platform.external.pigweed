@@ -74,3 +74,59 @@ cc_library_static {
     ],
     // LINT.ThenChange(BUILD.gn, BUILD.bazel, CMakeLists.txt)
 }
+
+cc_library_static {
+    name: "sniff_offload",
+    defaults: [
+        "pw_android_common_backends",
+        "pw_android_common_target_support",
+    ],
+    // LINT.IfChange
+    srcs: [
+        "sniff_offload_manager.cc",
+    ],
+    export_include_dirs: [
+        "public",
+    ],
+    static_libs: [
+        "pw_allocator",
+        "pw_async2",
+        "pw_containers",
+        "pw_function",
+        "pw_multibuf_v2",
+    ],
+    export_static_lib_headers: [
+        "pw_allocator",
+        "pw_async2",
+        "pw_containers",
+        "pw_function",
+        "pw_multibuf_v2",
+    ],
+    header_libs: [
+        "emboss_runtime_headers",
+        "fuchsia_sdk_lib_stdcompat",
+        "pw_assert",
+        "pw_bluetooth_emboss_util_include_dirs",
+        "pw_chrono",
+        "pw_sync",
+    ],
+    export_header_lib_headers: [
+        "pw_chrono",
+        "pw_sync",
+    ],
+    generated_headers: [
+        "pw_bluetooth_generate_emboss_hci_android",
+        "pw_bluetooth_generate_emboss_hci_commands",
+        "pw_bluetooth_generate_emboss_hci_common",
+        "pw_bluetooth_generate_emboss_hci_data",
+        "pw_bluetooth_generate_emboss_hci_events",
+    ],
+    export_generated_headers: [
+        "pw_bluetooth_generate_emboss_hci_android",
+        "pw_bluetooth_generate_emboss_hci_commands",
+        "pw_bluetooth_generate_emboss_hci_common",
+        "pw_bluetooth_generate_emboss_hci_data",
+        "pw_bluetooth_generate_emboss_hci_events",
+    ],
+    // LINT.ThenChange(BUILD.gn, BUILD.bazel, CMakeLists.txt)
+}

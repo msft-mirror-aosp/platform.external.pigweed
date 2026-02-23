@@ -33,7 +33,7 @@ pw_add_library(pw_allocator STATIC
   PUBLIC_DEPS
     pw_allocator.config
     pw_allocator.hardening
-    pw_multibuf.properties
+    pw_multibuf.v2.properties
     pw_numeric.checked_arithmetic
     pw_bytes
     pw_preprocessor
@@ -97,7 +97,6 @@ pw_add_library(pw_allocator.async_pool STATIC
     pw_allocator
     pw_allocator.pool
     pw_async2
-    pw_async2.poll
   SOURCES
     async_pool.cc
 )
@@ -652,7 +651,6 @@ pw_add_test(pw_allocator.async_pool_test
     pw_allocator.testing
     pw_allocator.testing
     pw_async2
-    pw_async2.func_task
     pw_async2.testing
   GROUPS
     modules
@@ -958,6 +956,7 @@ pw_add_test(pw_allocator.unique_ptr_test
     pw_allocator
     pw_allocator.counter
     pw_allocator.testing
+    pw_compilation_testing._pigweed_only_negative_compilation
   GROUPS
     modules
     pw_allocator

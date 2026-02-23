@@ -54,13 +54,23 @@ pub trait Arch: 'static + Copy + thread::ThreadArg {
     /// - `old_thread_state`: The thread we're moving away from
     /// - `new_thread_state`: The thread we're moving to; must match
     ///   `current_thread` and the container for this `ThreadState`
+    ///
+    /// Returns:
+    /// - `sched_state`: A guard for the global `SchedulerState`
+    /// - `switched`: `true` if a context switch happened, `false` otherwise.
+    ///
+    /// If `switched` is `false`, the implementation guarantees that forward
+    /// progress will be made. For example, a context switch may be deferred
+    /// to an interrupt handler (like PendSV) which is pending. The caller
+    /// does not need to retry or take further action to ensure the switch
+    /// occurs.
     #[allow(clippy::missing_safety_doc)]
     unsafe fn context_switch(
         self,
         sched_state: SpinLockGuard<'_, Self, SchedulerState<Self>>,
         old_thread_state: *mut Self::ThreadState,
         new_thread_state: *mut Self::ThreadState,
-    ) -> SpinLockGuard<'_, Self, SchedulerState<Self>>
+    ) -> (SpinLockGuard<'_, Self, SchedulerState<Self>>, bool)
     where
         Self: Kernel;
 
@@ -78,7 +88,33 @@ pub trait Arch: 'static + Copy + thread::ThreadArg {
     #[allow(dead_code)]
     fn idle(self) {}
 
+    /// Early architecture initialization, called before the scheduler is bootstrapped.
+    ///
+    /// This is invoked during kernel startup before any threads exist and before
+    /// the scheduler is operational. Architecture code **must not** call
+    /// `scheduler::tick()` or any other scheduler functions during this phase.
+    ///
+    /// Use this for hardware initialization that must happen before the scheduler
+    /// starts, such as setting up the interrupt controller or memory protection.
     fn early_init(self) {}
+
+    /// Architecture initialization, called after the scheduler is bootstrapped.
+    ///
+    /// This is invoked after the scheduler is fully operational and threads can
+    /// be scheduled. It is safe to call `scheduler::tick()` once `init()` is invoked.
+    ///
+    /// Use this for initialization that depends on the scheduler being ready,
+    /// such as starting timer interrupts that will drive `scheduler::tick()`.
+    ///
+    /// # Contract
+    ///
+    /// - `early_init()` is always called before `init()`
+    /// - `scheduler::tick()` **must not** be called by architecture code before
+    ///   `init()` is invoked
+    /// - Once `init()` is invoked, timer interrupts may safely call `scheduler::tick()`.
+    ///   This includes interrupts that fire before `init()` returns. At this point,
+    ///   only the bootstrap thread exists in the system and any context switch
+    ///   requests will early exit, making this safe.
     fn init(self) {}
 
     fn panic() -> ! {

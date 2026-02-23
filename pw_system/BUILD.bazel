@@ -13,9 +13,9 @@
 # the License.
 
 load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
+load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_platform//platform_data:defs.bzl", "platform_data")
-load("@rules_python//python:proto.bzl", "py_proto_library")
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "host_backend_alias", "incompatible_with_mcu")
 load("//pw_build:pw_cc_binary.bzl", "pw_cc_binary")
@@ -632,11 +632,10 @@ cc_library(
         "//pw_allocator:best_fit_block_allocator",
         "//pw_allocator:synchronized_allocator",
         "//pw_assert:check",
+        "//pw_async2",
         "//pw_async2:allocate_task",
         "//pw_async2:basic_dispatcher",
-        "//pw_async2:func_task",
         "//pw_hdlc:router",
-        "//pw_multibuf:simple_allocator",
         "//pw_rpc/pwpb:echo_service",
         "//pw_sync:interrupt_spin_lock",
         "//pw_thread:thread",
@@ -709,7 +708,7 @@ pw_cc_test(
         ":async",
         "//pw_allocator:testing",
         "//pw_channel:loopback_channel",
-        "//pw_multibuf:testing",
+        "//pw_multibuf:simple_allocator",
     ],
 )
 
