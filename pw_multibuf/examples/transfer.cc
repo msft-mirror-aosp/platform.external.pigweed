@@ -20,7 +20,7 @@
 #include "pw_assert/check.h"
 #include "pw_async2/basic_dispatcher.h"
 #include "pw_async2/context.h"
-#include "pw_async2/pend_func_task.h"
+#include "pw_async2/func_task.h"
 #include "pw_async2/poll.h"
 #include "pw_async2/try.h"
 #include "pw_async2/waker.h"
@@ -316,16 +316,15 @@ TEST(LinkTest, SendAndReceiveData) {
   // DOCSTAG: [pw_multibuf-examples-transfer-create]
 
   auto tx_iter = tx_frame->ConstChunks().begin();
-  async2::PendFuncTask write_frame(
-      [&](async2::Context& context) -> async2::Poll<> {
-        while (tx_iter != tx_frame->ConstChunks().end()) {
-          if (!tx_iter->empty()) {
-            PW_TRY_READY(link.Write(context, *tx_iter));
-          }
-          ++tx_iter;
-        }
-        return Ready();
-      });
+  async2::FuncTask write_frame([&](async2::Context& context) -> async2::Poll<> {
+    while (tx_iter != tx_frame->ConstChunks().end()) {
+      if (!tx_iter->empty()) {
+        PW_TRY_READY(link.Write(context, *tx_iter));
+      }
+      ++tx_iter;
+    }
+    return Ready();
+  });
   dispatcher.Post(write_frame);
 
   Result<LinkFrame> rx_frame = LinkFrame::Create(allocator);
@@ -337,7 +336,7 @@ TEST(LinkTest, SendAndReceiveData) {
   ASSERT_EQ(rx_packet.status(), OkStatus());
 
   bool read_frame_header_finished = false;
-  async2::PendFuncTask read_frame_header(
+  async2::FuncTask read_frame_header(
       [&](async2::Context& context) -> async2::Poll<> {
         while (!raw_frame_header.empty()) {
           PW_TRY_READY_ASSIGN(size_t bytes_read,
@@ -366,7 +365,7 @@ TEST(LinkTest, SendAndReceiveData) {
 
   auto iter = rx_frame->Chunks().begin();
   ByteSpan chunk = *(++iter);
-  async2::PendFuncTask read_remaining_frame(
+  async2::FuncTask read_remaining_frame(
       [&](async2::Context& context) -> async2::Poll<> {
         while (true) {
           PW_TRY_READY_ASSIGN(size_t bytes_read, link.Read(context, chunk));

@@ -28,13 +28,23 @@ with a common interface, but no shared base. In C++20 and later,
 
 A ``Future<T>`` exposes the following API:
 
-- ``value_type``: Type alias for the value produced by the future.
+- A default constructor that initializes the future to an empty state. An empty
+  future does not represent an asynchronous operation and is neither pendable
+  nor complete.
+- A destructor that abandons the future so no further operations will access it.
+- ``value_type``: Type alias for the value produced by the future; ``void`` if
+  the future produces no value. The :cc:`FutureValue<Future>
+  <pw::async2::FutureValue>` helper resolves to the future's ``value_type``, but
+  maps ``void`` to :cc:`ReadyType <pw::async2::ReadyType>` so that a
+  ``FutureValue<Future>`` can always be instantiated and referenced.
 - ``Poll<value_type> Pend(Context& cx)``: Calling ``Pend`` advances the
   asynchronous operation until no further progress is possible. Returns
   :cc:`Ready <pw::async2::Ready>` if the operation completes. Otherwise, uses
   the provided :cc:`Context <pw::async2::Context>` to store a waker and returns
   :cc:`Pending <pw::async2::Pending>`. The waker wakes the task when ``Pend``
   should be called again.
+- ``bool is_pendable()``: Returns whether the future represents an active
+  asynchronous operation which can be pended.
 - ``bool is_complete()``: Returns whether the future has already completed and
   had its result consumed.
 
@@ -106,8 +116,8 @@ Working with futures
 Calling functions that return futures
 =====================================
 Consider some asynchronous call which produces a simple value on completion.
-Pigweed provides ``ValueFuture<T>`` for this common case. The async function has
-the following signature:
+Pigweed provides :cc:`ValueFuture<T> <pw::async2::ValueFuture>` for this common
+case. The async function has the following signature:
 
 .. code-block:: c++
 
@@ -126,22 +136,20 @@ You would write a task that calls this operation as follows:
          class MyTask : public pw::async2::Task {
           private:
            pw::async2::Poll<> DoPend(pw::async2::Context& cx) override {
-             // Obtain and store the future, then poll it to completion.
-             if (!future_.has_value()) {
-               future_.emplace(generator_.GetNextNumber());
+             // The future begins in a default-constructed state, which is not
+             // pendable. Initialize it on the task's first run.
+             if (!future_.is_pendable()) {
+               future_ = generator_.GetNextNumber();
              }
 
-             PW_TRY_READY_ASSIGN(int number, future_->Pend(cx));
+             PW_TRY_READY_ASSIGN(int number, future_.Pend(cx));
              PW_LOG_INFO("Received number: %d", number);
 
              return pw::async2::Ready();
            }
 
            NumberGenerator& generator_;
-
-           // The future is stored in an optional so it can be lazily initialized
-           // inside DoPend. Most concrete futures are not default constructible.
-           std::optional<ValueFuture<int>> future_;
+           ValueFuture<int> future_;
          };
 
    .. tab-item:: C++20 coroutines
@@ -165,8 +173,8 @@ All future-based ``pw_async2`` APIs have the signature
    Future<T> DoThing(Args... args);
 
 Where ``Future<T>`` is some concrete future implementation (e.g.
-``ValueFuture``) which resolves to a value of type ``T`` and ``Args``
-represents any arguments to the operation.
+:cc:`ValueFuture <pw::async2::ValueFuture>`) which resolves to a value of type
+``T`` and ``Args`` represents any arguments to the operation.
 
 When defining an asynchronous API, the function should always return a
 ``Future`` directly --- not a ``Result<Future>`` or
@@ -179,15 +187,67 @@ function cleanly. Additionally, returning a ``Future`` directly is essential to
 be able to work with coroutines: ``co_await`` can be used directly and will
 resolve to a ``Result<T>``.
 
+Naming conventions
+------------------
+Follow these conventions for naming functions that interact with ``pw_async2``
+futures.
+
+- Name functions that return futures for the operation represented by the
+  future, rather than the future itself.
+
+  .. admonition:: **Yes**: Function is named for the Read operation.
+     :class: checkmark
+
+     .. code-block:: cpp
+
+        ReadFuture<T> Read();
+
+  .. admonition:: **No**: Function is named for the future it returns.
+     :class: error
+
+     .. code-block:: cpp
+
+        ReadFuture<T> GetReadFuture();
+
+- Do not label future-returning functions as "async". Asynchronicity is implied
+  by the future return value.
+
+  .. admonition:: **No**: Future-returning function is named as ``Async``.
+     :class: error
+
+     .. code-block:: cpp
+
+        ReadFuture<T> AsyncRead();
+
+- Prefix non-blocking functions with ``Try`` to distinguish then from
+  future-returning functions.
+
+  .. admonition:: **Yes**: Non-blocking function starts with ``Try``.
+     :class: checkmark
+
+     .. code-block:: cpp
+
+        std::optional<T> TryRead();
+
+- Prefix functions that block the current thread with ``Blocking``.
+
+  .. admonition:: **Yes**: Blocking function starts with ``Blocking``.
+     :class: checkmark
+
+     .. code-block:: cpp
+
+        std::optional<T> BlockingRead();
+
 .. _module-pw_async2-futures-implementing:
 
 ---------------------
 Implementing a future
 ---------------------
-``pw_async2`` provides futures like ``ValueFuture`` for common asynchronous
-patterns. However, you may want to implement a custom leaf future if your
-operation has complex logic where ``Pend()`` would benefit from reaching deeper
-into the underlying system, e.g. waiting for a hardware interrupt.
+``pw_async2`` provides futures like `ValueFuture <pw::async2::ValueFuture>` for
+common asynchronous patterns. However, you may want to implement a custom leaf
+future if your operation has complex logic where ``Pend()`` would benefit from
+reaching deeper into the underlying system, e.g. waiting for a hardware
+interrupt.
 
 :cc:`FutureCore <pw::async2::FutureCore>` is the primary tool for creating
 futures.
@@ -204,7 +264,7 @@ Future implementations typically have a :cc:`FutureCore
 <pw::async2::FutureCore>` member.
 
 FutureList
-----------
+==========
 After you vend a future from an asynchronous operation, you need a way to track
 and resolve it once the operation has completed. :cc:`FutureCore
 <pw::async2::FutureCore>`\s can be stored in a :cc:`FutureList
@@ -254,11 +314,14 @@ interfaces from ``pw_digital_io``.
    :start-after: // DOCSTAG: [pw_async2-examples-custom-future]
    :end-before: // DOCSTAG: [pw_async2-examples-custom-future]
 
-This example demonstrates the core mechanics of creating a custom future.
-This pattern of waiting for a single value from a producer is so common that
-``pw_async2`` provides ``ValueFuture`` and ``ValueProvider`` to handle it.
-In practice, you would return a ``VoidFuture`` (alias for ``ValueFuture<void>``)
-from ``WaitForPress`` instead of writing a custom ``ButtonFuture``.
+This example demonstrates the core mechanics of creating a custom future.  This
+pattern of waiting for a single value from a producer is so common that
+``pw_async2`` provides :cc:`ValueFuture <pw::async2::ValueFuture>`, which is
+produced by a :cc:`ValueProvider <pw::async2::ValueProvider>` or
+:cc:`OptionalValueProvider <pw::async2::OptionalValueProvider>`, to handle it.
+In practice, you would return a :cc:`VoidFuture <pw::async2::VoidFuture>` (alias
+for ``ValueFuture<void>``) from ``WaitForPress`` instead of writing a custom
+``ButtonFuture``.
 
 .. _module-pw_async2-futures-combinators:
 
@@ -288,13 +351,13 @@ results.
          class JoinTask : public pw::async2::Task {
           private:
            pw::async2::Poll<> DoPend(pw::async2::Context& cx) override {
-             if (!future_.has_value()) {
+             if (!future_.is_pendable()) {
                // Start three futures concurrently and wait for all of them
                // to complete.
-               future_.emplace(pw::async2::Join(DoWork(1), DoWork(2), DoWork(3)));
+               future_ = pw::async2::Join(DoWork(1), DoWork(2), DoWork(3));
              }
 
-             PW_TRY_READY_ASSIGN(auto results, future_->Pend(cx));
+             PW_TRY_READY_ASSIGN(auto results, future_.Pend(cx));
              auto [status1, status2, status3] = *results;
 
              if (!status1.ok() || !status2.ok() || !status3.ok()) {
@@ -306,9 +369,9 @@ results.
              return pw::async2::Ready();
            }
 
-           std::optional<JoinFuture<ValueFuture<pw::Status>,
-                                    ValueFuture<pw::Status>,
-                                    ValueFuture<pw::Status>>>
+           JoinFuture<ValueFuture<pw::Status>,
+                      ValueFuture<pw::Status>,
+                      ValueFuture<pw::Status>>
                future_;
          };
 
@@ -352,12 +415,12 @@ completing the task re-running, the tuple stores all of their results.
          class SelectTask : public pw::async2::Task {
           private:
            pw::async2::Poll<> DoPend(pw::async2::Context& cx) override {
-             if (!future_.has_value()) {
+             if (!future_.is_pendable()) {
                // Race two futures and wait for the first one to complete.
-               future_.emplace(pw::async2::Select(DoWork(), DoOtherWork()));
+               future_ = pw::async2::Select(DoWork(), DoOtherWork());
              }
 
-             PW_TRY_READY_ASSIGN(auto results, future_->Pend(cx));
+             PW_TRY_READY_ASSIGN(auto results, future_.Pend(cx));
 
              // Check which future(s) completed.
              // In this example, we check all of them, but it's common to return
@@ -372,7 +435,7 @@ completing the task re-running, the tuple stores all of their results.
              return pw::async2::Ready();
            }
 
-           std::optional<SelectFuture<ValueFuture<int>, ValueFuture<int>>> future_;
+           SelectFuture<ValueFuture<int>, ValueFuture<int>> future_;
          };
 
    .. tab-item:: C++20 coroutines
@@ -403,7 +466,9 @@ completing the task re-running, the tuple stores all of their results.
 
 Setting up wakers
 =================
-You can set up a waker to a non-empty value using one of four macros we provide:
+Futures typically store a waker. When the future is ready to advance, that wake
+the task that pended them with this waker. Wakers can be set using one of these
+four macros:
 
 - :cc:`PW_ASYNC_STORE_WAKER` and :cc:`PW_ASYNC_CLONE_WAKER`
 
@@ -416,9 +481,10 @@ You can set up a waker to a non-empty value using one of four macros we provide:
 
 - :cc:`PW_ASYNC_TRY_STORE_WAKER` and :cc:`PW_ASYNC_TRY_CLONE_WAKER`
 
-  This is an alternative to `PW_ASYNC_STORE_WAKER`, and returns ``false``
-  instead of crashing. This lets the pendable to signal to the caller that the
-  ``Pend()`` operation failed, so it can be handled in some other way.
+  These are alternatives to :cc:`PW_ASYNC_STORE_WAKER` and
+  cc:`PW_ASYNC_CLONE_WAKER` that return ``false`` instead of crashing if the
+  waker is already set. This allows the caller to handle cases when the waker is
+  already in use.
 
 .. _module-pw_async2-futures-timeout:
 

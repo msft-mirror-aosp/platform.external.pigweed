@@ -16,7 +16,7 @@
 
 #include "public/pw_async2/size_report/size_report.h"
 #include "pw_async2/basic_dispatcher.h"
-#include "pw_async2/pend_func_task.h"
+#include "pw_async2/func_task.h"
 #include "pw_async2/size_report/size_report.h"
 #include "pw_async2/value_future.h"
 #include "pw_bloat/bloat_this_binary.h"
@@ -37,7 +37,7 @@ int SingleTypeJoin(uint32_t mask) {
   auto future =
       Join(std::move(value_1), std::move(value_2), std::move(value_3));
   decltype(future.Pend(std::declval<Context&>())) result = Pending();
-  PendFuncTask task([&](Context& cx) {
+  FuncTask task([&](Context& cx) {
     result = future.Pend(cx);
     return result.Readiness();
   });
@@ -56,12 +56,12 @@ int SingleTypeJoin(uint32_t mask) {
 
 int MultiTypeJoin(uint32_t mask) {
   ValueFuture<int> value_1 = ValueFuture<int>::Resolved(47);
-  ValueFuture<uint32_t> value_2 = ValueFuture<uint32_t>::Resolved(0x00ff00ff);
+  ValueFuture<uint32_t> value_2 = ValueFuture<uint32_t>::Resolved(0x00ff00ffu);
   ValueFuture<char> value_3 = ValueFuture<char>::Resolved('c');
   auto future =
       Join(std::move(value_1), std::move(value_2), std::move(value_3));
   decltype(future.Pend(std::declval<Context&>())) result = Pending();
-  PendFuncTask task([&](Context& cx) {
+  FuncTask task([&](Context& cx) {
     result = future.Pend(cx);
     return result.Readiness();
   });
@@ -84,13 +84,13 @@ int MultiTypeJoin(uint32_t mask) {
 // are in the base binary.
 void SetBaselineValueFutures(uint32_t mask) {
   ValueFuture<int> value_1 = ValueFuture<int>::Resolved(47);
-  ValueFuture<uint32_t> value_2 = ValueFuture<uint32_t>::Resolved(0x00ff00ff);
+  ValueFuture<uint32_t> value_2 = ValueFuture<uint32_t>::Resolved(0x00ff00ffu);
   ValueFuture<char> value_3 = ValueFuture<char>::Resolved('c');
 
-  PendFuncTask task([v1 = std::move(value_1),
-                     v2 = std::move(value_2),
-                     v3 = std::move(value_3),
-                     &mask](Context& cx) mutable -> Poll<> {
+  FuncTask task([v1 = std::move(value_1),
+                 v2 = std::move(value_2),
+                 v3 = std::move(value_3),
+                 &mask](Context& cx) mutable -> Poll<> {
     auto result_1 = v1.Pend(cx);
     auto result_2 = v2.Pend(cx);
     auto result_3 = v3.Pend(cx);

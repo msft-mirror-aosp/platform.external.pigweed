@@ -97,9 +97,8 @@ pw_cc_test(
         "//pw_async2:basic_dispatcher",
         "//pw_async2:coro",
         "//pw_async2:coro_or_else_task",
+        "//pw_async2:func_task",
         "//pw_async2:future_timeout",
-        "//pw_async2:pend_func_task",
-        "//pw_async2:pendable",
         "//pw_async2:select",
         "//pw_async2:system_time_provider",
         "//pw_containers:vector",
@@ -107,21 +106,6 @@ pw_cc_test(
         "//pw_result",
         "//pw_status",
         "//pw_string",
-    ],
-)
-
-pw_cc_test(
-    name = "once_send_recv_test",
-    srcs = ["once_send_recv_test.cc"],
-    deps = [
-        "//pw_allocator:libc_allocator",
-        "//pw_allocator:testing",
-        "//pw_assert:check",
-        "//pw_async2:basic_dispatcher",
-        "//pw_async2:coro",
-        "//pw_async2:coro_or_else_task",
-        "//pw_async2:once_sender",
-        "//pw_async2:testing",
     ],
 )
 
@@ -148,7 +132,7 @@ pw_cc_test(
     srcs = ["unit_test.cc"],
     deps = [
         "//pw_allocator:testing",
-        "//pw_async2:pend_func_task",
+        "//pw_async2:func_task",
         "//pw_async2:testing",
         "//pw_async2:value_future",
     ],
@@ -160,7 +144,7 @@ pw_cc_test(
     deps = [
         "//pw_assert:check",
         "//pw_async2:basic_dispatcher",
-        "//pw_async2:pend_func_task",
+        "//pw_async2:func_task",
         "//pw_digital_io",
         "//pw_sync:interrupt_spin_lock",
         "//pw_sync:lock_annotations",
@@ -192,7 +176,6 @@ sphinx_docs_library(
         "count.cc",
         "custom_future.cc",
         "interrupt.cc",
-        "once_send_recv_test.cc",
         "quickstart.cc",
         "unit_test.cc",
     ],

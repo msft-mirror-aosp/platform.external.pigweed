@@ -28,8 +28,8 @@
 #include "pw_async2/context.h"
 #include "pw_async2/coro.h"
 #include "pw_async2/coro_or_else_task.h"
+#include "pw_async2/func_task.h"
 #include "pw_async2/future_timeout.h"
-#include "pw_async2/pend_func_task.h"
 #include "pw_async2/poll.h"
 #include "pw_async2/select.h"
 #include "pw_async2/system_time_provider.h"
@@ -58,8 +58,8 @@ using ::pw::async2::Context;
 using ::pw::async2::Coro;
 using ::pw::async2::CoroContext;
 using ::pw::async2::CoroOrElseTask;
+using ::pw::async2::FuncTask;
 using ::pw::async2::GetSystemTimeProvider;
-using ::pw::async2::PendFuncTask;
 using ::pw::async2::Poll;
 using ::pw::async2::Ready;
 using ::pw::async2::SelectFuture;
@@ -85,7 +85,7 @@ Result<T> RunFutureToCompletionWithTimeout(
   typename decltype(select)::value_type select_result;
 
   BasicDispatcher dispatcher;
-  auto task = PendFuncTask([&](Context cx) -> Poll<> {
+  auto task = FuncTask([&](Context cx) -> Poll<> {
     PW_TRY_READY_ASSIGN(select_result, select.Pend(cx));
     return Ready();
   });

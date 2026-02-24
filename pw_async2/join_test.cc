@@ -27,7 +27,11 @@ using ::pw::async2::Join;
 using ::pw::async2::Pending;
 using ::pw::async2::Poll;
 
-TEST(JoinFuture, ReturnsReadyWhenAllPendablesAreReady) {
+static_assert(
+    pw::async2::Future<pw::async2::JoinFuture<pw::async2::VoidFuture,
+                                              pw::async2::ValueFuture<int>>>);
+
+TEST(JoinFuture, ReturnsReadyWhenAllFuturesAreReady) {
   DispatcherForTest dispatcher;
 
   BroadcastValueProvider<int> int_provider;

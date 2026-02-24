@@ -52,8 +52,8 @@ pw_add_library(pw_async2 STATIC
     public/pw_async2/context.h
     public/pw_async2/dispatcher.h
     public/pw_async2/future.h
-    public/pw_async2/internal/config.h
     public/pw_async2/internal/lock.h
+    public/pw_async2/internal/logging.h
     public/pw_async2/owned_task.h
     public/pw_async2/runnable_dispatcher.h
     public/pw_async2/task.h
@@ -62,6 +62,7 @@ pw_add_library(pw_async2 STATIC
     public
   PUBLIC_DEPS
     pw_assert.assert
+    pw_async2.config
     pw_async2.poll
     pw_chrono.system_clock
     pw_containers.intrusive_forward_list
@@ -75,10 +76,8 @@ pw_add_library(pw_async2 STATIC
     pw_third_party.fuchsia.stdcompat
     pw_tokenizer
     pw_toolchain.no_destructor
-
   PRIVATE_DEPS
     pw_assert.check
-    pw_async2.config
     pw_thread.sleep
   SOURCES
     context.cc
@@ -169,30 +168,12 @@ pw_add_library(pw_async2.epoll_dispatcher_for_test INTERFACE
     epoll_dispatcher_for_test_public_overrides
 )
 
-pw_add_library(pw_async2.pendable INTERFACE
-  HEADERS
-    public/pw_async2/pendable.h
-  PUBLIC_DEPS
-    pw_async2.poll
-    pw_async2
-  PUBLIC_INCLUDES
-    public
-)
-
-pw_add_test(pw_async2.pendable_test
-  SOURCES
-    pendable_test.cc
-  PRIVATE_DEPS
-    pw_async2.pendable
-    pw_async2.testing
-)
-
 pw_add_test(pw_async2.future_test
   SOURCES
     future_test.cc
   PRIVATE_DEPS
     pw_async2
-    pw_async2.pend_func_task
+    pw_async2.func_task
     pw_async2.poll
     pw_async2.select
     pw_async2.testing
@@ -226,7 +207,7 @@ pw_add_test(pw_async2.future_timeout_test
     pw_async2.channel
     pw_async2
     pw_async2.future_timeout
-    pw_async2.pend_func_task
+    pw_async2.func_task
     pw_async2.poll
     pw_async2.simulated_time_provider
     pw_async2.testing
@@ -253,7 +234,7 @@ pw_add_test(pw_async2.value_future_test
     value_future_test.cc
   PRIVATE_DEPS
     pw_async2
-    pw_async2.pend_func_task
+    pw_async2.func_task
     pw_async2.poll
     pw_async2.testing
     pw_async2.value_future
@@ -272,22 +253,49 @@ pw_add_test(pw_async2.value_future_thread_test
     pw_thread.thread
 )
 
-pw_add_library(pw_async2.pend_func_task INTERFACE
+# Temporarily generate a symlink for pw_async2/pend_func_task.h for backwards
+# compatibility.
+set(compat_dir "${CMAKE_CURRENT_BINARY_DIR}/pend_func_task_compat")
+
+add_custom_command(
+  COMMAND
+    ${CMAKE_COMMAND} -E create_symlink
+    "${CMAKE_CURRENT_LIST_DIR}/public/pw_async2/func_task.h"
+    "${compat_dir}/pw_async2/pend_func_task.h"
+  OUTPUT
+    "${compat_dir}/pw_async2/pend_func_task.h"
+)
+
+add_custom_target(pw_async2._func_task_compat
+  DEPENDS
+    "${compat_dir}/pw_async2/pend_func_task.h"
+)
+
+pw_add_library(pw_async2.func_task INTERFACE
   HEADERS
-    public/pw_async2/pend_func_task.h
+    public/pw_async2/func_task.h
+  GENERATED_HEADERS
+    "${compat_dir}/pw_async2/pend_func_task.h"
   PUBLIC_DEPS
     pw_async2
     pw_function
   PUBLIC_INCLUDES
     public
+    "${compat_dir}"
+)
+add_dependencies(pw_async2.func_task pw_async2._func_task_compat)
+
+pw_add_library(pw_async2.pend_func_task INTERFACE
+  PUBLIC_DEPS
+    pw_async2.func_task
 )
 
-pw_add_test(pw_async2.pend_func_task_test
+pw_add_test(pw_async2.func_task_test
   SOURCES
-    pend_func_task_test.cc
+    func_task_test.cc
   PRIVATE_DEPS
     pw_async2.testing
-    pw_async2.pend_func_task
+    pw_async2.func_task
 )
 
 pw_add_library(pw_async2.callback_task INTERFACE
@@ -310,29 +318,6 @@ pw_add_test(pw_async2.callback_task_test
     pw_function
 )
 
-pw_add_library(pw_async2.waker_queue STATIC
-  HEADERS
-    public/pw_async2/waker_queue.h
-  PUBLIC_DEPS
-    pw_async2
-    pw_containers.inline_queue
-  PUBLIC_INCLUDES
-    public
-  SOURCES
-    waker_queue.cc
-  PRIVATE_DEPS
-    pw_log
-)
-
-pw_add_test(pw_async2.waker_queue_test
-  SOURCES
-    waker_queue_test.cc
-  PRIVATE_DEPS
-    pw_async2.pend_func_task
-    pw_async2.testing
-    pw_async2.waker_queue
-)
-
 pw_add_library(pw_async2.allocate_task INTERFACE
   HEADERS
     public/pw_async2/allocate_task.h
@@ -352,25 +337,7 @@ pw_add_test(pw_async2.allocate_task_test
     pw_allocator.testing
 )
 
-pw_add_library(pw_async2.once_sender INTERFACE
-  HEADERS
-    public/pw_async2/once_sender.h
-  PUBLIC_DEPS
-    pw_async2
-    pw_function
-    pw_sync.mutex
-  PUBLIC_INCLUDES
-    public
-)
 
-pw_add_test(pw_async2.once_sender_test
-  SOURCES
-    once_sender_test.cc
-  PRIVATE_DEPS
-    pw_async2.once_sender
-    pw_async2.testing
-    pw_containers.vector
-)
 
 if("cxx_std_20" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
   pw_add_library(pw_async2.coro STATIC
@@ -421,32 +388,6 @@ if("cxx_std_20" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
       pw_async2
       pw_allocator.null_allocator
       pw_allocator.testing
-      pw_status
-  )
-
-  pw_add_library(pw_async2.pend_func_awaitable INTERFACE
-    HEADERS
-      public/pw_async2/pend_func_task.h
-    PUBLIC_DEPS
-      pw_async2
-      pw_async2.poll
-      pw_function
-    PUBLIC_INCLUDES
-      public
-  )
-
-  pw_add_test(pw_async2.pend_func_awaitable_test
-    SOURCES
-      pend_func_awaitable_test.cc
-    PRIVATE_DEPS
-      pw_async2.coro
-      pw_async2.coro_or_else_task
-      pw_async2
-      pw_async2.pend_func_awaitable
-      pw_async2.poll
-      pw_async2.testing
-      pw_allocator.testing
-      pw_function
       pw_status
   )
 endif()
@@ -575,7 +516,6 @@ pw_add_test(pw_async2.select_test
     select_test.cc
   PRIVATE_DEPS
     pw_async2
-    pw_async2.pendable
     pw_async2.select
     pw_async2.testing
     pw_async2.value_future
@@ -600,7 +540,6 @@ pw_add_test(pw_async2.cancellable_task_test
   PRIVATE_DEPS
     pw_async2.cancellable_task
     pw_async2
-    pw_async2.pendable
     pw_async2.poll
     pw_async2.testing
     pw_function
@@ -631,7 +570,7 @@ pw_add_test(pw_async2.channel_test
   PRIVATE_DEPS
     pw_async2.channel
     pw_async2
-    pw_async2.pend_func_task
+    pw_async2.func_task
     pw_async2.poll
     pw_async2.testing
     pw_allocator.testing
@@ -659,7 +598,7 @@ pw_add_test(pw_async2.channel_typed_test
   PRIVATE_DEPS
     pw_async2.channel
     pw_async2
-    pw_async2.pend_func_task
+    pw_async2.func_task
     pw_async2.poll
     pw_async2.testing
     pw_allocator.testing
