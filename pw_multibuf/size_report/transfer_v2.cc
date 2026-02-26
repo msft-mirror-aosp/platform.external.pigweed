@@ -15,15 +15,16 @@
 #include "pw_allocator/async_pool.h"
 #include "pw_allocator/bump_allocator.h"
 #include "pw_allocator/chunk_pool.h"
-#include "pw_multibuf/multibuf_v2.h"
+#include "pw_async2/channel.h"
+#include "pw_multibuf/multibuf.h"
 #include "pw_multibuf/size_report/transfer.h"
 
 namespace pw::multibuf::size_report {
 
-class FrameHandlerV2
-    : public virtual size_report::FrameHandler<MultiBuf::Instance> {
+using MultiBufType = v2::MultiBuf::Instance;
+
+class FrameHandlerV2 : public virtual size_report::FrameHandler<MultiBufType> {
  public:
-  using MultiBufType = MultiBuf::Instance;
   static constexpr allocator::Layout kLayout =
       allocator::Layout(examples::kMaxDemoLinkFrameLength);
 
@@ -36,7 +37,7 @@ class FrameHandlerV2
   MultiBufType DoAllocateFrame() override {
     auto bytes = pool_.MakeUnique<std::byte[]>();
     PW_ASSERT(bytes != nullptr);
-    MultiBuf::Instance instance(metadata_allocator_);
+    MultiBufType instance(metadata_allocator_);
     instance->PushBack(std::move(bytes));
     PW_ASSERT(instance->AddLayer(0));
     return instance;
@@ -76,25 +77,26 @@ class FrameHandlerV2
 };
 
 class SenderV2 : public FrameHandlerV2,
-                 public size_report::Sender<MultiBuf::Instance> {
+                 public size_report::Sender<MultiBufType> {
  public:
   SenderV2(allocator::ChunkPool& pool,
            allocator::BumpAllocator& metadata_allocator,
-           InlineAsyncQueue<MultiBuf::Instance>& queue)
+           async2::Sender<MultiBufType>&& tx)
       : size_report::FrameHandler<MultiBufType>(),
         FrameHandlerV2(pool, metadata_allocator),
-        size_report::Sender<MultiBufType>(queue) {}
+        size_report::Sender<MultiBufType>(std::move(tx)) {}
 };
 
 class ReceiverV2 : public FrameHandlerV2,
-                   public size_report::Receiver<MultiBuf::Instance> {
+                   public size_report::Receiver<MultiBufType> {
  public:
   ReceiverV2(allocator::ChunkPool& pool,
              allocator::BumpAllocator& metadata_allocator,
-             InlineAsyncQueue<MultiBuf::Instance>& queue)
+             async2::Receiver<MultiBufType>&& rx)
       : size_report::FrameHandler<MultiBufType>(),
         FrameHandlerV2(pool, metadata_allocator),
-        size_report::Receiver<MultiBufType>(queue, metadata_allocator) {}
+        size_report::Receiver<MultiBufType>(std::move(rx), metadata_allocator) {
+  }
 };
 
 constexpr size_t kMultiBufRegionSize = 8192;
@@ -106,9 +108,11 @@ void TransferMessage() {
   pw::allocator::ChunkPool chunk_pool(multibuf_region, FrameHandlerV2::kLayout);
   allocator::BumpAllocator metadata_allocator;
   metadata_allocator.Init(metadata_region);
-  InlineAsyncQueue<MultiBuf::Instance, 3> queue;
-  SenderV2 sender(chunk_pool, metadata_allocator, queue);
-  ReceiverV2 receiver(chunk_pool, metadata_allocator, queue);
+  async2::ChannelStorage<MultiBufType, 3> storage;
+  [[maybe_unused]] auto [h, tx, rx] =
+      async2::CreateSpscChannel<MultiBufType>(storage);
+  SenderV2 sender(chunk_pool, metadata_allocator, std::move(tx));
+  ReceiverV2 receiver(chunk_pool, metadata_allocator, std::move(rx));
   size_report::TransferMessage(sender, receiver);
 }
 

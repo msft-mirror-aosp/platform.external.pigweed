@@ -242,6 +242,8 @@ class TestAsyncInt {
     }
   }
 
+  pw::async2::FutureList<&TestIntFuture::core_>& list() { return list_; }
+
  private:
   friend class TestIntFuture;
 
@@ -499,27 +501,7 @@ TEST(FutureState, MarkCompleteFromReady) {
   state.MarkComplete();
   EXPECT_TRUE(state.is_complete());
   EXPECT_FALSE(state.is_pendable());
-  EXPECT_FALSE(state.is_ready());
-}
-
-TEST(FutureState, Equality) {
-  pw::async2::FutureState s1;
-  pw::async2::FutureState s2;
-  EXPECT_EQ(s1, s2);
-
-  pw::async2::FutureState p1(pw::async2::FutureState::kPending);
-  pw::async2::FutureState p2(pw::async2::FutureState::kPending);
-  EXPECT_EQ(p1, p2);
-  EXPECT_NE(s1, p1);
-
-  pw::async2::FutureState r1(pw::async2::FutureState::kReadyForCompletion);
-  pw::async2::FutureState r2(pw::async2::FutureState::kReadyForCompletion);
-  EXPECT_EQ(r1, r2);
-  EXPECT_NE(p1, r1);
-
-  p1.MarkComplete();
-  r1.MarkComplete();
-  EXPECT_EQ(p1, r1);
+  EXPECT_TRUE(state.is_ready());
 }
 
 TEST(FutureState, Move) {
@@ -539,6 +521,32 @@ TEST(FutureState, MoveAssignment) {
   EXPECT_FALSE(s1.is_initialized());  // NOLINT(bugprone-use-after-move)
   EXPECT_TRUE(s2.is_initialized());
   EXPECT_TRUE(s2.is_pendable());
+}
+
+TEST(CustomFutureList, Remove) {
+  TestAsyncInt provider;
+  TestIntFuture f1 = provider.Get();
+  TestIntFuture f2 = provider.Get();
+  TestIntFuture f3 = provider.Get();
+
+  TestIntFuture* removed =
+      provider.list().Remove([&](TestIntFuture& f) { return &f == &f2; });
+  EXPECT_EQ(removed, &f2);
+
+  EXPECT_FALSE(f2.core().in_list());
+  EXPECT_TRUE(f1.core().in_list());
+  EXPECT_TRUE(f3.core().in_list());
+
+  removed = provider.list().Remove([&](TestIntFuture& f) { return &f == &f1; });
+  EXPECT_EQ(removed, &f1);
+  EXPECT_FALSE(f1.core().in_list());
+
+  removed = provider.list().Remove([&](TestIntFuture& f) { return &f == &f1; });
+  EXPECT_EQ(removed, nullptr);
+
+  removed = provider.list().Remove([&](TestIntFuture& f) { return &f == &f3; });
+  EXPECT_EQ(removed, &f3);
+  EXPECT_TRUE(provider.list().empty());
 }
 
 }  // namespace

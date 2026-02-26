@@ -24,7 +24,6 @@ use kernel::sync::spinlock::SpinLockGuard;
 use log_if::debug_if;
 use pw_status::Result;
 
-use crate::plic;
 use crate::protection::MemoryConfig;
 use crate::regs::{MStatusVal, PrivilegeLevel};
 use crate::spinlock::BareSpinLock;
@@ -117,7 +116,7 @@ impl Arch for super::Arch {
     #[cfg(feature = "disable_interrupts_atomic")]
     type AtomicUsize = crate::disable_interrupts_atomic::AtomicUsize;
     type SyscallArgs<'a> = crate::exceptions::RiscVSyscallArgs<'a>;
-    type InterruptController = plic::Plic;
+    type InterruptController = crate::InterruptController;
 
     #[inline(never)]
     unsafe fn context_switch<'a>(
@@ -125,7 +124,7 @@ impl Arch for super::Arch {
         sched_state: SpinLockGuard<'a, Self, SchedulerState<Self>>,
         old_thread_state: *mut ArchThreadState,
         new_thread_state: *mut ArchThreadState,
-    ) -> SpinLockGuard<'a, Self, SchedulerState<Self>> {
+    ) -> (SpinLockGuard<'a, Self, SchedulerState<Self>>, bool) {
         debug_if!(
             LOG_CONTEXT_SWITCH,
             "context switch from frame {:#08x} to frame {:#08x}",
@@ -163,7 +162,7 @@ impl Arch for super::Arch {
         let new_thread_frame = unsafe { (*new_thread_state).frame };
         riscv_context_switch(old_thread_frame, new_thread_frame);
 
-        sched_state
+        (sched_state, true)
     }
 
     fn thread_local_state(self) -> &'static ThreadLocalState<Self> {

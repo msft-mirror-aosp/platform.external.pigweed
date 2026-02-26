@@ -18,20 +18,21 @@
 
 #include "pw_allocator/libc_allocator.h"
 #include "pw_allocator/testing.h"
+#include "pw_bluetooth_proxy/config.h"
 #include "pw_bluetooth_proxy/l2cap_channel_manager_interface.h"
 #include "pw_bluetooth_proxy/rfcomm/rfcomm_manager.h"
 #include "pw_bytes/span.h"
 #include "pw_containers/vector.h"
+#include "pw_multibuf/multibuf.h"
 #include "pw_unit_test/framework.h"
 
-#if PW_BLUETOOTH_PROXY_MULTIBUF == PW_BLUETOOTH_PROXY_MULTIBUF_V1
+#if PW_MULTIBUF_VERSION == 1
 #include "pw_multibuf/simple_allocator.h"
 #else
 #include "pw_allocator/synchronized_allocator.h"
 #include "pw_bluetooth_proxy/internal/multibuf.h"
-#include "pw_multibuf/multibuf.h"
 #include "pw_sync/mutex.h"
-#endif  // PW_BLUETOOTH_PROXY_MULTIBUF
+#endif  // PW_MULTIBUF_VERSION
 
 namespace pw::bluetooth::proxy::rfcomm::internal {
 namespace testing {
@@ -130,6 +131,7 @@ class RfcommChannelTest : public ::testing::Test {
             l2cap_channel_for_test_,
             kConnectionHandle,
             kChannelNumber,
+            RfcommDirection::kInitiator,
             true,
             kDefaultRxConfig,
             kDefaultTxConfig,
@@ -152,7 +154,7 @@ class RfcommChannelTest : public ::testing::Test {
       pw::checksum::Crc8(0x07, 0xFF, true, true, 0xff);
 
   static constexpr size_t kDataSize = 2048;
-#if PW_BLUETOOTH_PROXY_MULTIBUF == PW_BLUETOOTH_PROXY_MULTIBUF_V1
+#if PW_MULTIBUF_VERSION == 1
   std::array<std::byte, kDataSize> buffer_{};
   multibuf::SimpleAllocator multibuf_allocator_{
       /*data_area=*/buffer_,
@@ -194,13 +196,10 @@ TEST_F(RfcommChannelTest, WriteSinglePacket) {
                            emboss::RfcommDataFrameOverhead::WITH_SHORT_HEADER));
 
   // Verify the header.
-  // Address field: channel_number=2, C/R=1 (initiator), EA=1
+  // Address field: channel_number=2, D=1 (initiated by initiator), C/R=1 (from
+  // initiator), EA=1
   const uint8_t expected_address =
-      (kChannelNumber << 3) |
-      (static_cast<uint8_t>(
-           emboss::RfcommCommandResponseAndDirection::COMMAND_FROM_INITIATOR)
-       << 1) |
-      1;
+      (kChannelNumber << 3) | (1 << 2) | (1 << 1) | 1;
   EXPECT_EQ(written_payload[0], expected_address);
 
   // Control field: UIH.
@@ -250,13 +249,10 @@ TEST_F(RfcommChannelTest, WriteFragmentedPacket) {
                     emboss::RfcommDataFrameOverhead::WITH_SHORT_HEADER));
 
   // Verify the header.
-  // Address field: channel_number=2, C/R=1 (initiator), EA=1
+  // Address field: channel_number=2, D=1 (initiated by initiator), C/R=1 (from
+  // initiator), EA=1
   const uint8_t expected_address =
-      (kChannelNumber << 3) |
-      (static_cast<uint8_t>(
-           emboss::RfcommCommandResponseAndDirection::COMMAND_FROM_INITIATOR)
-       << 1) |
-      1;
+      (kChannelNumber << 3) | (1 << 2) | (1 << 1) | 1;
   EXPECT_EQ(written_payload[0], expected_address);
 
   // Control field: UIH.
@@ -287,6 +283,7 @@ TEST_F(RfcommChannelTest, WriteLongPacket) {
       l2cap_channel_for_test_,
       kConnectionHandle,
       kChannelNumber,
+      RfcommDirection::kInitiator,
       true,
       kDefaultRxConfig,
       kTxConfig,
@@ -321,13 +318,10 @@ TEST_F(RfcommChannelTest, WriteLongPacket) {
                            emboss::RfcommDataFrameOverhead::WITH_LONG_HEADER));
 
   // Verify the header.
-  // Address field: channel_number=2, C/R=1 (initiator), EA=1
+  // Address field: channel_number=2, D=1 (initiated by initiator), C/R=1 (from
+  // initiator), EA=1
   const uint8_t expected_address =
-      (kChannelNumber << 3) |
-      (static_cast<uint8_t>(
-           emboss::RfcommCommandResponseAndDirection::COMMAND_FROM_INITIATOR)
-       << 1) |
-      1;
+      (kChannelNumber << 3) | (1 << 2) | (1 << 1) | 1;
   EXPECT_EQ(written_payload[0], expected_address);
 
   // Control field: UIH.
@@ -460,13 +454,10 @@ TEST_F(RfcommChannelTest, AutoSendCredits) {
   const span<const uint8_t> written_payload =
       l2cap_channel_for_test_.written_payloads().front();
 
-  // Address field: channel_number=2, C/R=1 (initiator), EA=1
+  // Address field: channel_number=2, D=1 (initiated by initiator), C/R=1 (from
+  // initiator), EA=1
   const uint8_t expected_address =
-      (kChannelNumber << 3) |
-      (static_cast<uint8_t>(
-           emboss::RfcommCommandResponseAndDirection::COMMAND_FROM_INITIATOR)
-       << 1) |
-      1;
+      (kChannelNumber << 3) | (1 << 2) | (1 << 1) | 1;
   EXPECT_EQ(written_payload[0], expected_address);
 
   // Control field: UIH with P/F bit.
@@ -505,6 +496,7 @@ TEST_F(RfcommChannelTest, WriteSinglePacketAsNonInitiator) {
       l2cap_channel_for_test_,
       kConnectionHandle,
       kChannelNumber,
+      RfcommDirection::kResponder,
       false,  // mux_initiator = false
       kDefaultRxConfig,
       kDefaultTxConfig,
@@ -536,13 +528,10 @@ TEST_F(RfcommChannelTest, WriteSinglePacketAsNonInitiator) {
       payload.size() + static_cast<size_t>(
                            emboss::RfcommDataFrameOverhead::WITH_SHORT_HEADER));
 
-  // Address field: channel_number_=2, C/R=0 (non-initiator), EA=1
+  // Address field: channel_number=2, D=0 (initiated by responder), C/R=0 (from
+  // responder), EA=1
   const uint8_t expected_address =
-      (kChannelNumber << 3) |
-      (static_cast<uint8_t>(
-           emboss::RfcommCommandResponseAndDirection::COMMAND_FROM_RESPONDER)
-       << 1) |
-      1;
+      (kChannelNumber << 3) | (0 << 2) | (0 << 1) | 1;
   EXPECT_EQ(written_payload[0], expected_address);
 
   // Control field: UIH.
@@ -709,6 +698,7 @@ TEST_F(RfcommChannelTest, ReceivePacketWithNoCreditsDoesNotUnderflow) {
       l2cap_channel_for_test_,
       kConnectionHandle,
       kChannelNumber,
+      RfcommDirection::kInitiator,
       true,
       kRxConfig,
       kDefaultTxConfig,

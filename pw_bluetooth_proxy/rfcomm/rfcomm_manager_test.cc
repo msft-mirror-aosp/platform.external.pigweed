@@ -16,20 +16,21 @@
 
 #include "pw_allocator/libc_allocator.h"
 #include "pw_allocator/testing.h"
+#include "pw_bluetooth_proxy/config.h"
 #include "pw_bluetooth_proxy/internal/multibuf.h"
 #include "pw_bluetooth_proxy/l2cap_channel_common.h"
 #include "pw_bluetooth_proxy/l2cap_channel_manager_interface.h"
 #include "pw_bytes/span.h"
 #include "pw_containers/vector.h"
+#include "pw_multibuf/multibuf.h"
 #include "pw_unit_test/framework.h"
 
-#if PW_BLUETOOTH_PROXY_MULTIBUF == PW_BLUETOOTH_PROXY_MULTIBUF_V1
+#if PW_MULTIBUF_VERSION == 1
 #include "pw_multibuf/simple_allocator.h"
 #else
 #include "pw_allocator/synchronized_allocator.h"
-#include "pw_multibuf/multibuf.h"
 #include "pw_sync/mutex.h"
-#endif  // PW_BLUETOOTH_PROXY_MULTIBUF
+#endif  // PW_MULTIBUF_VERSION
 
 namespace pw::bluetooth::proxy::rfcomm {
 namespace testing {
@@ -137,7 +138,7 @@ class RfcommManagerTest : public ::testing::Test {
 
   allocator::test::AllocatorForTest<4096> allocator_;
   static constexpr size_t kDataSize = 4096;
-#if PW_BLUETOOTH_PROXY_MULTIBUF == PW_BLUETOOTH_PROXY_MULTIBUF_V1
+#if PW_MULTIBUF_VERSION == 1
   std::array<std::byte, kDataSize> buffer_{};
   multibuf::SimpleAllocator multibuf_allocator_{
       /*data_area=*/buffer_,
@@ -154,58 +155,94 @@ class RfcommManagerTest : public ::testing::Test {
 };
 
 TEST_F(RfcommManagerTest, AcquireSingleChannel) {
-  auto channel_result = manager_.AcquireRfcommChannel(multibuf_allocator_,
-                                                      kConnectionHandle1,
-                                                      kChannelNumber1,
-                                                      true,
-                                                      kDefaultConfig,
-                                                      kDefaultConfig,
-                                                      nullptr,
-                                                      nullptr);
+  auto channel_result =
+      manager_.AcquireRfcommChannel(multibuf_allocator_,
+                                    kConnectionHandle1,
+                                    kChannelNumber1,
+                                    RfcommDirection::kInitiator,
+                                    true,
+                                    kDefaultConfig,
+                                    kDefaultConfig,
+                                    nullptr,
+                                    nullptr);
   EXPECT_TRUE(channel_result.ok());
   EXPECT_TRUE(channel_result.value());
 }
 
 TEST_F(RfcommManagerTest, AcquireMultipleChannelsSameConnection) {
-  auto channel1_result = manager_.AcquireRfcommChannel(multibuf_allocator_,
-                                                       kConnectionHandle1,
-                                                       kChannelNumber1,
-                                                       true,
-                                                       kDefaultConfig,
-                                                       kDefaultConfig,
-                                                       nullptr,
-                                                       nullptr);
+  auto channel1_result =
+      manager_.AcquireRfcommChannel(multibuf_allocator_,
+                                    kConnectionHandle1,
+                                    kChannelNumber1,
+                                    RfcommDirection::kInitiator,
+                                    true,
+                                    kDefaultConfig,
+                                    kDefaultConfig,
+                                    nullptr,
+                                    nullptr);
   EXPECT_TRUE(channel1_result.ok());
-  auto channel2_result = manager_.AcquireRfcommChannel(multibuf_allocator_,
-                                                       kConnectionHandle1,
-                                                       kChannelNumber2,
-                                                       true,
-                                                       kDefaultConfig,
-                                                       kDefaultConfig,
-                                                       nullptr,
-                                                       nullptr);
+  auto channel2_result =
+      manager_.AcquireRfcommChannel(multibuf_allocator_,
+                                    kConnectionHandle1,
+                                    kChannelNumber2,
+                                    RfcommDirection::kInitiator,
+                                    true,
+                                    kDefaultConfig,
+                                    kDefaultConfig,
+                                    nullptr,
+                                    nullptr);
+  EXPECT_TRUE(channel2_result.ok());
+  EXPECT_NE(channel1_result.value(), channel2_result.value());
+}
+
+TEST_F(RfcommManagerTest, AcquireMultipleChannelsSameNumberDifferentDirection) {
+  auto channel1_result =
+      manager_.AcquireRfcommChannel(multibuf_allocator_,
+                                    kConnectionHandle1,
+                                    kChannelNumber1,
+                                    RfcommDirection::kResponder,
+                                    true,
+                                    kDefaultConfig,
+                                    kDefaultConfig,
+                                    nullptr,
+                                    nullptr);
+  EXPECT_TRUE(channel1_result.ok());
+  auto channel2_result =
+      manager_.AcquireRfcommChannel(multibuf_allocator_,
+                                    kConnectionHandle1,
+                                    kChannelNumber1,
+                                    RfcommDirection::kInitiator,
+                                    true,
+                                    kDefaultConfig,
+                                    kDefaultConfig,
+                                    nullptr,
+                                    nullptr);
   EXPECT_TRUE(channel2_result.ok());
   EXPECT_NE(channel1_result.value(), channel2_result.value());
 }
 
 TEST_F(RfcommManagerTest, AcquireChannelsDifferentConnections) {
-  auto channel1_result = manager_.AcquireRfcommChannel(multibuf_allocator_,
-                                                       kConnectionHandle1,
-                                                       kChannelNumber1,
-                                                       true,
-                                                       kDefaultConfig,
-                                                       kDefaultConfig,
-                                                       nullptr,
-                                                       nullptr);
+  auto channel1_result =
+      manager_.AcquireRfcommChannel(multibuf_allocator_,
+                                    kConnectionHandle1,
+                                    kChannelNumber1,
+                                    RfcommDirection::kInitiator,
+                                    true,
+                                    kDefaultConfig,
+                                    kDefaultConfig,
+                                    nullptr,
+                                    nullptr);
   EXPECT_TRUE(channel1_result.ok());
-  auto channel2_result = manager_.AcquireRfcommChannel(multibuf_allocator_,
-                                                       kConnectionHandle2,
-                                                       kChannelNumber1,
-                                                       true,
-                                                       kDefaultConfig,
-                                                       kDefaultConfig,
-                                                       nullptr,
-                                                       nullptr);
+  auto channel2_result =
+      manager_.AcquireRfcommChannel(multibuf_allocator_,
+                                    kConnectionHandle2,
+                                    kChannelNumber1,
+                                    RfcommDirection::kInitiator,
+                                    true,
+                                    kDefaultConfig,
+                                    kDefaultConfig,
+                                    nullptr,
+                                    nullptr);
   EXPECT_TRUE(channel2_result.ok());
   EXPECT_NE(channel1_result.value(), channel2_result.value());
 }
@@ -216,6 +253,7 @@ TEST_F(RfcommManagerTest, L2capChannelClose) {
       manager_.AcquireRfcommChannel(multibuf_allocator_,
                                     kConnectionHandle1,
                                     kChannelNumber1,
+                                    RfcommDirection::kInitiator,
                                     true,
                                     kDefaultConfig,
                                     kDefaultConfig,
@@ -234,6 +272,7 @@ TEST_F(RfcommManagerTest, HandlePdu) {
       multibuf_allocator_,
       kConnectionHandle1,
       kChannelNumber1,
+      RfcommDirection::kResponder,
       true,
       kDefaultConfig,
       kDefaultConfig,
@@ -271,6 +310,7 @@ TEST_F(RfcommManagerTest, HandlePdu) {
       multibuf_allocator_,
       kConnectionHandle1,
       kChannelNumber2,
+      RfcommDirection::kResponder,
       true,
       kDefaultConfig,
       kDefaultConfig,
@@ -316,14 +356,16 @@ TEST_F(RfcommManagerTest, HandlePdu) {
 }
 
 TEST_F(RfcommManagerTest, UnhandledPduShouldBeForwarded) {
-  auto channel_result = manager_.AcquireRfcommChannel(multibuf_allocator_,
-                                                      kConnectionHandle1,
-                                                      kChannelNumber2,
-                                                      true,
-                                                      kDefaultConfig,
-                                                      kDefaultConfig,
-                                                      nullptr,
-                                                      nullptr);
+  auto channel_result =
+      manager_.AcquireRfcommChannel(multibuf_allocator_,
+                                    kConnectionHandle1,
+                                    kChannelNumber2,
+                                    RfcommDirection::kInitiator,
+                                    true,
+                                    kDefaultConfig,
+                                    kDefaultConfig,
+                                    nullptr,
+                                    nullptr);
   // PDU for a channel_number that is not registered.
   const pw::Vector<uint8_t, 5> kPdu = {0x09, 0xEF, 0x03, 0x01, 0x40};
   auto mbuf_result = MultiBufAdapter::Create(multibuf_allocator_, kPdu.size());
@@ -337,14 +379,16 @@ TEST_F(RfcommManagerTest, UnhandledPduShouldBeForwarded) {
 }
 
 TEST_F(RfcommManagerTest, InvalidFcsPduShouldBeForwarded) {
-  auto channel_result = manager_.AcquireRfcommChannel(multibuf_allocator_,
-                                                      kConnectionHandle1,
-                                                      kChannelNumber1,
-                                                      true,
-                                                      kDefaultConfig,
-                                                      kDefaultConfig,
-                                                      nullptr,
-                                                      nullptr);
+  auto channel_result =
+      manager_.AcquireRfcommChannel(multibuf_allocator_,
+                                    kConnectionHandle1,
+                                    kChannelNumber1,
+                                    RfcommDirection::kResponder,
+                                    true,
+                                    kDefaultConfig,
+                                    kDefaultConfig,
+                                    nullptr,
+                                    nullptr);
   EXPECT_TRUE(channel_result.ok());
 
   // Valid UIH frame for channel_number 2 with invalid FCS.
@@ -361,61 +405,71 @@ TEST_F(RfcommManagerTest, InvalidFcsPduShouldBeForwarded) {
 
 TEST_F(RfcommManagerTest, ReacquireChannelAfterRelease) {
   {
-    auto channel_result = manager_.AcquireRfcommChannel(multibuf_allocator_,
-                                                        kConnectionHandle1,
-                                                        kChannelNumber1,
-                                                        true,
-                                                        kDefaultConfig,
-                                                        kDefaultConfig,
-                                                        nullptr,
-                                                        nullptr);
+    auto channel_result =
+        manager_.AcquireRfcommChannel(multibuf_allocator_,
+                                      kConnectionHandle1,
+                                      kChannelNumber1,
+                                      RfcommDirection::kInitiator,
+                                      true,
+                                      kDefaultConfig,
+                                      kDefaultConfig,
+                                      nullptr,
+                                      nullptr);
     EXPECT_TRUE(channel_result.ok());
   }  // channel_result goes out of scope and is released here.
 
   // Verify that acquiring the same channel again succeeds.
-  auto channel_result = manager_.AcquireRfcommChannel(multibuf_allocator_,
-                                                      kConnectionHandle1,
-                                                      kChannelNumber1,
-                                                      true,
-                                                      kDefaultConfig,
-                                                      kDefaultConfig,
-                                                      nullptr,
-                                                      nullptr);
+  auto channel_result =
+      manager_.AcquireRfcommChannel(multibuf_allocator_,
+                                    kConnectionHandle1,
+                                    kChannelNumber1,
+                                    RfcommDirection::kInitiator,
+                                    true,
+                                    kDefaultConfig,
+                                    kDefaultConfig,
+                                    nullptr,
+                                    nullptr);
   EXPECT_TRUE(channel_result.ok());
 }
 
 TEST_F(RfcommManagerTest, AcquireExistingChannelFails) {
-  auto channel_result = manager_.AcquireRfcommChannel(multibuf_allocator_,
-                                                      kConnectionHandle1,
-                                                      kChannelNumber1,
-                                                      true,
-                                                      kDefaultConfig,
-                                                      kDefaultConfig,
-                                                      nullptr,
-                                                      nullptr);
+  auto channel_result =
+      manager_.AcquireRfcommChannel(multibuf_allocator_,
+                                    kConnectionHandle1,
+                                    kChannelNumber1,
+                                    RfcommDirection::kInitiator,
+                                    true,
+                                    kDefaultConfig,
+                                    kDefaultConfig,
+                                    nullptr,
+                                    nullptr);
   EXPECT_TRUE(channel_result.ok());
 
   // Verify that acquiring the same channel again fails.
-  auto channel_result1 = manager_.AcquireRfcommChannel(multibuf_allocator_,
-                                                       kConnectionHandle1,
-                                                       kChannelNumber1,
-                                                       true,
-                                                       kDefaultConfig,
-                                                       kDefaultConfig,
-                                                       nullptr,
-                                                       nullptr);
+  auto channel_result1 =
+      manager_.AcquireRfcommChannel(multibuf_allocator_,
+                                    kConnectionHandle1,
+                                    kChannelNumber1,
+                                    RfcommDirection::kInitiator,
+                                    true,
+                                    kDefaultConfig,
+                                    kDefaultConfig,
+                                    nullptr,
+                                    nullptr);
   EXPECT_EQ(channel_result1.status(), Status::AlreadyExists());
 }
 
 TEST_F(RfcommManagerTest, AcquireChannelWithMismatchedCidsFails) {
-  auto channel_result = manager_.AcquireRfcommChannel(multibuf_allocator_,
-                                                      kConnectionHandle1,
-                                                      kChannelNumber1,
-                                                      true,
-                                                      kDefaultConfig,
-                                                      kDefaultConfig,
-                                                      nullptr,
-                                                      nullptr);
+  auto channel_result =
+      manager_.AcquireRfcommChannel(multibuf_allocator_,
+                                    kConnectionHandle1,
+                                    kChannelNumber1,
+                                    RfcommDirection::kInitiator,
+                                    true,
+                                    kDefaultConfig,
+                                    kDefaultConfig,
+                                    nullptr,
+                                    nullptr);
   EXPECT_TRUE(channel_result.ok());
 
   // Verify that acquiring a channel with mismatched CIDs fails.
@@ -423,14 +477,16 @@ TEST_F(RfcommManagerTest, AcquireChannelWithMismatchedCidsFails) {
       .cid = static_cast<uint16_t>(kDefaultConfig.cid + 1),
       .max_frame_size = kDefaultConfig.max_frame_size,
       .initial_credits = kDefaultConfig.initial_credits};
-  auto channel_result1 = manager_.AcquireRfcommChannel(multibuf_allocator_,
-                                                       kConnectionHandle1,
-                                                       kChannelNumber2,
-                                                       true,
-                                                       mismatched_config,
-                                                       mismatched_config,
-                                                       nullptr,
-                                                       nullptr);
+  auto channel_result1 =
+      manager_.AcquireRfcommChannel(multibuf_allocator_,
+                                    kConnectionHandle1,
+                                    kChannelNumber2,
+                                    RfcommDirection::kInitiator,
+                                    true,
+                                    mismatched_config,
+                                    mismatched_config,
+                                    nullptr,
+                                    nullptr);
   EXPECT_EQ(channel_result1.status(), Status::InvalidArgument());
 }
 
@@ -440,6 +496,7 @@ TEST_F(RfcommManagerTest, L2capChannelReset) {
       manager_.AcquireRfcommChannel(multibuf_allocator_,
                                     kConnectionHandle1,
                                     kChannelNumber1,
+                                    RfcommDirection::kInitiator,
                                     true,
                                     kDefaultConfig,
                                     kDefaultConfig,
@@ -467,6 +524,7 @@ TEST_F(RfcommManagerTest, CallbacksAreSafe) {
       multibuf_allocator_,
       kConnectionHandle1,
       kChannelNumber1,
+      RfcommDirection::kInitiator,
       true,
       kDefaultConfig,
       kDefaultConfig,
@@ -477,12 +535,15 @@ TEST_F(RfcommManagerTest, CallbacksAreSafe) {
         EXPECT_EQ(capture.manager
                       ->Write(kConnectionHandle1,
                               kChannelNumber1,
+                              RfcommDirection::kInitiator,
                               std::move(MultiBufAdapter::Unwrap(*capture.mbuf)))
                       .status,
                   Status::NotFound());
-        EXPECT_EQ(capture.manager->ReleaseRfcommChannel(kConnectionHandle1,
-                                                        kChannelNumber1),
-                  Status::NotFound());
+        EXPECT_EQ(
+            capture.manager->ReleaseRfcommChannel(kConnectionHandle1,
+                                                  kChannelNumber1,
+                                                  RfcommDirection::kInitiator),
+            Status::NotFound());
       });
   EXPECT_TRUE(channel_result.ok());
 
@@ -503,6 +564,7 @@ TEST_F(RfcommManagerTest, ReleaseLastChannelClosesConnection) {
   auto channel1 = manager_.AcquireRfcommChannel(multibuf_allocator_,
                                                 kConnectionHandle1,
                                                 kChannelNumber1,
+                                                RfcommDirection::kInitiator,
                                                 true,
                                                 kDefaultConfig,
                                                 kDefaultConfig,
@@ -514,6 +576,7 @@ TEST_F(RfcommManagerTest, ReleaseLastChannelClosesConnection) {
   auto channel2 = manager_.AcquireRfcommChannel(multibuf_allocator_,
                                                 kConnectionHandle1,
                                                 kChannelNumber2,
+                                                RfcommDirection::kInitiator,
                                                 true,
                                                 kDefaultConfig,
                                                 kDefaultConfig,
@@ -523,39 +586,49 @@ TEST_F(RfcommManagerTest, ReleaseLastChannelClosesConnection) {
   EXPECT_EQ(l2cap_manager_.intercept_channel_count(), 1u);
 
   // Release one channel, connection should remain.
-  EXPECT_EQ(manager_.ReleaseRfcommChannel(kConnectionHandle1, kChannelNumber1),
-            OkStatus());
+  EXPECT_EQ(
+      manager_.ReleaseRfcommChannel(
+          kConnectionHandle1, kChannelNumber1, RfcommDirection::kInitiator),
+      OkStatus());
 
   // Re-acquiring should not create a new L2CAP channel proxy.
-  auto channel1_reacquired = manager_.AcquireRfcommChannel(multibuf_allocator_,
-                                                           kConnectionHandle1,
-                                                           kChannelNumber1,
-                                                           true,
-                                                           kDefaultConfig,
-                                                           kDefaultConfig,
-                                                           nullptr,
-                                                           nullptr);
+  auto channel1_reacquired =
+      manager_.AcquireRfcommChannel(multibuf_allocator_,
+                                    kConnectionHandle1,
+                                    kChannelNumber1,
+                                    RfcommDirection::kInitiator,
+                                    true,
+                                    kDefaultConfig,
+                                    kDefaultConfig,
+                                    nullptr,
+                                    nullptr);
   EXPECT_TRUE(channel1_reacquired.ok());
   EXPECT_EQ(l2cap_manager_.intercept_channel_count(), 1u);
 
   // Release one channel without `close_connection_if_empty_channel`, connection
   // should remain.
-  EXPECT_EQ(manager_.ReleaseRfcommChannel(kConnectionHandle1, kChannelNumber1),
-            OkStatus());
+  EXPECT_EQ(
+      manager_.ReleaseRfcommChannel(
+          kConnectionHandle1, kChannelNumber1, RfcommDirection::kInitiator),
+      OkStatus());
 
   // Release the last channel, connection should be closed.
-  EXPECT_EQ(manager_.ReleaseRfcommChannel(kConnectionHandle1, kChannelNumber2),
-            OkStatus());
+  EXPECT_EQ(
+      manager_.ReleaseRfcommChannel(
+          kConnectionHandle1, kChannelNumber2, RfcommDirection::kInitiator),
+      OkStatus());
 
   // Re-acquiring should create a new L2CAP channel proxy.
-  auto channel_after_close = manager_.AcquireRfcommChannel(multibuf_allocator_,
-                                                           kConnectionHandle1,
-                                                           kChannelNumber1,
-                                                           true,
-                                                           kDefaultConfig,
-                                                           kDefaultConfig,
-                                                           nullptr,
-                                                           nullptr);
+  auto channel_after_close =
+      manager_.AcquireRfcommChannel(multibuf_allocator_,
+                                    kConnectionHandle1,
+                                    kChannelNumber1,
+                                    RfcommDirection::kInitiator,
+                                    true,
+                                    kDefaultConfig,
+                                    kDefaultConfig,
+                                    nullptr,
+                                    nullptr);
   EXPECT_TRUE(channel_after_close.ok());
   EXPECT_EQ(l2cap_manager_.intercept_channel_count(), 2u);
 }

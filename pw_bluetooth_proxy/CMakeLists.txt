@@ -87,7 +87,6 @@ set(PW_BLUETOOTH_PROXY_PUBLIC_DEPS
   pw_async2.basic_dispatcher
   pw_async2.channel
   pw_async2.dispatcher
-  pw_async2.poll
   pw_bluetooth.emboss_hci_data
   pw_bluetooth.emboss_hci_events
   pw_bluetooth.emboss_hci_h4
@@ -190,8 +189,7 @@ pw_add_library(pw_bluetooth_proxy.multibuf STATIC
     pw_bluetooth_proxy.config
     pw_bytes
     pw_multibuf.allocator
-    pw_multibuf.multibuf_v1
-    pw_multibuf.multibuf_v2
+    pw_multibuf
   PRIVATE_DEPS
     pw_assert.check
     pw_span.cast
@@ -209,7 +207,7 @@ pw_add_library(pw_bluetooth_proxy._multibuf_v1 STATIC
     pw_bluetooth_proxy.config
     pw_bytes
     pw_multibuf.allocator
-    pw_multibuf.multibuf_v1
+    pw_multibuf
   PRIVATE_DEPS
     pw_assert.check
     pw_span.cast
@@ -217,7 +215,7 @@ pw_add_library(pw_bluetooth_proxy._multibuf_v1 STATIC
     multibuf_v1.cc
 )
 target_compile_definitions(pw_bluetooth_proxy._multibuf_v1 PUBLIC
-  PW_BLUETOOTH_PROXY_MULTIBUF=PW_BLUETOOTH_PROXY_MULTIBUF_V1
+  PW_MULTIBUF_VERSION=1
 )
 
 pw_add_library(pw_bluetooth_proxy._multibuf_v2 STATIC
@@ -227,7 +225,7 @@ pw_add_library(pw_bluetooth_proxy._multibuf_v2 STATIC
     pw_allocator
     pw_bluetooth_proxy.config
     pw_bytes
-    pw_multibuf.multibuf_v2
+    pw_multibuf
   PRIVATE_DEPS
     pw_assert.check
     pw_span.cast
@@ -235,7 +233,7 @@ pw_add_library(pw_bluetooth_proxy._multibuf_v2 STATIC
     multibuf_v2.cc
 )
 target_compile_definitions(pw_bluetooth_proxy._multibuf_v2 PUBLIC
-  PW_BLUETOOTH_PROXY_MULTIBUF=PW_BLUETOOTH_PROXY_MULTIBUF_V2
+  PW_MULTIBUF_VERSION=2
 )
 
 pw_add_library(pw_bluetooth_proxy._sync_mbv1 STATIC
@@ -254,7 +252,7 @@ pw_add_library(pw_bluetooth_proxy._sync_mbv1 STATIC
 )
 target_compile_definitions(pw_bluetooth_proxy._sync_mbv1 PUBLIC
   PW_BLUETOOTH_PROXY_ASYNC=0
-  PW_BLUETOOTH_PROXY_MULTIBUF=PW_BLUETOOTH_PROXY_MULTIBUF_V1
+  PW_MULTIBUF_VERSION=1
 )
 
 pw_add_library(pw_bluetooth_proxy._async_mbv1 STATIC
@@ -272,7 +270,7 @@ pw_add_library(pw_bluetooth_proxy._async_mbv1 STATIC
 )
 target_compile_definitions(pw_bluetooth_proxy._async_mbv1 PUBLIC
   PW_BLUETOOTH_PROXY_ASYNC=1
-  PW_BLUETOOTH_PROXY_MULTIBUF=PW_BLUETOOTH_PROXY_MULTIBUF_V1
+  PW_MULTIBUF_VERSION=1
 )
 
 pw_add_library(pw_bluetooth_proxy._sync_mbv2 STATIC
@@ -290,7 +288,7 @@ pw_add_library(pw_bluetooth_proxy._sync_mbv2 STATIC
 )
 target_compile_definitions(pw_bluetooth_proxy._sync_mbv2 PUBLIC
   PW_BLUETOOTH_PROXY_ASYNC=0
-  PW_BLUETOOTH_PROXY_MULTIBUF=PW_BLUETOOTH_PROXY_MULTIBUF_V2
+  PW_MULTIBUF_VERSION=2
 )
 
 pw_add_library(pw_bluetooth_proxy._async_mbv2 STATIC
@@ -308,7 +306,7 @@ pw_add_library(pw_bluetooth_proxy._async_mbv2 STATIC
 )
 target_compile_definitions(pw_bluetooth_proxy._async_mbv2 PUBLIC
   PW_BLUETOOTH_PROXY_ASYNC=1
-  PW_BLUETOOTH_PROXY_MULTIBUF=PW_BLUETOOTH_PROXY_MULTIBUF_V2
+  PW_MULTIBUF_VERSION=2
 )
 
 # GATT depends on the above targets, so add_subdirectory() must be called last.

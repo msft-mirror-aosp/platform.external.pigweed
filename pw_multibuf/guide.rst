@@ -42,9 +42,9 @@ The following example creates just such a MultiBuf instance:
    :start-after: [pw_multibuf-examples-iterate-create]
    :end-before: [pw_multibuf-examples-iterate-create]
 
-Note the use of :cc:`pw::ConstMultiBuf`. This type alias of
-:cc:`GenericMultiBuf <pw::multibuf::internal::GenericMultiBuf>` includes the
-:cc:`kConst <pw::multibuf::Property>` as one of its
+Note the use of :cc:`ConstMultiBuf <pw::multibuf::v2::ConstMultiBuf>`. This type
+alias of :cc:`GenericMultiBuf <pw::multibuf::v2::internal::GenericMultiBuf>`
+includes the :cc:`kConst <pw::multibuf::v2::Property>` as one of its
 :ref:`module-pw_multibuf-design-properties`.
 
 Regardless of how the underlying memory is stored, MultiBuf methods can
@@ -106,15 +106,21 @@ method succeeds, all the queue methods are
 
 For the complete example, see :cs:`pw_multibuf/examples/queue.cc`.
 
-------------------
-Asynchronous queue
-------------------
+---------
+Observers
+---------
 With a few small changes, the above example can be used to implement an
-efficient, asynchronous producer-consumer queue. Here, one or more tasks produce
-data and add it to a queue, while one or more other tasks consume data from the
-queue. A MultiBuf instance can manage the lifecycle of the queued data
-:ref:`module-pw_multibuf-concepts-chunks`, and its observer mechanism can be
-used to signal between tasks.
+efficient, asynchronous producer-consumer queue. This example is for
+illustrative purposes only. If you need an asynchronous producer-consumer queue,
+consider instead :cc:`Sender <pw::async2::Sender>`,
+:cc:`Sender <pw::async2::Receiver>`, and their related types.
+
+What this example can illustrate is how a
+:cc:`Observer <pw::multibuf::v2::Observer>` can be used to react to changes in a
+MultiBuf. Here, one or more tasks produce data and add it to a queue, while one
+or more other tasks consume data from the queue. A MultiBuf instance can manage
+the lifecycle of the queued data :ref:`module-pw_multibuf-concepts-chunks`, and
+its observer mechanism is used to signal between tasks.
 
 To start, an ``AsyncMultiBufObserver`` instance is added to wake up tasks that
 are waiting for the queue to become non-empty (for consumers) or non-full (for
@@ -126,9 +132,9 @@ producers):
    :start-after: [pw_multibuf-examples-async_queue-observer]
    :end-before: [pw_multibuf-examples-async_queue-observer]
 
-This type extends :cc:`Observer <pw::multibuf::Observer>` and receives an
-:cc:`Event <pw::multibuf::Observer::Event>` every time the contents or structure
-of the MultiBuf instance changes.
+This type extends :cc:`Observer <pw::multibuf::v2::Observer>` and receives an
+:cc:`Event <pw::multibuf::v2::Observer::Event>` every time the contents or
+structure of the MultiBuf instance changes.
 
 With this, the queue can leverage the observer to add the same methods that
 produces and consumers can wait on:
@@ -139,9 +145,10 @@ produces and consumers can wait on:
    :start-after: [pw_multibuf-examples-async_queue]
    :end-before: [pw_multibuf-examples-async_queue]
 
-Note that this queue uses a :cc:`pw::TrackedConstMultiBuf`. The "Tracked"
-prefix indicates the MultiBuf instance supports observers, and the "Const"
-prefix indicates the data cannot be modified.
+Note that this queue uses a
+:cc:`TrackedConstMultiBuf <pw::multibuf::v2::TrackedConstMultiBuf>`. The
+"Tracked" prefix indicates the MultiBuf instance supports observers, and the
+"Const" prefix indicates the data cannot be modified.
 
 A producer task that adds data to this queue might look like the following:
 
@@ -184,10 +191,11 @@ writes in a single operation:
    :start-after: [pw_multibuf-examples-scatter_gather-message_vector]
    :end-before: [pw_multibuf-examples-scatter_gather-message_vector]
 
-This container has a :cc:`pw::TrackedMultiBuf` for data to be read, and a
-:cc:`pw::TrackedConstMultiBuf` for data to be written. As the "Tracked"
-prefix indicates, these accept an observer that can be used to signal when an
-I2C transfer is complete:
+This container has a :cc:`TrackedMultiBuf <pw::multibuf::v2::TrackedMultiBuf>`
+for data to be read, and a
+:cc:`TrackedConstMultiBuf <pw::multibuf::v2::TrackedConstMultiBuf>` for data to
+be written. As the "Tracked" prefix indicates, these accept an observer that can
+be used to signal when an I2C transfer is complete:
 
 .. literalinclude:: examples/scatter_gather.cc
    :language: cpp
@@ -319,29 +327,9 @@ as a transport segment:
 
 The types to implement this and the other protocols are similar to the previous
 example. A notable departure is how objects for each layer are created, with
-callers creating transport segments that have memory reserved for both the
-payload and lower level protocols:
-
-.. literalinclude:: examples/pseudo_encrypt.cc
-   :language: cpp
-   :linenos:
-   :start-after: [pw_multibuf-examples-pseudo_encrypt-transport_segment-create]
-   :end-before: [pw_multibuf-examples-pseudo_encrypt-transport_segment-create]
-
-.. literalinclude:: examples/pseudo_encrypt.cc
-   :language: cpp
-   :linenos:
-   :start-after: [pw_multibuf-examples-pseudo_encrypt-network_packet-create]
-   :end-before: [pw_multibuf-examples-pseudo_encrypt-network_packet-create]
-
-.. literalinclude:: examples/pseudo_encrypt.cc
-   :language: cpp
-   :linenos:
-   :start-after: [pw_multibuf-examples-pseudo_encrypt-link_frame-create]
-   :end-before: [pw_multibuf-examples-pseudo_encrypt-link_frame-create]
-
-Additionally, each type has factory methods to consume objects of one protocol
-layer and produce another, simply by adding and removing layers.
+callers creating link frames from a pool of memory buffers, and then using
+factory methods that consume objects of one protocol layer and produce another,
+simply by adding and removing layers.
 
 .. literalinclude:: examples/pseudo_encrypt.cc
    :language: cpp
@@ -349,8 +337,18 @@ layer and produce another, simply by adding and removing layers.
    :start-after: [pw_multibuf-examples-pseudo_encrypt-from]
    :end-before: [pw_multibuf-examples-pseudo_encrypt-from]
 
-These conversion methods are used to create asynchronous tasks that can pass
-protocol messages up and down the stack using queues:
+All the tasks are derived from the ``Transformer`` type. They receive protocol
+messages of a certain type from an async channel, transform them, and send them
+to another async queue:
+
+.. literalinclude:: examples/pseudo_encrypt.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_multibuf-examples-pseudo_encrypt-transformer]
+   :end-before: [pw_multibuf-examples-pseudo_encrypt-transformer]
+
+For example, the ``Relay`` type uses the ``From`` methods above to transform
+messages up or down the protocl stack:
 
 .. literalinclude:: examples/pseudo_encrypt.cc
    :language: cpp
@@ -358,19 +356,8 @@ protocol messages up and down the stack using queues:
    :start-after: [pw_multibuf-examples-pseudo_encrypt-relay]
    :end-before: [pw_multibuf-examples-pseudo_encrypt-relay]
 
-.. literalinclude:: examples/pseudo_encrypt.cc
-   :language: cpp
-   :linenos:
-   :start-after: [pw_multibuf-examples-pseudo_encrypt-sender]
-   :end-before: [pw_multibuf-examples-pseudo_encrypt-sender]
-
-.. literalinclude:: examples/pseudo_encrypt.cc
-   :language: cpp
-   :linenos:
-   :start-after: [pw_multibuf-examples-pseudo_encrypt-receiver]
-   :end-before: [pw_multibuf-examples-pseudo_encrypt-receiver]
-
-The task doing the actual work of this example is the "encryptor":
+The ``Encryptor`` performs the "encryption" by XOR-ing data with a pseudorandom
+byte stream:
 
 .. literalinclude:: examples/pseudo_encrypt.cc
    :language: cpp
@@ -378,8 +365,43 @@ The task doing the actual work of this example is the "encryptor":
    :start-after: [pw_multibuf-examples-pseudo_encrypt-encryptor]
    :end-before: [pw_multibuf-examples-pseudo_encrypt-encryptor]
 
-With the addition of tasks to send and receive messages, all the pieces are in
-place to send "encrypted" messages from one end to the other:
+Even the data ``Producer`` and ``Consumer`` take this form to write and verify
+payload data, respectively:
+
+.. literalinclude:: examples/pseudo_encrypt.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_multibuf-examples-pseudo_encrypt-line_transformer]
+   :end-before: [pw_multibuf-examples-pseudo_encrypt-line_transformer]
+
+.. literalinclude:: examples/pseudo_encrypt.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_multibuf-examples-pseudo_encrypt-producer]
+   :end-before: [pw_multibuf-examples-pseudo_encrypt-producer]
+
+.. literalinclude:: examples/pseudo_encrypt.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_multibuf-examples-pseudo_encrypt-transport_segment-payload]
+   :end-before: [pw_multibuf-examples-pseudo_encrypt-transport_segment-payload]
+
+.. literalinclude:: examples/pseudo_encrypt.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_multibuf-examples-pseudo_encrypt-consumer]
+   :end-before: [pw_multibuf-examples-pseudo_encrypt-consumer]
+
+Finally, a ``Recycler`` type resets buffers to be reused:
+
+.. literalinclude:: examples/pseudo_encrypt.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_multibuf-examples-pseudo_encrypt-recycler]
+   :end-before: [pw_multibuf-examples-pseudo_encrypt-recycler]
+
+All of these tasks can then be connected to one another, given some buffers to
+work with, and run end to end:
 
 .. literalinclude:: examples/pseudo_encrypt.cc
    :language: cpp
