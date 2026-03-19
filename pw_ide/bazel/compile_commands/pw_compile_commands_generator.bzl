@@ -32,29 +32,30 @@ def _resolve_target_pattern(target_pattern):
     """Converts a string that may contain wildcards to its canonical form."""
     is_subtracted = target_pattern.startswith("-")
     target_pattern = target_pattern.lstrip("-")
-    if not target_pattern.endswith("..."):
-        return "{}{}".format(
-            "-" if is_subtracted else "",
-            native.package_relative_label(target_pattern),
-        )
-
-    # Three cases to handle:
-    #   ...
-    #   //...
-    #   //foo_package/...
-    wildcard_token = "..." if target_pattern.endswith("//...") or target_pattern == "..." else "/..."
-    absolute_pattern = target_pattern.replace(
-        wildcard_token,
-        ":_pw_internal_fake_target_name",
-    )
-    absolute_pattern = str(native.package_relative_label(absolute_pattern))
-    absolute_pattern = absolute_pattern.replace(
-        ":_pw_internal_fake_target_name",
-        wildcard_token,
-    )
     return "{}{}".format(
         "-" if is_subtracted else "",
-        absolute_pattern,
+        _resolve_target_pattern_base(target_pattern),
+    )
+
+def _resolve_target_pattern_base(target_pattern):
+    if not target_pattern.endswith("..."):
+        return native.package_relative_label(target_pattern)
+
+    if target_pattern == "...":
+        return str(native.package_relative_label(":all")).replace(":all", "/...")
+
+    # Two cases to handle:
+    #   //...
+    #   //foo_package/...
+    wildcard_token = "..." if target_pattern.endswith("//...") else "/..."
+    fake_target_name = ":_pw_internal_fake_target_name"
+    absolute_pattern = target_pattern.replace(
+        wildcard_token,
+        fake_target_name,
+    )
+    return str(native.package_relative_label(absolute_pattern)).replace(
+        fake_target_name,
+        wildcard_token,
     )
 
 def _collect_target_patterns(ctx):
@@ -171,13 +172,14 @@ _pw_compile_commands_generator = rule(
         "config_out": attr.output(mandatory = True),
         "deps": attr.label_list(providers = [_CompileCommandsGroupInfo]),
         "platform": attr.string(),
+        "symlink_prefix": attr.string(default = ""),
         "target_patterns": attr.string_list(),
         "_updater": attr.label(default = Label("//pw_ide/bazel:update_compile_commands"), executable = True, cfg = "target"),
     },
     executable = True,
 )
 
-def pw_compile_commands_generator(name, target_patterns = [], deps = [], platform = None, **kwargs):
+def pw_compile_commands_generator(name, target_patterns = None, deps = None, platform = None, symlink_prefix = "", **kwargs):
     """A rule that can be used to build a compile command database.
 
     This rule can be `bazel run` to generate a compile command database at
@@ -190,8 +192,22 @@ def pw_compile_commands_generator(name, target_patterns = [], deps = [], platfor
       deps: A list of other `pw_compile_commands_generator` targets to include
         in this database.
       platform: The platform to use to evaluate the provided `target_patterns`.
+      symlink_prefix: The prefix used for Bazel convenience symlinks (e.g. "out/").
       **kwargs: Extra arguments to pass to the underlying `native_binary` rule.
     """
+    if target_patterns == None:
+        target_patterns = []
+    if deps == None:
+        deps = []
+
+    args = [
+        "--compile-command-groups",
+        "$(rootpath :{}_target_patterns.json)".format(name),
+    ]
+
+    if symlink_prefix:
+        args.extend(["--symlink-prefix", symlink_prefix])
+
     _pw_compile_commands_generator(
         name = name,
         deps = deps,
@@ -200,10 +216,8 @@ def pw_compile_commands_generator(name, target_patterns = [], deps = [], platfor
             for pattern in target_patterns
         ],
         config_out = "{}_target_patterns.json".format(name),
-        args = [
-            "--compile-command-groups",
-            "$(rootpath :{}_target_patterns.json)".format(name),
-        ],
+        args = args,
+        symlink_prefix = symlink_prefix,
         # Don't follow aliases, they technically mean different things from
         # a configuration perspective.
         platform = str(native.package_relative_label(platform)) if platform else None,

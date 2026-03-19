@@ -35,6 +35,8 @@ pub struct BaseConfig {
     pub apps: Vec<AppConfig>,
     #[serde(skip_deserializing)]
     pub arch_crate_name: &'static str,
+    #[serde(skip_deserializing)]
+    pub userspace: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -55,6 +57,8 @@ pub struct Armv8MNvicConfig {
 #[serde(deny_unknown_fields)]
 pub struct RiscVConfig;
 
+use crate::mpu_validation::MpuValidationMode;
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct KernelConfig {
@@ -63,6 +67,12 @@ pub struct KernelConfig {
     pub ram_start_address: u64,
     pub ram_size_bytes: u64,
     pub interrupt_table: Option<InterruptTableConfig>,
+    /// MPU validation mode for memory layout compatibility checking.
+    /// - "strict": Fail build on any MPU issues
+    /// - "warn": Emit warnings but continue (default)
+    /// - "permissive": Silent
+    #[serde(default)]
+    pub mpu_validation: MpuValidationMode,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]

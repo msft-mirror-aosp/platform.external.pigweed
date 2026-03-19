@@ -12,7 +12,7 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use system_generator::{ArchConfigInterface, Cli, SystemGenerator, system_config};
@@ -59,11 +59,18 @@ impl ArchConfigInterface for ArchConfig {
             ArchConfig::RiscV(config) => config.get_interrupt_table_link_section(),
         }
     }
+
+    fn validate_mpu(&self, config: &system_config::BaseConfig) -> Result<()> {
+        match self {
+            ArchConfig::Armv8M(arch_config) => arch_config.validate_mpu(config),
+            ArchConfig::RiscV(arch_config) => arch_config.validate_mpu(config),
+        }
+    }
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = system_generator::parse_config::<ArchConfig>(&cli)?;
     let mut system_generator = SystemGenerator::new(cli, config)?;
-    system_generator.generate().map_err(|e| anyhow!("{e}"))
+    system_generator.generate()
 }

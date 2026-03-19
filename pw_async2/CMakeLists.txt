@@ -42,13 +42,13 @@ pw_add_test(pw_async2.poll_test
 
 pw_add_library(pw_async2 STATIC
   HEADERS
+    public/pw_async2/await.h
     public/pw_async2/context.h
     public/pw_async2/dispatcher.h
     public/pw_async2/future.h
     public/pw_async2/future_task.h
     public/pw_async2/internal/lock.h
     public/pw_async2/internal/logging.h
-    public/pw_async2/internal/owned_task.h
     public/pw_async2/runnable_dispatcher.h
     public/pw_async2/task.h
     public/pw_async2/waker.h
@@ -61,9 +61,11 @@ pw_add_library(pw_async2 STATIC
   PUBLIC_DEPS
     pw_assert.assert
     pw_async2.config
+    pw_allocator
     pw_chrono.system_clock
     pw_containers.intrusive_forward_list
     pw_containers.intrusive_list
+    pw_containers.optional
     pw_function
     pw_log
     pw_log.args
@@ -78,6 +80,7 @@ pw_add_library(pw_async2 STATIC
     pw_third_party.fuchsia.stdcompat
   PRIVATE_DEPS
     pw_assert.check
+    pw_async2._yield
     pw_thread.sleep
   SOURCES
     context.cc
@@ -86,6 +89,16 @@ pw_add_library(pw_async2 STATIC
     runnable_dispatcher.cc
     task.cc
     waker.cc
+)
+
+pw_add_library(pw_async2._yield INTERFACE
+  HEADERS
+    private/pw_async2_private/yield.h
+  PUBLIC_INCLUDES
+    private
+  PUBLIC_DEPS
+    pw_chrono.system_clock
+    pw_thread.sleep
 )
 
 pw_add_library(pw_async2.dispatcher INTERFACE
@@ -257,6 +270,28 @@ pw_add_test(pw_async2.value_future_thread_test
     pw_thread.thread
 )
 
+pw_add_library(pw_async2.box INTERFACE
+  HEADERS
+    public/pw_async2/box.h
+  PUBLIC_DEPS
+    pw_allocator.allocator
+    pw_async2
+  PUBLIC_INCLUDES
+    public
+)
+
+pw_add_test(pw_async2.box_test
+  SOURCES
+    box_test.cc
+  PRIVATE_DEPS
+    pw_async2
+    pw_async2.box
+    pw_async2.select
+    pw_async2.testing
+    pw_async2.value_future
+    pw_allocator.testing
+)
+
 # TODO: b/481069684 - Remove deprecated alias.
 pw_add_library(pw_async2.func_task INTERFACE
   PUBLIC_DEPS
@@ -296,23 +331,18 @@ pw_add_test(pw_async2.callback_task_test
     pw_function
 )
 
-pw_add_library(pw_async2.allocate_task INTERFACE
-  HEADERS
-    public/pw_async2/allocate_task.h
-  PUBLIC_DEPS
-    pw_async2
-    pw_allocator.allocator
-  PUBLIC_INCLUDES
-    public
-)
+
 
 pw_add_test(pw_async2.allocate_task_test
   SOURCES
     allocate_task_test.cc
   PRIVATE_DEPS
-    pw_async2.allocate_task
+    pw_async2
     pw_async2.testing
+    pw_async2.value_future
     pw_allocator.testing
+    pw_function
+    pw_status
 )
 
 
@@ -339,15 +369,20 @@ if("cxx_std_20" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
   pw_add_library(pw_async2.coro STATIC
     HEADERS
       public/pw_async2/coro.h
+      public/pw_async2/coro_task.h
+      public/pw_async2/fallible_coro_task.h
     SOURCES
       coro.cc
+      coro_task.cc
     PRIVATE_DEPS
+      pw_assert.check
       pw_log
     PUBLIC_DEPS
       pw_allocator.allocator
+      pw_assert.assert
       pw_async2
+      pw_containers.optional
       pw_function
-      pw_status
     PUBLIC_INCLUDES
       public
   )
@@ -356,35 +391,48 @@ if("cxx_std_20" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
     SOURCES
       coro_test.cc
     PRIVATE_DEPS
-      pw_async2.testing
       pw_allocator.null_allocator
       pw_allocator.testing
       pw_async2.coro
+      pw_async2.testing
+      pw_containers._test_helpers
       pw_status
+      pw_compilation_testing._pigweed_only_negative_compilation
   )
 
-  pw_add_library(pw_async2.coro_or_else_task INTERFACE
-    HEADERS
-      public/pw_async2/coro_or_else_task.h
-    PUBLIC_DEPS
-      pw_async2.coro
-      pw_async2
-      pw_function
-      pw_status
-    PUBLIC_INCLUDES
-      public
-  )
-
-  pw_add_test(pw_async2.coro_or_else_task_test
+  pw_add_test(pw_async2.fallible_coro_task_test
     SOURCES
-      coro_or_else_task_test.cc
+      fallible_coro_task_test.cc
+    PRIVATE_DEPS
+      pw_allocator.null_allocator
+      pw_allocator.testing
+      pw_async2
+      pw_async2.coro
+      pw_async2.testing
+      pw_async2.value_future
+      pw_containers._test_helpers
+      pw_status
+  )
+
+  pw_add_test(pw_async2.coro_task_test
+    SOURCES
+      coro_task_test.cc
     PRIVATE_DEPS
       pw_async2.coro
-      pw_async2.coro_or_else_task
       pw_async2
-      pw_allocator.null_allocator
+      pw_async2.testing
       pw_allocator.testing
       pw_status
+  )
+
+  pw_add_test(pw_async2.allocate_task_coro_test
+    SOURCES
+      allocate_task_coro_test.cc
+    PRIVATE_DEPS
+      pw_async2.coro
+      pw_async2
+      pw_async2.testing
+      pw_allocator.testing
   )
 endif()
 
@@ -600,6 +648,25 @@ pw_add_test(pw_async2.dispatcher_thread_test
     pw_thread.thread
 )
 
+pw_add_test(pw_async2.dispatcher_stress_test
+  SOURCES
+    dispatcher_stress_test.cc
+  PRIVATE_DEPS
+    pw_assert
+    pw_async2
+    pw_async2.notified_dispatcher
+    pw_allocator.libc_allocator
+    pw_containers.dynamic_queue
+    pw_containers.dynamic_vector
+    pw_log
+    pw_sync.lock_annotations
+    pw_sync.mutex
+    pw_sync.thread_notification
+    pw_thread.test_thread_context
+    pw_thread.thread
+    pw_thread.yield
+)
+
 if("cxx_std_20" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
   pw_add_test(pw_async2.channel_coro_test
     SOURCES
@@ -607,7 +674,6 @@ if("cxx_std_20" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
     PRIVATE_DEPS
       pw_async2.channel
       pw_async2.coro
-      pw_async2.coro_or_else_task
       pw_async2
       pw_async2.testing
       pw_allocator.testing

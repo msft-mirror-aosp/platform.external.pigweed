@@ -14,7 +14,9 @@
 
 #![no_main]
 
-use {arch_host as _, console_backend as _, kernel as _};
+use arch_host as _;
+use console_backend as _;
+use kernel as _;
 
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -25,9 +27,13 @@ pub extern "C" fn pw_assert_HandleFailure() -> ! {
 #[unsafe(no_mangle)]
 pub extern "C" fn main() -> core::ffi::c_int {
     #[cfg(test)]
-    match unittest_core::run_bare_metal_tests!() {
-        unittest_core::TestsResult::AllPassed => 0,
-        unittest_core::TestsResult::SomeFailed => 1,
+    {
+        let ret = match unittest_core::run_bare_metal_tests!() {
+            unittest_core::TestsResult::AllPassed => 0,
+            unittest_core::TestsResult::SomeFailed => 1,
+        };
+        pw_log::info!("Test runner exited with code {}", ret);
+        ret
     }
 
     #[cfg(not(test))]

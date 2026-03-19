@@ -191,7 +191,6 @@ cc_library(
 cc_library(
     name = "deque_common",
     hdrs = [
-        "public/pw_containers/internal/count_and_capacity.h",
         "public/pw_containers/internal/deque_iterator.h",
         "public/pw_containers/internal/generic_deque.h",
     ],
@@ -240,6 +239,18 @@ cc_library(
         "//pw_allocator:allocator",
         "//pw_assert:assert",
         "//pw_preprocessor",
+    ],
+)
+
+cc_library(
+    name = "dynamic_map",
+    hdrs = ["public/pw_containers/dynamic_map.h"],
+    strip_include_prefix = "public",
+    deps = [
+        ":common",
+        ":intrusive_map",
+        "//pw_allocator:allocator",
+        "//pw_assert:assert",
     ],
 )
 
@@ -442,7 +453,7 @@ cc_library(
     ],
     implementation_deps = ["//pw_assert:check"],
     strip_include_prefix = "public",
-    visibility = [":__subpackages__"],
+    visibility = ["//:__subpackages__"],
     deps = [
         ":algorithm",
         "//pw_unit_test",
@@ -459,6 +470,20 @@ cc_library(
     name = "wrapped_iterator",
     hdrs = ["public/pw_containers/wrapped_iterator.h"],
     strip_include_prefix = "public",
+)
+
+cc_library(
+    name = "optional",
+    hdrs = [
+        "public/pw_containers/internal/optional.h",
+        "public/pw_containers/internal/optional_data.h",
+    ],
+    strip_include_prefix = "public",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//pw_assert:assert",
+        "//pw_preprocessor",
+    ],
 )
 
 # Unit tests
@@ -624,6 +649,16 @@ pw_cc_test(
     srcs = ["dynamic_hash_map_test.cc"],
     deps = [
         ":dynamic_hash_map",
+        ":test_helpers",
+        "//pw_allocator:testing",
+    ],
+)
+
+pw_cc_test(
+    name = "dynamic_map_test",
+    srcs = ["dynamic_map_test.cc"],
+    deps = [
+        ":dynamic_map",
         ":test_helpers",
         "//pw_allocator:testing",
     ],
@@ -854,6 +889,17 @@ pw_cc_test(
     ],
 )
 
+pw_cc_test(
+    name = "optional_test",
+    srcs = ["optional_test.cc"],
+    deps = [
+        ":optional",
+        ":test_helpers",
+        "//pw_unit_test",
+        "//pw_unit_test:constexpr",
+    ],
+)
+
 filegroup(
     name = "doxygen",
     srcs = [
@@ -862,6 +908,7 @@ filegroup(
         "public/pw_containers/deque.h",
         "public/pw_containers/dynamic_deque.h",
         "public/pw_containers/dynamic_hash_map.h",
+        "public/pw_containers/dynamic_map.h",
         "public/pw_containers/dynamic_ptr_vector.h",
         "public/pw_containers/dynamic_queue.h",
         "public/pw_containers/dynamic_vector.h",
@@ -875,6 +922,7 @@ filegroup(
         "public/pw_containers/internal/generic_deque.h",
         "public/pw_containers/internal/generic_queue.h",
         "public/pw_containers/internal/intrusive_list.h",
+        "public/pw_containers/internal/optional.h",
         "public/pw_containers/intrusive_forward_list.h",
         "public/pw_containers/intrusive_list.h",
         "public/pw_containers/intrusive_map.h",

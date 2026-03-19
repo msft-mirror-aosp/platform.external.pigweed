@@ -24,6 +24,7 @@ cc_library_static {
         "pw_thread",
     ],
     export_include_dirs: ["public"],
+    local_include_dirs: ["private"],
     srcs: [
         "context.cc",
         "dispatcher.cc",
@@ -37,6 +38,7 @@ cc_library_static {
         "pw_chrono",
         "pw_log",
         "pw_sync",
+        "pw_thread",
     ],
     export_header_lib_headers: [
         "pw_assert",
@@ -45,12 +47,14 @@ cc_library_static {
         "pw_sync",
     ],
     static_libs: [
+        "pw_allocator",
         "pw_containers",
         "pw_memory",
         "pw_string",
         "pw_tokenizer",
     ],
     export_static_lib_headers: [
+        "pw_allocator",
         "pw_memory",
         "pw_string",
     ],

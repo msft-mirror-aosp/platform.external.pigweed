@@ -15,10 +15,10 @@
 #include "pw_async2/channel.h"
 
 #include "pw_allocator/testing.h"
+#include "pw_async2/await.h"
 #include "pw_async2/coro.h"
-#include "pw_async2/coro_or_else_task.h"
+#include "pw_async2/coro_task.h"
 #include "pw_async2/dispatcher_for_test.h"
-#include "pw_async2/try.h"
 #include "pw_containers/vector.h"
 #include "pw_unit_test/framework.h"
 
@@ -45,7 +45,8 @@ class Producer : public Task {
       if (!send_future_.is_pendable()) {
         send_future_ = sender_.Send(data_);
       }
-      PW_TRY_READY(send_future_.Pend(cx));
+      PW_AWAIT(send_future_, cx);
+      send_future_ = {};
       ++data_;
     }
     sender_.Disconnect();
@@ -70,7 +71,7 @@ class Consumer : public Task {
       if (!receive_future_.is_pendable()) {
         receive_future_ = receiver_.Receive();
       }
-      PW_TRY_READY_ASSIGN(std::optional<int> result, receive_future_.Pend(cx));
+      PW_AWAIT(std::optional<int> result, receive_future_, cx);
       if (!result.has_value()) {
         break;
       }
@@ -124,16 +125,22 @@ using pw::async2::CoroContext;
 using pw::async2::Receiver;
 using pw::async2::Sender;
 
-Coro<pw::Status> CoroProducer(CoroContext&, Sender<int> sender) {
-  for (int data = 0; data < 3; ++data) {
-    co_await sender.Send(data);
+// Returns the number of ints that were successfully sent.
+Coro<int> CoroProducer(CoroContext, Sender<int> sender) {
+  int data = 0;
+  for (; data < 3; ++data) {
+    if (!co_await sender.Send(data)) {
+      break;
+    }
   }
-  co_return pw::OkStatus();
+  co_return data;
 }
 
-Coro<pw::Status> CoroConsumer(CoroContext&,
-                              Receiver<int> receiver,
-                              pw::Vector<int>& values) {
+// Reads values from the receiver and stores them in `values` until the channel
+// closes.
+Coro<void> CoroConsumer(CoroContext,
+                        Receiver<int> receiver,
+                        pw::Vector<int>& values) {
   while (true) {
     std::optional<int> result = co_await receiver.Receive();
     if (!result.has_value()) {
@@ -141,39 +148,29 @@ Coro<pw::Status> CoroConsumer(CoroContext&,
     }
     values.push_back(*result);
   }
-  co_return pw::OkStatus();
 }
 // DOCSTAG: [pw_async2-examples-channel-coro]
 
 TEST(Channel, Coro) {
   pw::allocator::test::AllocatorForTest<1024> alloc;
   pw::async2::DispatcherForTest dispatcher;
-  pw::async2::CoroContext coro_cx(alloc);
 
   pw::async2::ChannelStorage<int, 1> storage;
   auto [channel, sender, receiver] = CreateSpscChannel<int>(storage);
-
-  // The returned channel handle is used to create senders and receivers.
-  // Since this is a single producer single consumer channel, that isn't
-  // possible, so its only other use is to manually close the channel.
-  // We don't need that as we rely on automatic closing when the sender
-  // completes.
-  //
-  // It is important to call `Release` once you are done with the handle to
-  // prevent keeping the channel alive longer than needed.
   channel.Release();
 
+  auto producer = pw::async2::CoroTask(CoroProducer(alloc, std::move(sender)));
   pw::Vector<int, 3> values;
-  auto producer = pw::async2::CoroOrElseTask(
-      CoroProducer(coro_cx, std::move(sender)), [](pw::Status) {});
-  auto consumer = pw::async2::CoroOrElseTask(
-      CoroConsumer(coro_cx, std::move(receiver), values), [](pw::Status) {});
+  auto consumer =
+      pw::async2::CoroTask(CoroConsumer(alloc, std::move(receiver), values));
 
   dispatcher.Post(producer);
   dispatcher.Post(consumer);
 
   dispatcher.RunToCompletion();
 
+  EXPECT_EQ(producer.Wait(), 3);
+  consumer.Join();
   EXPECT_EQ(values.size(), 3u);
 }
 

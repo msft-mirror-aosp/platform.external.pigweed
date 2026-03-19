@@ -52,9 +52,9 @@ bazel_dep(name = "rules_nodejs", version = "6.3.3")
 bazel_dep(name = "rules_platform", version = "0.1.0")
 bazel_dep(name = "rules_probe_rs", version = "0.0.6")
 bazel_dep(name = "rules_python", version = "1.8.3")
-bazel_dep(name = "rules_rust", version = "0.65.0")
-bazel_dep(name = "rules_rust_prost", version = "0.65.0")
-bazel_dep(name = "rules_shell", version = "0.4.0")
+bazel_dep(name = "rules_rust", version = "0.68.1")
+bazel_dep(name = "rules_rust_prost", version = "0.68.1")
+bazel_dep(name = "rules_shell", version = "0.6.1")
 
 bazel_dep(name = "rules_doxygen", version = "2.4.2", dev_dependency = True)
 bazel_dep(name = "rules_mypy", version = "0.38.0", dev_dependency = True)
@@ -119,11 +119,6 @@ git_repository(
 )
 # LINT.ThenChange(/pw_package/py/pw_package/packages/emboss.py:emboss)
 
-# TODO: b/383856665 - rules_fuchsia requires host_platform. Once this is fixed
-# we can remove this entry.
-host_platform = use_extension("@platforms//host:extension.bzl", "host_platform")
-use_repo(host_platform, "host_platform")
-
 # Configure libusb
 # ================
 #
@@ -149,9 +144,9 @@ pw_cxx_toolchain = use_extension("//pw_toolchain/cc:pw_cxx_toolchain.bzl", "pw_c
 
 # Fetch llvm toolchain.
 # ROLL: Warning: this variable is automatically updated.
-# ROLL: Last updated 2026-02-23.
-# ROLL: By https://cr-buildbucket.appspot.com/build/8689047054538495041.
-LLVM_VERSION = "git_revision:3603038c09a94f112a477a51a6eb4061bea674fd"
+# ROLL: Last updated 2026-03-17.
+# ROLL: By https://cr-buildbucket.appspot.com/build/8687120024257295665.
+LLVM_VERSION = "git_revision:9de31c4a3e77ceb1e736d4df3ae9e3f5a1dc8748"
 
 pw_cxx_toolchain.llvm(cipd_tag = LLVM_VERSION)
 pw_cxx_toolchain.arm_gcc(cipd_tag = "version:2@12.2.MPACBTI-Rel1.1")
@@ -192,11 +187,20 @@ use_repo(cc_compatibility_proxy, "cc_compatibility_proxy")
 pw_rust = use_extension("//pw_toolchain/rust:extensions.bzl", "pw_rust")
 
 # ROLL: Warning: this variable is automatically updated.
-# ROLL: Last updated 2026-02-23.
-# ROLL: By https://cr-buildbucket.appspot.com/build/8689047054538495041.
-RUST_VERSION = "git_revisions:c043085801b7a884054add21a94882216df5971c,3603038c09a94f112a477a51a6eb4061bea674fd"
+# ROLL: Last updated 2026-03-17.
+# ROLL: By https://cr-buildbucket.appspot.com/build/8687120024257295665.
+RUST_VERSION = "git_revisions:9f0615c4301206eeba76468f78d34876c4a2997e,9de31c4a3e77ceb1e736d4df3ae9e3f5a1dc8748"
 
-pw_rust.toolchain(cipd_tag = RUST_VERSION)
+# TODO(b/488384121): Setup a roller
+# ROLL: Warning: this variable is automatically updated.
+# ROLL: Last updated 2026-03-07.
+# ROLL: By https://cr-buildbucket.appspot.com/build/8687956729258883537.
+RUST_ANALYZER_VERSION = "git_revision:a1b86d600f88be98643e5dd61d6ed26eda17c09e"
+
+pw_rust.toolchain(
+    cipd_tag = RUST_VERSION,
+    rust_analyzer_cipd_tag = RUST_ANALYZER_VERSION,
+)
 use_repo(pw_rust, "pw_rust_toolchains")
 
 register_toolchains(
@@ -274,16 +278,56 @@ python.toolchain(
 use_repo(python, "pythons_hub")
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.default(
+    # This special "none_any_mcu" pip platform allows rules_python to find PIP
+    # packages when the target platform is an MCU. However the MCU is not
+    # actually expected to run any Python code.
+    #
+    # We must associate this platform with requirements files. We do so with
+    # the pip configurations below, using upstream_requirements_linux_lock.txt.
+    # The
+    #
+    # Behind the scenes rules_python is creating Bazel alias rules that
+    # map each Python package to a repo using a select expression that uses
+    # the targets (filtered to those that match the "target_platform" setting).
+    #
+    # The default for those select expressions is a special internal
+    # "_no_matching_repository" match that generates an error. This is meant
+    # to catch the pip repo not having a build for a given host target, but
+    # isn't great for an MCU target that will never have a match.
+    #
+    # The only way to stop Bazel from triggering the error otherwise requires
+    # ensuring no rules build anything that require the deps, using perhaps
+    # a "target_compatible_with = incompatible_with_mcu()" attribute, but that
+    # requires rules that support that attribute. With rules_python 1.8.3, its
+    # own "py_console_script_binary" does not, which is why workaround is being
+    # used.
+
+    # A valid arch_name is required, but the value does not matter since this
+    # configuration is for any target with @platforms//os:none
+    arch_name = "aarch32",
+    config_settings = [
+        "@platforms//os:none",
+    ],
+    os_name = "none",
+    platform = "none_any_mcu",
+)
 pip.parse(
     envsubst = ["PIGWEED_PIP_INDEX_URL"],
     experimental_index_url = "${PIGWEED_PIP_INDEX_URL:-https://pypi.org/simple}",
     hub_name = "pigweed_python_packages",
     python_version = "3.10",
     requirements_by_platform = {
+        # All supported target_platforms, including none_any_mcu must have an
+        # associated requirements file.
         "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_darwin_lock.txt": "osx_aarch64",
-        "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_linux_lock.txt": "linux_x86_64,linux_aarch64",
-        "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_windows_lock.txt": "windows_x86_64, windows_aarch64",
+        "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_linux_lock.txt": "linux_x86_64,linux_aarch64,none_any_mcu",
+        "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_windows_lock.txt": "windows_x86_64,windows_aarch64",
     },
+    target_platforms = [
+        "{os}_{arch}",
+        "none_any_mcu",
+    ],
 )
 pip.parse(
     envsubst = ["PIGWEED_PIP_INDEX_URL"],
@@ -291,10 +335,16 @@ pip.parse(
     hub_name = "pigweed_python_packages",
     python_version = "3.11",
     requirements_by_platform = {
+        # All supported target_platforms, including none_any_mcu must have an
+        # associated requirements file.
         "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_darwin_lock.txt": "osx_aarch64",
-        "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_linux_lock.txt": "linux_x86_64,linux_aarch64",
-        "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_windows_lock.txt": "windows_x86_64, window_aarch64",
+        "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_linux_lock.txt": "linux_x86_64,linux_aarch64,none_any_mcu",
+        "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_windows_lock.txt": "windows_x86_64,windows_aarch64",
     },
+    target_platforms = [
+        "{os}_{arch}",
+        "none_any_mcu",
+    ],
 )
 pip.parse(
     envsubst = ["PIGWEED_PIP_INDEX_URL"],
@@ -302,10 +352,16 @@ pip.parse(
     hub_name = "pigweed_python_packages",
     python_version = "3.12",
     requirements_by_platform = {
+        # All supported target_platforms, including none_any_mcu must have an
+        # associated requirements file.
         "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_darwin_lock.txt": "osx_aarch64",
-        "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_linux_lock.txt": "linux_x86_64,linux_aarch64",
+        "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_linux_lock.txt": "linux_x86_64,linux_aarch64,none_any_mcu",
         "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_windows_lock.txt": "windows_x86_64,windows_aarch64",
     },
+    target_platforms = [
+        "{os}_{arch}",
+        "none_any_mcu",
+    ],
 )
 use_repo(pip, "pigweed_python_packages")
 
@@ -545,39 +601,67 @@ use_repo(pnpm, "pnpm")
 
 # Setup Fuchsia SDK.
 # ==================
+# Since `@fuchsia_infra` isn't a real BCR module and relies on `git_override` to bring in its
+# transitive dependencies, mark it as a `dev_dependency` for now.
+bazel_dep(name = "fuchsia_infra", dev_dependency = True)
+git_override(
+    module_name = "fuchsia_infra",
+    # ROLL: Warning: this entry is automatically updated by
+    # ROLL: https://cr-buildbucket.appspot.com/builder/pigweed/tools.roll/fuchsia-infra-bazel-rules-roller
+    commit = "e128163af6079a2b5f4ad2c27097ccb3bec1b260",
+    remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
+)
+
 FUCHSIA_SDK_VERSION = "version:30.20260128.1.1"
 
-cipd_repository(
-    name = "fuchsia_sdk",
-    path = "fuchsia/sdk/core/fuchsia-bazel-rules/linux-amd64",
-    tag = FUCHSIA_SDK_VERSION,
-)
+# Use `cipd_ext` and `fuchsia_clang_ext` from `@fuchsia_infra` to override `@fuchsia_infra`'s
+# instantiations of `@rules_fuchsia`, `@fuchsia_sdk` and `@fuchsia_clang`.
+#
+# This simultaneously allows:
+#  - `@rules_fuchsia`/`@fuchsia_sdk` builddefs to have providers compatible with
+#    `@fuchsia_infra` builddefs,
+#  - the version of `@fuchsia_products` to be aligned with `@rules_fuchsia` and `@fuchsia_sdk`,
+#  - not double-fetching large dependencies like `@fuchsia_sdk` and `@fuchsia_clang`, and
+#  - decoupling `@fuchsia_infra` vs `@rules_fuchsia`/`@fuchsia_sdk` vs `@fuchsia_clang` versions.
+fuchsia_cipd_ext = use_extension("@fuchsia_infra//cipd:defs.bzl", "cipd_ext", dev_dependency = True)
 
-cipd_repository(
+fuchsia_clang_ext = use_extension("@fuchsia_infra//:extensions.bzl", "fuchsia_clang_ext", dev_dependency = True)
+
+fuchsia_cipd_ext.repository(
     name = "rules_fuchsia",
-    path = "fuchsia/development/rules_fuchsia",
+    cipd_bin = "@cipd_client//:cipd",
+    package = "fuchsia/development/rules_fuchsia",
     tag = FUCHSIA_SDK_VERSION,
 )
+use_repo(fuchsia_cipd_ext, "rules_fuchsia")
 
-fuchsia_clang_repository = use_repo_rule("@rules_fuchsia//fuchsia/workspace:fuchsia_clang_repository.bzl", "fuchsia_clang_repository")
-
-fuchsia_clang_repository(
-    name = "fuchsia_clang",
-    cipd_tag = "git_revision:aea60ab94db4729bad17daa86ccfc411d48a1699",
+fuchsia_cipd_ext.repository(
+    name = "fuchsia_sdk",
+    cipd_bin = "@cipd_client//:cipd",
+    package = "fuchsia/sdk/core/fuchsia-bazel-rules/linux-amd64",
+    tag = FUCHSIA_SDK_VERSION,
 )
+use_repo(fuchsia_cipd_ext, "fuchsia_sdk")
 
 cipd_repository(
     name = "fuchsia_products_metadata",
+    dev_dependency = True,
     path = "fuchsia/development/product_bundles/v2",
     tag = FUCHSIA_SDK_VERSION,
 )
 
-fuchsia_products_repository = use_repo_rule("//pw_build/bazel_internal/fuchsia_sdk_workspace:products.bzl", "fuchsia_products_repository")
+fuchsia_products_repository = use_repo_rule("@rules_fuchsia//fuchsia:products.bzl", "fuchsia_products_repository")
 
 fuchsia_products_repository(
     name = "fuchsia_products",
+    dev_dependency = True,
     metadata_file = "@fuchsia_products_metadata//:product_bundles.json",
 )
+
+fuchsia_clang_ext.cipd_tag(
+    cipd_tag = LLVM_VERSION,
+)
+use_repo(fuchsia_clang_ext, "fuchsia_clang")
 
 register_toolchains(
     "//pw_toolchain/fuchsia:fuchsia_sdk_toolchain",

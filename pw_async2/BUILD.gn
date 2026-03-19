@@ -42,6 +42,17 @@ pw_test("poll_test") {
     "$dir_pw_result",
   ]
   sources = [ "poll_test.cc" ]
+  enable_if = pw_chrono_SYSTEM_CLOCK_BACKEND != ""
+}
+
+pw_test("await_test") {
+  deps = [
+    ":pw_async2",
+    ":testing",
+    ":value_future",
+    "$dir_pw_result",
+  ]
+  sources = [ "await_test.cc" ]
   enable_if = pw_chrono_SYSTEM_CLOCK_BACKEND != "" &&
               pw_sync_INTERRUPT_SPIN_LOCK_BACKEND != ""
 }
@@ -49,12 +60,12 @@ pw_test("poll_test") {
 pw_source_set("pw_async2") {
   public_configs = [ ":public_include_path" ]
   public = [
+    "public/pw_async2/await.h",
     "public/pw_async2/context.h",
     "public/pw_async2/dispatcher.h",
     "public/pw_async2/func_task.h",
     "public/pw_async2/future.h",
     "public/pw_async2/future_task.h",
-    "public/pw_async2/internal/owned_task.h",
     "public/pw_async2/internal/poll_internal.h",
     "public/pw_async2/poll.h",
     "public/pw_async2/runnable_dispatcher.h",
@@ -64,10 +75,11 @@ pw_source_set("pw_async2") {
   ]
   public_deps = [
     ":internal",
+    "$dir_pw_allocator",
     "$dir_pw_assert",
-    "$dir_pw_chrono:system_clock",
     "$dir_pw_containers:intrusive_forward_list",
     "$dir_pw_containers:intrusive_list",
+    "$dir_pw_containers:optional",
     "$dir_pw_log:args",
     "$dir_pw_string:to_string",
     "$dir_pw_sync:lock_annotations",
@@ -80,6 +92,7 @@ pw_source_set("pw_async2") {
     dir_pw_tokenizer,
   ]
   deps = [
+    ":yield",
     "$dir_pw_assert:check",
     "$dir_pw_thread:sleep",
   ]
@@ -91,6 +104,22 @@ pw_source_set("pw_async2") {
     "task.cc",
     "waker.cc",
   ]
+}
+
+config("private_include_path") {
+  include_dirs = [ "private" ]
+  visibility = [ ":*" ]
+}
+
+pw_source_set("yield") {
+  public = [ "private/pw_async2_private/yield.h" ]
+  public_configs = [ ":private_include_path" ]
+  public_deps = [
+    ":internal",
+    "$dir_pw_chrono:system_clock",
+    "$dir_pw_thread:sleep",
+  ]
+  visibility = [ ":*" ]
 }
 
 group("dispatcher") {
@@ -248,6 +277,28 @@ pw_test("future_timeout_test") {
   sources = [ "future_timeout_test.cc" ]
 }
 
+pw_source_set("box") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_async2/box.h" ]
+  public_deps = [
+    ":pw_async2",
+    "$dir_pw_allocator:allocator",
+  ]
+}
+
+pw_test("box_test") {
+  enable_if = pw_async2_DISPATCHER_FOR_TEST_BACKEND != ""
+  deps = [
+    ":box",
+    ":pw_async2",
+    ":select",
+    ":testing",
+    ":value_future",
+    "$dir_pw_allocator:testing",
+  ]
+  sources = [ "box_test.cc" ]
+}
+
 pw_source_set("value_future") {
   public_configs = [ ":public_include_path" ]
   public = [ "public/pw_async2/value_future.h" ]
@@ -316,21 +367,15 @@ pw_test("callback_task_test") {
   enable_if = pw_chrono_SYSTEM_CLOCK_BACKEND != ""
 }
 
-pw_source_set("allocate_task") {
-  public_configs = [ ":public_include_path" ]
-  public = [ "public/pw_async2/allocate_task.h" ]
-  public_deps = [
-    ":pw_async2",
-    "$dir_pw_allocator:allocator",
-  ]
-}
-
 pw_test("allocate_task_test") {
   enable_if = pw_async2_DISPATCHER_FOR_TEST_BACKEND != ""
   deps = [
-    ":allocate_task",
+    ":pw_async2",
     ":testing",
+    ":value_future",
     "$dir_pw_allocator:testing",
+    "$dir_pw_function",
+    "$dir_pw_status",
   ]
   sources = [ "allocate_task_test.cc" ]
 }
@@ -354,16 +399,29 @@ pw_test("notification_test") {
 if (pw_toolchain_CXX_STANDARD >= pw_toolchain_STANDARD.CXX20) {
   pw_source_set("coro") {
     public_configs = [ ":public_include_path" ]
-    public = [ "public/pw_async2/coro.h" ]
+    public = [
+      "public/pw_async2/coro.h",
+      "public/pw_async2/coro_task.h",
+      "public/pw_async2/fallible_coro_task.h",
+    ]
     public_deps = [
       ":internal",
       ":pw_async2",
       "$dir_pw_allocator:allocator",
-      "$dir_pw_status",
+      "$dir_pw_assert:assert",
+      "$dir_pw_containers:optional",
       dir_pw_function,
     ]
-    deps = [ dir_pw_log ]
-    sources = [ "coro.cc" ]
+    deps = [
+      "$dir_pw_assert:check",
+      dir_pw_log,
+    ]
+    sources = [
+      "coro.cc",
+      "coro_task.cc",
+      "public/pw_async2/coro_or_else_task.h",
+    ]
+    allow_circular_includes_from = [ ":pw_async2" ]
   }
 
   pw_test("coro_test") {
@@ -374,33 +432,48 @@ if (pw_toolchain_CXX_STANDARD >= pw_toolchain_STANDARD.CXX20) {
       ":testing",
       "$dir_pw_allocator:null_allocator",
       "$dir_pw_allocator:testing",
+      "$dir_pw_containers:test_helpers",
       "$dir_pw_status",
     ]
     sources = [ "coro_test.cc" ]
+    negative_compilation_tests = true
   }
 
-  pw_source_set("coro_or_else_task") {
-    public_configs = [ ":public_include_path" ]
-    public = [ "public/pw_async2/coro_or_else_task.h" ]
-    public_deps = [
+  pw_test("fallible_coro_task_test") {
+    enable_if = pw_async2_DISPATCHER_FOR_TEST_BACKEND != ""
+    sources = [ "fallible_coro_task_test.cc" ]
+    deps = [
       ":coro",
       ":pw_async2",
-      "$dir_pw_function",
+      ":testing",
+      ":value_future",
+      "$dir_pw_allocator:null_allocator",
+      "$dir_pw_allocator:testing",
+      "$dir_pw_containers:test_helpers",
       "$dir_pw_status",
     ]
   }
 
-  pw_test("coro_or_else_task_test") {
+  pw_test("coro_task_test") {
     enable_if = pw_async2_DISPATCHER_FOR_TEST_BACKEND != ""
-    sources = [ "coro_or_else_task_test.cc" ]
+    sources = [ "coro_task_test.cc" ]
     deps = [
       ":coro",
-      ":coro_or_else_task",
       ":pw_async2",
       ":testing",
-      "$dir_pw_allocator:null_allocator",
       "$dir_pw_allocator:testing",
       "$dir_pw_status",
+    ]
+  }
+
+  pw_test("allocate_task_coro_test") {
+    enable_if = pw_async2_DISPATCHER_FOR_TEST_BACKEND != ""
+    sources = [ "allocate_task_coro_test.cc" ]
+    deps = [
+      ":coro",
+      ":pw_async2",
+      ":testing",
+      "$dir_pw_allocator:testing",
     ]
   }
 }
@@ -411,6 +484,7 @@ pw_source_set("time_provider") {
   public_configs = [ ":public_include_path" ]
   public_deps = [
     "$dir_pw_async2:dispatcher",
+    "$dir_pw_chrono:virtual_clock",
     "$dir_pw_containers:intrusive_list",
     "$dir_pw_sync:interrupt_spin_lock",
     "$dir_pw_toolchain:no_destructor",
@@ -611,6 +685,27 @@ pw_test("dispatcher_thread_test") {
   sources = [ "dispatcher_thread_test.cc" ]
 }
 
+pw_test("dispatcher_stress_test") {
+  enable_if = pw_async2_DISPATCHER_FOR_TEST_BACKEND != "" &&
+              pw_thread_TEST_THREAD_CONTEXT_BACKEND != ""
+  deps = [
+    ":notified_dispatcher",
+    ":pw_async2",
+    "$dir_pw_allocator:libc_allocator",
+    "$dir_pw_containers:dynamic_queue",
+    "$dir_pw_containers:dynamic_vector",
+    "$dir_pw_log",
+    "$dir_pw_sync:lock_annotations",
+    "$dir_pw_sync:mutex",
+    "$dir_pw_sync:thread_notification",
+    "$dir_pw_thread:test_thread_context",
+    "$dir_pw_thread:thread",
+    "$dir_pw_thread:yield",
+    dir_pw_assert,
+  ]
+  sources = [ "dispatcher_stress_test.cc" ]
+}
+
 if (pw_toolchain_CXX_STANDARD >= pw_toolchain_STANDARD.CXX20) {
   pw_test("channel_coro_test") {
     enable_if = pw_async2_DISPATCHER_FOR_TEST_BACKEND != ""
@@ -618,7 +713,6 @@ if (pw_toolchain_CXX_STANDARD >= pw_toolchain_STANDARD.CXX20) {
     deps = [
       ":channel",
       ":coro",
-      ":coro_or_else_task",
       ":pw_async2",
       ":testing",
       "$dir_pw_allocator:testing",
@@ -630,28 +724,32 @@ if (pw_toolchain_CXX_STANDARD >= pw_toolchain_STANDARD.CXX20) {
 pw_test_group("tests") {
   tests = [
     ":allocate_task_test",
+    ":box_test",
     ":callback_task_test",
     ":cancellable_task_test",
     ":channel_test",
     ":dispatcher_test",
     ":dispatcher_thread_test",
+    ":dispatcher_stress_test",
     ":future_test",
     ":join_test",
     ":poll_test",
     ":func_task_test",
     ":notification_test",
-
     ":select_test",
     ":simulated_time_provider_test",
     ":system_time_provider_test",
     ":task_test",
     ":value_future_test",
+    ":await_test",
   ]
   if (pw_toolchain_CXX_STANDARD >= pw_toolchain_STANDARD.CXX20) {
     tests += [
       ":channel_coro_test",
       ":coro_test",
-      ":coro_or_else_task_test",
+      ":coro_task_test",
+      ":fallible_coro_task_test",
+      ":allocate_task_coro_test",
     ]
   }
 }

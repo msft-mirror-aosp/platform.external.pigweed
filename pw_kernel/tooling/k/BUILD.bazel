@@ -23,6 +23,7 @@ rust_binary(
         "image_info.rs",
         "main.rs",
         "stacks.rs",
+        "trace.rs",
     ],
     edition = "2024",
     tags = ["kernel"],
@@ -30,7 +31,10 @@ rust_binary(
     deps = [
         "//pw_kernel/lib/magic_values",
         "//pw_kernel/lib/pw_gdb_protocol",
+        "//pw_kernel/lib/pw_kernel_tracing",
+        "//pw_kernel/lib/pw_perfetto_writer",
         "@rust_crates//:anyhow",
+        "@rust_crates//:byteorder",
         "@rust_crates//:clap",
         "@rust_crates//:object",
         "@rust_crates//:tokio",

@@ -17,29 +17,21 @@
 
 #include "pw_allocator/libc_allocator.h"
 #include "pw_assert/check.h"
-#include "pw_async2/allocate_task.h"
 #include "pw_async2/basic_dispatcher.h"
 #include "pw_async2/coro.h"
-#include "pw_async2/coro_or_else_task.h"
+#include "pw_async2/coro_task.h"
 #include "pw_async2/dispatcher.h"
 #include "pw_async2/system_time_provider.h"
 #include "pw_chrono/system_clock.h"
 #include "pw_log/log.h"
-#include "pw_result/result.h"
-#include "pw_status/status.h"
 
 using ::pw::Allocator;
-using ::pw::OkStatus;
-using ::pw::Status;
 using ::pw::allocator::GetLibCAllocator;
-using ::pw::async2::AllocateTask;
 using ::pw::async2::BasicDispatcher;
 using ::pw::async2::Coro;
 using ::pw::async2::CoroContext;
-using ::pw::async2::CoroOrElseTask;
 using ::pw::async2::Dispatcher;
 using ::pw::async2::GetSystemTimeProvider;
-using ::pw::async2::Task;
 using ::pw::async2::TimeProvider;
 using ::pw::chrono::SystemClock;
 using ::std::chrono_literals::operator""ms;
@@ -59,30 +51,21 @@ class Counter {
   // Posts a new asynchronous task which will count up to `times`, one count
   // per `period`.
   void StartCounting(SystemClock::duration period, int times) {
-    CoroContext coro_cx(*allocator_);
-    Coro<Status> coro = CountCoro(coro_cx, period, times);
-    Task* new_task =
-        AllocateTask<CoroOrElseTask>(*allocator_, std::move(coro), [](Status) {
-          PW_LOG_ERROR("Counter coroutine failed to allocate.");
-        });
-
-    // The newly allocated task will be free'd by the dispatcher
-    // upon completion.
-    dispatcher_->Post(*new_task);
+    // Allocate a new task, which is freed by the dispatcher when it completes.
+    PW_CHECK(
+        dispatcher_->Post(*allocator_, CountCoro(*allocator_, period, times)) !=
+        nullptr);
   }
   // examples-task-end
 
  private:
   // Asynchronous counter implementation.
-  Coro<Status> CountCoro(CoroContext&,
-                         SystemClock::duration period,
-                         int times) {
+  Coro<void> CountCoro(CoroContext, SystemClock::duration period, int times) {
     PW_LOG_INFO("Counting to %i", times);
     for (int i = 1; i <= times; ++i) {
       co_await time_->WaitFor(period);
       PW_LOG_INFO("%i of %i", i, times);
     }
-    co_return OkStatus();
   }
 
   Dispatcher* dispatcher_;

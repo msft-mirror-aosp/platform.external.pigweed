@@ -18,16 +18,20 @@ use pw_log::info;
 pub use time::{Duration, Instant};
 
 pub mod interrupt_controller;
+#[cfg(feature = "user_space")]
 pub mod object;
 #[cfg(not(feature = "std_panic_handler"))]
 mod panic;
 pub mod scheduler;
 pub mod sync;
+#[cfg(feature = "user_space")]
 pub mod syscall;
 mod target;
+mod trace;
 
 use interrupt_controller::InterruptController;
 use kernel_config::{KernelConfig, KernelConfigInterface};
+#[cfg(feature = "user_space")]
 pub use object::NullObjectTable;
 #[doc(hidden)]
 pub use scheduler::thread::{Process, Stack, StackStorage, StackStorageExt, Thread, ThreadState};
@@ -35,6 +39,7 @@ use scheduler::timer::TimerQueue;
 use scheduler::{PreemptDisableGuard, SchedulerState, ThreadLocalState, thread};
 pub use scheduler::{Priority, sleep_until, start_thread, yield_timeslice};
 use sync::spinlock::{BareSpinLock, SpinLock, SpinLockGuard};
+#[cfg(feature = "user_space")]
 pub use syscall::SyscallArgs;
 
 pub trait Arch: 'static + Copy + thread::ThreadArg {
@@ -43,6 +48,7 @@ pub trait Arch: 'static + Copy + thread::ThreadArg {
     type Clock: time::Clock;
     type AtomicBool: AtomicBool;
     type AtomicUsize: AtomicUsize;
+    #[cfg(feature = "user_space")]
     type SyscallArgs<'a>: SyscallArgs<'a>;
     type InterruptController: InterruptController;
 
@@ -152,6 +158,10 @@ pub struct KernelState<K: Kernel> {
     arch_state: ArchState<K>,
     scheduler: SpinLock<K, SchedulerState<K>>,
     timer_queue: SpinLock<K, TimerQueue<K>>,
+
+    // TODO: https://pwbug.dev/479857256 - Add configurable trace buffer size.
+    #[cfg(feature = "tracing")]
+    pub trace_buffer: pw_kernel_tracing::Buffer<K::AtomicUsize, 2048>,
 }
 
 impl<K: Kernel> KernelState<K> {
@@ -161,8 +171,43 @@ impl<K: Kernel> KernelState<K> {
             arch_state,
             scheduler: SpinLock::new(SchedulerState::new()),
             timer_queue: SpinLock::new(TimerQueue::new()),
+            #[cfg(feature = "tracing")]
+            trace_buffer: pw_kernel_tracing::Buffer::new(),
         }
     }
+}
+
+#[cfg(not(feature = "tracing"))]
+#[macro_export]
+macro_rules! annotate_kernel_trace_buffer {
+    ($trace_buffer:expr) => {{}};
+}
+
+#[cfg(feature = "tracing")]
+#[macro_export]
+macro_rules! annotate_kernel_trace_buffer {
+    ($trace_buffer:expr) => {{
+        #[repr(C, packed(1))]
+        struct TraceBufferAnnotation {
+            name: &'static str,
+            addr: *const (),
+            size: usize,
+        }
+        unsafe impl Sync for TraceBufferAnnotation {};
+
+        #[unsafe(link_section = ".pw_kernel.annotations.trace_buffer")]
+        #[used]
+        static _TRACE_BUFFER_ANNOTATION: TraceBufferAnnotation = TraceBufferAnnotation {
+            name: "kernel",
+            addr: unsafe { $trace_buffer.buffer() },
+            size: $trace_buffer.buffer_len(),
+        };
+    }};
+}
+
+#[macro_export]
+macro_rules! annotate_kernel_state {
+    ($state:expr) => {{ $crate::annotate_kernel_trace_buffer!($state.trace_buffer) }};
 }
 
 /// Initializes an [`InitKernelState`] in static storage.
@@ -260,7 +305,8 @@ pub struct InitKernelState<K: Kernel> {
 // in this crate.
 #[doc(hidden)]
 pub mod macro_exports {
-    pub use {foreign_box, pw_assert};
+    pub use foreign_box;
+    pub use pw_assert;
 }
 
 pub fn main<K: Kernel>(kernel: K, init_state: &'static mut InitKernelState<K>) -> ! {
@@ -390,5 +436,7 @@ pub mod __private {
         }};
     }
 
-    pub use {foreign_box, kernel_config, time};
+    pub use foreign_box;
+    pub use kernel_config;
+    pub use time;
 }
