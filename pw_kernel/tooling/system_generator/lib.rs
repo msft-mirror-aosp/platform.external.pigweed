@@ -23,6 +23,7 @@ use minijinja::{Environment, State};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
+pub mod mpu_validation;
 pub mod system_config;
 
 use system_config::ObjectConfig::Interrupt;
@@ -49,6 +50,8 @@ pub struct CommonArgs {
         action = clap::ArgAction::Append
     )]
     templates: Vec<(String, PathBuf)>,
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+    userspace: bool,
 }
 
 fn parse_template(s: &str) -> Result<(String, PathBuf), String> {
@@ -77,6 +80,10 @@ pub trait ArchConfigInterface {
         config: &mut system_config::BaseConfig,
     ) -> Result<()>;
     fn get_interrupt_table_link_section(&self) -> Option<String>;
+    /// Validate memory layout for MPU compatibility.
+    fn validate_mpu(&self, _config: &system_config::BaseConfig) -> Result<()> {
+        Ok(()) // Default: no MPU validation
+    }
 }
 
 pub fn parse_config<A: ArchConfigInterface + DeserializeOwned>(
@@ -198,8 +205,13 @@ impl<'a, A: ArchConfigInterface + Serialize> SystemGenerator<'a, A> {
         instance.populate_memory_mappings();
         instance.populate_interrupt_table()?;
 
+        instance.config.base.userspace = instance.cli.common_args.userspace;
+
         // Calculate and validate config after the populations above.
         instance.config.calculate_and_validate()?;
+
+        // Run architecture-specific MPU compatibility validation.
+        instance.config.arch.validate_mpu(&instance.config.base)?;
 
         Ok(instance)
     }
@@ -217,10 +229,9 @@ impl<'a, A: ArchConfigInterface + Serialize> SystemGenerator<'a, A> {
 
     fn render_system(&self) -> Result<String> {
         let template = self.env.get_template("system")?;
-        match template.render(&self.config) {
-            Ok(str) => Ok(str),
-            Err(e) => Err(anyhow!(e)),
-        }
+        template
+            .render(&self.config)
+            .context("Could not render system template")
     }
 
     fn render_app_linker_script(&self, app_name: &String) -> Result<String> {
@@ -232,10 +243,9 @@ impl<'a, A: ArchConfigInterface + Serialize> SystemGenerator<'a, A> {
             .iter()
             .find(|a| a.name == *app_name)
             .ok_or_else(|| anyhow!("Unable to find app \"{app_name}\" in system manifest"))?;
-        match template.render(app) {
-            Ok(str) => Ok(str),
-            Err(e) => Err(anyhow!(e)),
-        }
+        template
+            .render(app)
+            .context("Could not render app template")
     }
 
     #[must_use]

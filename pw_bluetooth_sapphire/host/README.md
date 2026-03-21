@@ -178,6 +178,13 @@ adapter:
                 peer_id
                 peer_address
                 ref_count
+                @time
+        last_disconnected:
+            0:
+                peer_id
+                reason
+                connected_@time
+                @time
     bredr_connection_manager:
         security_mode
         disconnect_acl_link_error_count
@@ -202,6 +209,7 @@ adapter:
         connections:
             connection_0x0:
                 peer_id
+                @time
                 pairing_state_manager:
                     pairing_state_type
                     legacy_pairing_state:
@@ -223,7 +231,8 @@ adapter:
         last_disconnected:
             0:
                 peer_id
-                duration_s
+                reason
+                connected_@time
                 @time
     low_energy_advertiser:
         advertising_handle_map:

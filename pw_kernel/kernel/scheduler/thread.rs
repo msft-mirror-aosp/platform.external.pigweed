@@ -13,11 +13,14 @@
 // the License.
 
 use core::cell::UnsafeCell;
-use core::mem::MaybeUninit;
+use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::Range;
 use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
 
+#[cfg(not(feature = "user_space"))]
+use foreign_box::ForeignBox;
+#[cfg(feature = "user_space")]
 use foreign_box::{ForeignBox, ForeignRc};
 use list::*;
 use memory_config::{MemoryConfig as _, MemoryRegionType};
@@ -27,10 +30,12 @@ use pw_status::Result;
 use time::Instant;
 
 use crate::Kernel;
+#[cfg(feature = "user_space")]
 use crate::object::{KernelObject, ObjectTable};
 use crate::scheduler::algorithm::SchedulerAlgorithmThreadState;
-use crate::scheduler::{JoinResult, Priority, TryJoinResult, WaitQueue, WaitType};
+use crate::scheduler::{JoinResult, Priority, SchedulerState, TryJoinResult, WaitQueue, WaitType};
 use crate::sync::event::{Event, EventConfig, EventSignaler};
+use crate::sync::spinlock::SpinLockGuard;
 
 /// The memory backing a thread's stack before it has been started.
 ///
@@ -138,7 +143,7 @@ impl Stack {
 
     /// Initialize the stack for thread execution.
     ///
-    /// Intitializes the stack to a know pattern to avoid leaking data between
+    /// Initializes the stack to a known pattern to avoid leaking data between
     /// thread invocations as well as to provide a signature for calculating
     /// high water stack usage.
     pub fn initialize(&self) {
@@ -163,29 +168,43 @@ impl Stack {
 /// Runtime state of a Thread.
 // TODO: want to name this ThreadState, but collides with ArchThreadstate
 #[derive(Copy, Clone, PartialEq)]
+#[repr(u8)]
 pub enum State {
     /// Thread has been created but not initialized.
-    New,
+    New = 0,
 
     /// Thread has been initialized and added to its parent process but has not
     /// been added to the scheduler.
-    Initial,
+    Initial = 1,
 
     /// Thread is ready to run and owned by the scheduling algorithm.
-    Ready,
+    Ready = 2,
 
     /// Thread is currently running on a CPU core.
-    Running,
+    Running = 3,
 
     /// Thread has been successfully terminated and is waiting to be joined.
-    Terminated,
+    Terminated = 4,
 
     /// Thread has been joined, removed from its parent process, and no longer
     /// participates in the system scheduler.
-    Joined,
+    Joined = 5,
 
-    /// Thread is waiting in a [`WaitQueue`].
-    Waiting,
+    /// Thread is interruptibly waiting in a [`WaitQueue`].
+    WaitingInterruptible = 6,
+
+    /// Thread is non-interruptibly waiting in a [`WaitQueue`].
+    WaitingNonInterruptible = 7,
+}
+
+impl State {
+    #[must_use]
+    pub fn is_waiting(&self) -> bool {
+        matches!(
+            self,
+            Self::WaitingInterruptible | Self::WaitingNonInterruptible
+        )
+    }
 }
 
 // TODO: use From or Into trait (unclear how to do it with 'static str)
@@ -197,7 +216,25 @@ pub(super) fn to_string(s: State) -> &'static str {
         State::Running => "Running",
         State::Terminated => "Terminated",
         State::Joined => "Joined",
-        State::Waiting => "Waiting",
+        State::WaitingInterruptible => "WaitingInterruptible",
+        State::WaitingNonInterruptible => "WaitingNonInterruptible",
+    }
+}
+
+#[derive(Copy, Clone, PartialEq)]
+pub enum ProcessState {
+    New,
+    Ready,
+    Terminating,
+    Terminated,
+}
+
+pub(super) fn process_state_to_string(s: ProcessState) -> &'static str {
+    match s {
+        ProcessState::New => "New",
+        ProcessState::Ready => "Ready",
+        ProcessState::Terminating => "Terminating",
+        ProcessState::Terminated => "Terminated",
     }
 }
 
@@ -216,6 +253,10 @@ pub trait ThreadState: 'static + Sized {
     /// # Safety
     /// Caller guarantees that the `memory_config` pointer remains valid for the
     /// lifetime of the thread.
+    ///
+    /// # Implementation Note
+    /// The implementation is responsible for ensuring that `initial_function`
+    /// is called with interrupts enabled and without the scheduler lock held
     unsafe fn initialize_kernel_frame(
         &mut self,
         kernel_stack: Stack,
@@ -232,6 +273,11 @@ pub trait ThreadState: 'static + Sized {
     /// # Safety
     /// Caller guarantees that the `memory_config` pointer remains valid for the
     /// lifetime of the thread.
+    ///
+    /// # Implementation Note
+    /// The implementation is responsible for ensuring that `initial_function`
+    /// is called with interrupts enabled, memory_config enabled, non-privileged
+    /// mode, and without the scheduler lock held
     #[cfg(feature = "user_space")]
     unsafe fn initialize_user_frame(
         &mut self,
@@ -252,9 +298,14 @@ pub struct Process<K: Kernel> {
 
     pub(crate) memory_config: <K::ThreadState as ThreadState>::MemoryConfig,
 
+    #[cfg(feature = "user_space")]
     object_table: ForeignBox<dyn ObjectTable<K>>,
 
-    thread_list: UnsafeList<Thread<K>, ProcessThreadListAdapter<K>>,
+    pub(super) thread_list: UnsafeList<Thread<K>, ProcessThreadListAdapter<K>>,
+
+    pub(super) ref_count: K::AtomicUsize,
+    pub(super) state: ProcessState,
+    pub(super) join_event: Option<EventSignaler<K>>,
 }
 
 list::define_adapter!(pub ProcessListAdapter<K: Kernel> => Process<K>::link);
@@ -265,17 +316,30 @@ impl<K: Kernel> Process<K> {
     pub const fn new(
         name: &'static str,
         memory_config: <K::ThreadState as ThreadState>::MemoryConfig,
-        object_table: ForeignBox<dyn ObjectTable<K>>,
+        #[cfg(feature = "user_space")] object_table: ForeignBox<dyn ObjectTable<K>>,
     ) -> Self {
         Self {
             link: Link::new(),
             name,
             memory_config,
+            #[cfg(feature = "user_space")]
             object_table,
             thread_list: UnsafeList::new(),
+            ref_count: K::AtomicUsize::ZERO,
+            state: ProcessState::New,
+            join_event: None,
         }
     }
 
+    /// Manually increment the processes refcount
+    ///
+    /// SAFETY: This should only be done by the scheduler to maintain a
+    /// virtual, reference on the kernel process during initialization.
+    pub(super) unsafe fn manually_increment_ref_count(&mut self) {
+        self.ref_count.fetch_add(1, Ordering::Acquire);
+    }
+
+    #[cfg(feature = "user_space")]
     pub fn get_object(
         &self,
         kernel: K,
@@ -284,28 +348,9 @@ impl<K: Kernel> Process<K> {
         self.object_table.get_object(kernel, handle)
     }
 
-    /// Registers process with scheduler.
-    pub fn register(&mut self, kernel: K) {
-        unsafe {
-            kernel
-                .get_scheduler()
-                .lock(kernel)
-                .add_process_to_list(NonNull::from(self))
-        };
-    }
-
     pub fn add_to_thread_list(&mut self, thread: &mut Thread<K>) {
         unsafe {
             self.thread_list.push_front_unchecked(NonNull::from(thread));
-        }
-    }
-
-    /// # Safety
-    /// Caller must ensure that the thread is already in the processes thread list.
-    pub unsafe fn remove_from_thread_list(&mut self, thread: &mut Thread<K>) {
-        unsafe {
-            self.thread_list
-                .unlink_element_unchecked(NonNull::from(thread));
         }
     }
 
@@ -343,9 +388,10 @@ impl<K: Kernel> Process<K> {
 
     pub fn dump(&self) {
         info!(
-            "Process '{}' ({:#010x})",
+            "Process '{}' ({:#010x}) state: {}",
             self.name as &str,
-            self.id() as usize
+            self.id() as usize,
+            process_state_to_string(self.state) as &str
         );
         unsafe {
             let _ = self
@@ -354,6 +400,167 @@ impl<K: Kernel> Process<K> {
                     thread.dump();
                     Ok(())
                 });
+        }
+    }
+}
+
+pub struct ProcessRef<K: Kernel> {
+    pub(crate) process: NonNull<Process<K>>,
+    kernel: K,
+}
+
+impl<K: Kernel> ProcessRef<K> {
+    // `ProcessRef`s should only be created when adding a process to the
+    // scheduler.
+    pub(super) fn new(process: NonNull<Process<K>>, kernel: K) -> Self {
+        unsafe {
+            process.as_ref().ref_count.fetch_add(1, Ordering::Acquire);
+        }
+        Self { process, kernel }
+    }
+
+    /// Request termination of the process.
+    ///
+    /// Sets the process state to Terminating and requests termination for all
+    /// threads in the process.
+    pub fn terminate(&self, kernel: K) -> Result<()> {
+        kernel
+            .get_scheduler()
+            .lock(kernel)
+            .process_terminate(kernel, self)
+    }
+
+    /// Returns the current state of the process.
+    #[must_use]
+    pub fn get_state(&self) -> ProcessState {
+        unsafe { self.process.as_ref().state }
+    }
+
+    pub(super) fn as_ref(&self) -> &Process<K> {
+        unsafe { self.process.as_ref() }
+    }
+
+    /// Join the referenced process.
+    ///
+    /// Waits until the all other references to the process are dropped and the
+    /// process terminates.  Returns a `ForeignBox<Process<K>>` which can be used
+    /// to restart the process.
+    pub fn join(self, kernel: K) -> Result<ForeignBox<Process<K>>> {
+        match self.join_until(kernel, Instant::<K::Clock>::MAX) {
+            crate::scheduler::ProcessJoinResult::Joined(process) => Ok(process),
+            crate::scheduler::ProcessJoinResult::Err { error, .. } => Err(error),
+        }
+    }
+
+    /// Join the referenced process with a deadline
+    ///
+    /// Waits until the all other references to the process are dropped and the
+    /// process terminates.
+    pub fn join_until(
+        mut self,
+        kernel: K,
+        deadline: Instant<K::Clock>,
+    ) -> crate::scheduler::ProcessJoinResult<K> {
+        let join_event = Event::new(kernel, EventConfig::ManualReset);
+        loop {
+            self = match kernel
+                .get_scheduler()
+                .lock(kernel)
+                .process_try_join(self, join_event.get_signaler())
+            {
+                crate::scheduler::ProcessTryJoinResult::Err {
+                    error: e,
+                    process: process_ref,
+                } => {
+                    return crate::scheduler::ProcessJoinResult::Err {
+                        error: e,
+                        process: process_ref,
+                    };
+                }
+                crate::scheduler::ProcessTryJoinResult::Joined(process_box) => {
+                    return crate::scheduler::ProcessJoinResult::Joined(process_box);
+                }
+                crate::scheduler::ProcessTryJoinResult::Wait(process_ref) => process_ref,
+            };
+
+            if let Err(e) = join_event.wait_until(deadline) {
+                kernel
+                    .get_scheduler()
+                    .lock(kernel)
+                    .process_cancel_try_join(&mut self);
+
+                return crate::scheduler::ProcessJoinResult::Err {
+                    error: e,
+                    process: self,
+                };
+            }
+        }
+    }
+
+    /// Drop the `ProcessRef` while the scheduler lock is held.
+    ///
+    /// This is an internal version for use by the scheduler while it is holding
+    /// the scheduler lock.
+    pub(super) fn drop_locked(
+        mut self,
+        mut sched: SpinLockGuard<'_, K, SchedulerState<K>>,
+    ) -> SpinLockGuard<'_, K, SchedulerState<K>> {
+        unsafe {
+            let prev_value = self
+                .process
+                .as_ref()
+                .ref_count
+                .fetch_sub(1, Ordering::Release);
+
+            // If this ref was one of two outstanding references to the process,
+            // the other reference may be attempting to join.  Let the scheduler
+            // notify the join request if it is outstanding.
+            if prev_value == 2 {
+                sched = sched.process_signal_join(&mut self);
+            }
+        }
+
+        // Ensure that the trait version of drop is not run.
+        let _ = ManuallyDrop::new(self);
+        sched
+    }
+}
+
+impl<K: Kernel> Clone for ProcessRef<K> {
+    fn clone(&self) -> Self {
+        unsafe {
+            self.process
+                .as_ref()
+                .ref_count
+                .fetch_add(1, Ordering::Acquire);
+        }
+
+        Self {
+            process: self.process,
+            kernel: self.kernel,
+        }
+    }
+}
+
+impl<K: Kernel> Drop for ProcessRef<K> {
+    fn drop(&mut self) {
+        unsafe {
+            let prev_value = self
+                .process
+                .as_ref()
+                .ref_count
+                .fetch_sub(1, Ordering::Release);
+
+            // If this ref was one of two outstanding references to the process,
+            // the other reference may be attempting to join.  Let the scheduler
+            // notify the join request if it is outstanding.
+            if prev_value == 2 {
+                let _ = self
+                    .kernel
+                    .get_scheduler()
+                    .lock(self.kernel)
+                    .process_signal_join(self);
+            }
         }
     }
 }
@@ -379,7 +586,7 @@ pub struct ThreadRef<K: Kernel> {
 impl<K: Kernel> ThreadRef<K> {
     /// Join the referenced thread.
     ///
-    /// Waits until the all other references to the tread is dropped and the
+    /// Waits until the all other references to the thread are dropped and the
     /// thread terminates.  Returns a `ForeignBox<Thread<K>>` which can be used
     /// to restart the thread.
     pub fn join(self, kernel: K) -> Result<ForeignBox<Thread<K>>> {
@@ -391,7 +598,7 @@ impl<K: Kernel> ThreadRef<K> {
 
     /// Join the referenced thread with a deadline
     ///
-    /// Waits until the all other references to the tread is dropped and the
+    /// Waits until the all other references to the thread are dropped and the
     /// thread terminates.
     ///
     /// Returns:
@@ -401,11 +608,11 @@ impl<K: Kernel> ThreadRef<K> {
     pub fn join_until(mut self, kernel: K, deadline: Instant<K::Clock>) -> JoinResult<K> {
         let join_event = Event::new(kernel, EventConfig::ManualReset);
         loop {
-            self = match kernel
+            let (_, res) = kernel
                 .get_scheduler()
                 .lock(kernel)
-                .thread_try_join(self, join_event.get_signaler())
-            {
+                .thread_try_join(self, join_event.get_signaler());
+            self = match res {
                 TryJoinResult::Err {
                     error: e,
                     thread: thread_ref,
@@ -511,7 +718,7 @@ pub struct Thread<K: Kernel> {
 
     // Safety: All accesses to the parent process must be done with the
     // scheduler lock held.
-    pub(super) process: *mut Process<K>,
+    pub(super) process: Option<ProcessRef<K>>,
 
     pub(super) state: State,
     pub(super) stack: Stack,
@@ -541,7 +748,7 @@ impl<K: Kernel> Thread<K> {
         Thread {
             process_link: Link::new(),
             active_link: Link::new(),
-            process: core::ptr::null_mut(),
+            process: None,
             state: State::New,
             arch_thread_state: UnsafeCell::new(K::ThreadState::NEW),
             owner: ThreadOwner::None,
@@ -554,13 +761,14 @@ impl<K: Kernel> Thread<K> {
         }
     }
 
+    #[cfg(feature = "user_space")]
     pub fn get_object(
         &self,
         kernel: K,
         handle: u32,
     ) -> Option<ForeignRc<K::AtomicUsize, dyn KernelObject<K>>> {
         // SAFETY: `self.process` will always outlive `self`.
-        unsafe { self.process.as_ref()? }.get_object(kernel, handle)
+        self.process.as_ref()?.as_ref().get_object(kernel, handle)
     }
 
     pub(super) extern "C" fn trampoline<A1: ThreadArg>(
@@ -607,6 +815,26 @@ impl<K: Kernel> Thread<K> {
             .thread_initialize_kernel(kernel, self, kernel_stack, entry_point, arg)
     }
 
+    /// DEPRECATED: Initialized a kernel thread in a new process
+    ///
+    /// Multiple kernel processes are not a supported features. This function
+    /// exists to test process termination.  Once userspace thread and process
+    /// control is implemented, the tests will be ported to use those and this
+    /// function will be deleted.
+    pub fn initialize_kernel_thread_for_process<A: ThreadArg>(
+        &mut self,
+        kernel: K,
+        stack: Stack,
+        process: ProcessRef<K>,
+        entry_point: fn(K, A),
+        arg: A,
+    ) {
+        kernel
+            .get_scheduler()
+            .lock(kernel)
+            .thread_initialize_kernel_for_process(kernel, self, process, stack, entry_point, arg);
+    }
+
     #[cfg(feature = "user_space")]
     /// # Safety
     /// It is up to the caller to ensure that *process is valid.
@@ -617,7 +845,7 @@ impl<K: Kernel> Thread<K> {
         kernel: K,
         kernel_stack: Stack,
         initial_sp: usize,
-        process: *mut Process<K>,
+        process: ProcessRef<K>,
         initial_pc: usize,
         args: (usize, usize, usize),
     ) -> Result<()> {
@@ -630,7 +858,7 @@ impl<K: Kernel> Thread<K> {
                     self,
                     kernel_stack,
                     initial_sp,
-                    process,
+                    process.process.as_ptr(),
                     initial_pc,
                     args,
                 )
@@ -651,10 +879,13 @@ impl<K: Kernel> Thread<K> {
     pub fn process(&self) -> &Process<K> {
         // SAFETY: The returned process references is bound to an immutable
         // borrow of the thread the `process` pointer can not change.
-        unsafe { &*self.process }
+        let Some(process_ref) = self.process.as_ref() else {
+            pw_assert::panic!("Thread does not have a process");
+        };
+        process_ref.as_ref()
     }
 
-    /// Return a reference counted `TreadRef` for this thread.
+    /// Return a reference counted `ThreadRef` for this thread.
     pub(super) fn get_ref(&self, kernel: K) -> ThreadRef<K> {
         self.ref_count.fetch_add(1, Ordering::Acquire);
         ThreadRef {
@@ -699,11 +930,6 @@ impl<K: Kernel> Thread<K> {
         // and a null pointer is defined to be at address 0 (see
         // https://doc.rust-lang.org/beta/core/ptr/fn.null.html).
         0usize
-    }
-
-    pub(super) unsafe fn remove_from_parent_process(&mut self) {
-        unsafe { (*self.process).remove_from_thread_list(self) };
-        self.process = core::ptr::null_mut();
     }
 }
 
@@ -999,8 +1225,9 @@ macro_rules! init_non_priv_process {
         unsafe fn __init_non_priv_process(
             storage: &'static StaticStorage<Process<arch::Arch>>,
             object_table: ForeignBox<dyn ObjectTable<arch::Arch>>,
-        ) -> &'static mut Process<arch::Arch> {
+        ) -> $crate::scheduler::thread::ProcessRef<arch::Arch> {
             use pw_log::info;
+            use $crate::__private::foreign_box::ForeignBox;
             info!(
                 "Allocating non-privileged process '{}'",
                 $name as &'static str
@@ -1009,8 +1236,8 @@ macro_rules! init_non_priv_process {
             // SAFETY: The caller promises that this function will be executed
             // at most once.
             let proc = unsafe { storage.init(Process::new($name, $memory_config, object_table)) };
-            proc.register(arch::Arch);
-            proc
+            let proc_box = ForeignBox::from(proc);
+            $crate::scheduler::add_process(arch::Arch, proc_box)
         }
 
         $crate::annotate_process_from_address!($name, arch::Arch, unsafe { $storage.address() });
@@ -1035,7 +1262,7 @@ macro_rules! init_non_priv_thread {
 
         /// SAFETY: This must be executed at most once at run time.
         unsafe fn __init_non_priv_thread(
-            proc: &mut Process<arch::Arch>,
+            proc: $crate::scheduler::thread::ProcessRef<arch::Arch>,
             entry: usize,
             initial_sp: usize,
         ) -> ForeignBox<Thread<arch::Arch>> {

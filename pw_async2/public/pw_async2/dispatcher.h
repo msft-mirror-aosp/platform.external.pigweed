@@ -15,13 +15,28 @@
 
 #include <atomic>
 #include <mutex>
+#include <type_traits>
+#include <utility>
 
+#include "pw_allocator/allocator.h"
+#include "pw_allocator/shared_ptr.h"
 #include "pw_async2/context.h"
+#include "pw_async2/func_task.h"
+#include "pw_async2/future_task.h"
 #include "pw_async2/internal/lock.h"
 #include "pw_async2/task.h"
 #include "pw_async2/waker.h"
-#include "pw_containers/intrusive_list.h"
+#include "pw_containers/intrusive_forward_list.h"
 #include "pw_sync/lock_annotations.h"
+
+// Coroutines are supported if the build target depends on //pw_async2:coro.
+#if defined(__cpp_impl_coroutine) && __has_include("pw_async2/coro.h")
+#include <functional>  // std::invoke
+
+#include "pw_async2/coro.h"
+#include "pw_async2/coro_task.h"
+#include "pw_async2/fallible_coro_task.h"
+#endif  // defined(__cpp_impl_coroutine) && __has_include("pw_async2/coro.h")
 
 namespace pw::async2 {
 
@@ -43,26 +58,197 @@ namespace pw::async2 {
 ///   `PopSingleTaskForThisWake()` until it returns `nullptr`. Each call can
 ///   result in one potentially redundant `DoWake()` call, so `PopTaskToRun`
 ///   should be used one multiple tasks are executed.
+///
+/// The base `Dispatcher` performs no allocations internally. `Dispatcher`
+/// offers `Post` overloads that allocate a task with the provided allocator,
+/// but their use is optional. C++20 coroutines can be posted to a `Dispatcher`
+/// with `Post` if C++20 is supported and the build target depends on
+/// `//pw_async2:coro`.
+///
+/// **Destruction:**
+/// There cannot be any tasks registered when the `Dispatcher` goes out of
+/// scope. Call `Terminate()` to ensure this. The base destructor can't call
+/// `Terminate()` because the class is already partially destroyed at that
+/// point, and registered tasks might call `DoWake()` on it. Call `Terminate()`
+/// in the derived destructor if there is a desire to support destructors
+/// going out of scope with registered tasks.
 class Dispatcher {
  public:
-  Dispatcher(Dispatcher&) = delete;
-  Dispatcher& operator=(Dispatcher&) = delete;
+  Dispatcher(const Dispatcher&) = delete;
+  Dispatcher& operator=(const Dispatcher&) = delete;
 
   Dispatcher(Dispatcher&&) = delete;
   Dispatcher& operator=(Dispatcher&&) = delete;
 
-  virtual ~Dispatcher() { Deregister(); }
+  virtual ~Dispatcher() PW_LOCKS_EXCLUDED(internal::lock());
 
-  /// Tells the ``Dispatcher`` to run ``Task`` to completion.
-  /// This method does not block.
+  /// Removes references to this `Dispatcher` from all linked `Task`s and
+  /// `Waker`s. Call before destroying the `Dispatcher` to ensure no tasks are
+  /// referencing it.
   ///
-  /// After ``Post`` is called, ``Task::Pend`` will be invoked once.
-  /// If ``Task::Pend`` does not complete, the ``Dispatcher`` will wait
-  /// until the ``Task`` is "awoken", at which point it will call ``Pend``
-  /// again until the ``Task`` completes.
+  /// @warning Calling `Terminate()` indicates that the dispatcher is about to
+  /// be destroyed. It is illegal to post tasks to or otherwise access the
+  /// dispatcher after `Terminate()` has been called, just as it would be to
+  /// access a dispatcher after its destructor has been called.
+  void Terminate() PW_LOCKS_EXCLUDED(internal::lock());
+
+  /// Tells the `Dispatcher` to run `Task` to completion. This method does not
+  /// block.
+  ///
+  /// After `Post` is called, `Task::Pend` will be invoked once. If `Task::Pend`
+  /// does not complete, the `Dispatcher` will wait until the `Task` is
+  /// "awoken", at which point it will call `Pend` again until the `Task`
+  /// completes.
   ///
   /// This method is thread-safe and interrupt-safe.
   void Post(Task& task) PW_LOCKS_EXCLUDED(internal::lock());
+
+  /// Posts a dynamically allocated task to the dispatcher. Functions the same
+  /// as `Post`, except the dispatcher takes shared reference to the task, which
+  /// it frees when the task completes.
+  ///
+  /// @pre `task` must NOT be `nullptr`.
+  template <typename T>
+  void PostShared(const SharedPtr<T>& task)
+      PW_LOCKS_EXCLUDED(internal::lock()) {
+    PW_ASSERT(PostAllocatedTask(task));
+  }
+
+  /// Allocates a `TaskType` using `allocator` and posts it to this execution
+  /// context as with `PostShared`.
+  ///
+  /// @returns A `SharedPtr` to the posted task if allocation succeeded, or
+  ///     a null `SharedPtr` if allocation failed.
+  template <typename TaskType,
+            typename... Args,
+            typename = std::enable_if_t<std::is_base_of_v<Task, TaskType>>>
+  [[nodiscard]] SharedPtr<TaskType> Post(Allocator& allocator, Args&&... args) {
+    auto task = allocator.MakeShared<TaskType>(std::forward<Args>(args)...);
+    if (!PostAllocatedTask(task)) {
+      return nullptr;
+    }
+    return task;
+  }
+
+  /// Allocates a `Task` defined by the provided function and posts it as with
+  /// `PostShared`. The function must take a `pw::async2::Context` as its only
+  /// argument and return a `Poll<T>`.
+  ///
+  /// This function supports both explicitly and implicitly specified function
+  /// types. If `Func` is explicitly specified, it is used as-is. If `Func` is
+  /// not specified, it is deduced as `std::decay_t<Func>`.
+  ///
+  /// @returns A `SharedPtr` to the posted task if allocation succeeded, or a
+  ///     null `SharedPtr` if allocation failed.
+  template <
+      typename Func = void,
+      int&... kExplicitGuard,
+      typename Arg,
+      typename ActualFunc =
+          std::conditional_t<std::is_void_v<Func>, std::decay_t<Arg>, Func>,
+      typename = std::enable_if_t<!std::is_base_of_v<Task, ActualFunc>>>
+  [[nodiscard]] SharedPtr<FuncTask<ActualFunc>> Post(Allocator& allocator,
+                                                     Arg&& func) {
+    return Post<FuncTask<ActualFunc>>(allocator, std::forward<Arg>(func));
+  }
+
+  /// Runs a function object once on the `Dispatcher`. Allocates the wrapper
+  /// task with `allocator`. The `Dispatcher` frees it when it completes.
+  ///
+  /// Use `RunOnceTask` to declare a task that runs a function once without
+  /// dynamic allocation.
+  ///
+  /// @warning `RunOnce` should be used rarely, such as in tests, truly one-off
+  /// cases, or as a last resort for sync-async interop. `pw_async2` should not
+  /// be used as a work queue. Overuse of `RunOnceTask` forfeits the benefits of
+  /// `pw_async2`, scattering logic across a mess of callbacks instead of
+  /// organizing it linearly in a task.
+  template <typename Func>
+  [[nodiscard]] SharedPtr<RunOnceTask<Func>> RunOnce(Allocator& allocator,
+                                                     Func&& func) {
+    return Post<RunOnceTask<Func>>(allocator, std::forward<Func>(func));
+  }
+
+  /// Allocates and posts a `FutureTask` that runs a future to completion.
+  ///
+  /// @warning `PostFuture` is intended for test and occasional production use.
+  /// A `FutureTask` does not contain logic, and relying too much on
+  /// `FutureTasks` could push logic out of async tasks, which nullifies the
+  /// benefits of `pw_async2`. Creating a task for each future is also less
+  /// efficient than having one task work with multiple futures.
+  ///
+  /// @returns A `SharedPtr` to the posted task if allocation succeeded, or a
+  ///     null `SharedPtr` if allocation failed.
+  template <typename Fut>
+  [[nodiscard]] SharedPtr<FutureTask<Fut>> PostFuture(Allocator& allocator,
+                                                      Fut&& future) {
+    return Post<FutureTask<Fut>>(allocator, std::forward<Fut>(future));
+  }
+
+#if defined(__cpp_impl_coroutine) && __has_include("pw_async2/coro.h")
+  /// Allocates and posts a `CoroTask` that runs the provided coroutine to
+  /// completion.
+  ///
+  /// Returns `nullptr` if the coroutine or `CoroTask` failed to allocate.
+  /// Crashes if subsequent coroutine allocations fail.
+  ///
+  /// @returns A `SharedPtr` to the posted task if allocation succeeded, or a
+  ///     null `SharedPtr` if allocation failed.
+  template <typename T>
+  [[nodiscard]] SharedPtr<CoroTask<T>> Post(Allocator& allocator,
+                                            Coro<T>&& coro) {
+    if (!coro.ok()) {
+      return nullptr;
+    }
+    return Post<CoroTask<T>>(allocator, std::move(coro));
+  }
+
+  /// Allocates and posts a `FallibleCoroTask` that runs the provided coroutine
+  /// to completion.
+  ///
+  /// Returns `nullptr` if the coroutine or `FallibleCoroTask` failed to
+  /// allocate. Invokes `error_handler` if subsequent coroutine allocations
+  /// fail.
+  ///
+  /// @returns A `SharedPtr` to the posted task if allocation succeeded, or a
+  ///     null `SharedPtr` if allocation failed.
+  template <typename T,
+            typename E = void,
+            int&... kExplicitGuard,
+            typename Arg,
+            typename ErrorHandler =
+                std::conditional_t<std::is_void_v<E>, std::decay_t<Arg>, E>>
+  [[nodiscard]] SharedPtr<FallibleCoroTask<T, ErrorHandler>> Post(
+      Allocator& allocator, Coro<T>&& coro, Arg&& error_handler) {
+    if (!coro.ok()) {
+      return nullptr;
+    }
+    return Post<FallibleCoroTask<T, ErrorHandler>>(
+        allocator, std::move(coro), std::forward<Arg>(error_handler));
+  }
+
+  /// Allocates and posts a `CoroTask` for the provided coroutine function.
+  ///
+  /// The coroutine function is invoked with the provided arguments. The
+  /// allocator from the `CoroContext` (the first argument) is used to allocate
+  /// the task.
+  ///
+  /// Returns `nullptr` if the coroutine or `CoroTask` failed to allocate.
+  /// Crashes if subsequent coroutine allocations fail.
+  ///
+  /// @returns A `SharedPtr` to the posted task if allocation succeeded, or a
+  ///     null `SharedPtr` if allocation failed.
+  template <auto kCoroFunc, typename... Args>
+  [[nodiscard]] auto Post(CoroContext coro_cx, Args&&... args) {
+    if constexpr (std::is_member_function_pointer_v<decltype(kCoroFunc)>) {
+      return PostSharedMemberCoro<kCoroFunc>(coro_cx,
+                                             std::forward<Args>(args)...);
+    } else {
+      return Post(coro_cx.allocator(),
+                  std::invoke(kCoroFunc, coro_cx, std::forward<Args>(args)...));
+    }
+  }
+#endif  // defined(__cpp_impl_coroutine) && __has_include("pw_async2/coro.h")
 
   /// Outputs log statements about the tasks currently registered with this
   /// dispatcher.
@@ -115,22 +301,9 @@ class Dispatcher {
   /// `PopAndRunAllReadyTasks` to run multiple tasks.
   Task* PopSingleTaskForThisWake() PW_LOCKS_EXCLUDED(internal::lock()) {
     std::lock_guard lock(internal::lock());
-    SetWantsWake();
+    wants_wake_ = true;
     return PopTaskToRunLocked();
   }
-
-  /// Result from `Dispatcher::RunTask`. Reports the state of the task when it
-  /// finished running.
-  enum RunTaskResult {
-    /// The task is still posted to the dispatcher.
-    kActive = Task::kActive,
-
-    /// The task was removed from the dispatcher by another thread.
-    kDeregistered = Task::kDeregistered,
-
-    /// The task finished running.
-    kCompleted = Task::kCompleted,
-  };
 
   /// Runs the task that was returned from `PopTaskToRun`.
   ///
@@ -139,7 +312,9 @@ class Dispatcher {
   /// `RunTask` returns `kActive`. It is only safe to access a popped task
   /// before calling `RunTask`, since it is marked as running and will not be
   /// destroyed until after it runs.
-  RunTaskResult RunTask(Task& task) PW_LOCKS_EXCLUDED(internal::lock());
+  RunTaskResult RunTask(Task& task) PW_LOCKS_EXCLUDED(internal::lock()) {
+    return task.RunInDispatcher();
+  }
 
  private:
   friend class Task;
@@ -165,19 +340,21 @@ class Dispatcher {
   /// acquired.
   virtual void DoWake() PW_LOCKS_EXCLUDED(internal::lock()) = 0;
 
-  void Wake() {
-    if (wants_wake_.exchange(false, std::memory_order_relaxed)) {
-      DoWake();
+  void Wake(Task* task_to_release = nullptr)
+      PW_UNLOCK_FUNCTION(internal::lock());
+
+  // Removes a task, waking the dispatcher if it is the last task.
+  void DeregisterTask(Task& task) PW_UNLOCK_FUNCTION(internal::lock()) {
+    if (has_tasks()) {
+      task.UnpostAndReleaseRef();
+    } else {
+      Wake(&task);
     }
   }
 
   Task* PopTaskToRunLocked() PW_EXCLUSIVE_LOCKS_REQUIRED(internal::lock());
 
-  // Removes references to this `Dispatcher` from all linked `Task`s and
-  // `Waker`s.
-  void Deregister() PW_LOCKS_EXCLUDED(internal::lock());
-
-  static void UnpostTaskList(IntrusiveList<Task>& list)
+  static void UnpostTaskList(IntrusiveForwardList<Task>& list)
       PW_EXCLUSIVE_LOCKS_REQUIRED(internal::lock());
 
   void RemoveWokenTaskLocked(Task& task)
@@ -192,27 +369,63 @@ class Dispatcher {
       PW_EXCLUSIVE_LOCKS_REQUIRED(internal::lock()) {
     sleeping_.push_front(task);
   }
+  void AddWokenTaskLocked(Task& task)
+      PW_EXCLUSIVE_LOCKS_REQUIRED(internal::lock()) {
+    containers::PushBackSlow(woken_, task);
+  }
 
-  // For use by ``Waker``.
-  void WakeTask(Task& task) PW_EXCLUSIVE_LOCKS_REQUIRED(internal::lock());
+  // True if any tasks are registered with the dispatcher.
+  bool has_tasks() const PW_EXCLUSIVE_LOCKS_REQUIRED(internal::lock()) {
+    return !woken_.empty() || !sleeping_.empty();
+  }
 
   void LogTaskWakers(const Task& task)
       PW_EXCLUSIVE_LOCKS_REQUIRED(internal::lock());
 
+  // Checks if `task` contains a value and posts it to the dispatcher as an
+  // allocated task. Returns true if the task posted successfully.
+  template <typename T>
+  bool PostAllocatedTask(const SharedPtr<T>& task)
+      PW_LOCKS_EXCLUDED(internal::lock()) {
+    return PostAllocatedTask(
+        task.get(),
+        task.GetControlBlock(
+            allocator::internal::ControlBlockHandle::GetInstance_DO_NOT_USE()));
+  }
+
+  bool PostAllocatedTask(Task* task,
+                         allocator::internal::ControlBlock* control_block)
+      PW_LOCKS_EXCLUDED(internal::lock());
+
+#if defined(__cpp_impl_coroutine) && __has_include("pw_async2/coro.h")
+  template <auto kCoroMemberFunc, typename Receiver, typename... Args>
+  [[nodiscard]] auto PostSharedMemberCoro(CoroContext coro_cx,
+                                          Receiver&& receiver,
+                                          Args&&... args)
+      PW_LOCKS_EXCLUDED(internal::lock()) {
+    return Post(coro_cx.allocator(),
+                std::invoke(kCoroMemberFunc,
+                            std::forward<Receiver>(receiver),
+                            coro_cx,
+                            std::forward<Args>(args)...));
+  }
+#endif  // defined(__cpp_impl_coroutine) && __has_include("pw_async2/coro.h")
+
+  // TODO: b/491844340 - Evaluate IntrusiveForwardList performance and consider
+  //     alternatives.
+  IntrusiveForwardList<Task> woken_ PW_GUARDED_BY(internal::lock());
+  IntrusiveForwardList<Task> sleeping_ PW_GUARDED_BY(internal::lock());
+
+  // Counts pending DoWake() calls (really should only ever be 1). This is
+  // necessary to prevent the Dispatcher from being destroyed while DoWake() is
+  // running, since the lock is not held at that time.
+  std::atomic<uint8_t> wakes_pending_ = 0;
+
   // Indicates that this Dispatcher should be woken when Wake() is called. This
   // prevents unnecessary wakes when, for example, multiple wakers wake the same
   // task or multiple tasks are posted before the dipsatcher runs.
-  //
-  // Must be called while the lock is held to prevent missed wakes.
-  void SetWantsWake() PW_EXCLUSIVE_LOCKS_REQUIRED(internal::lock()) {
-    wants_wake_.store(true, std::memory_order_relaxed);
-  }
-
-  IntrusiveList<Task> woken_ PW_GUARDED_BY(internal::lock());
-  IntrusiveList<Task> sleeping_ PW_GUARDED_BY(internal::lock());
-
-  // Latches wake requests to avoid duplicate DoWake calls.
-  std::atomic<bool> wants_wake_ = false;
+  bool wants_wake_ PW_GUARDED_BY(internal::lock()) = false;
+  bool terminated_ PW_GUARDED_BY(internal::lock()) = false;
 };
 
 /// @endsubmodule

@@ -24,17 +24,17 @@
 
 #include "pw_allocator/libc_allocator.h"
 #include "pw_assert/check.h"
+#include "pw_async2/await.h"
 #include "pw_async2/basic_dispatcher.h"
 #include "pw_async2/context.h"
 #include "pw_async2/coro.h"
-#include "pw_async2/coro_or_else_task.h"
+#include "pw_async2/coro_task.h"
 #include "pw_async2/func_task.h"
 #include "pw_async2/future_timeout.h"
 #include "pw_async2/poll.h"
 #include "pw_async2/select.h"
 #include "pw_async2/system_time_provider.h"
 #include "pw_async2/task.h"
-#include "pw_async2/try.h"
 #include "pw_async2/value_future.h"
 #include "pw_chrono/system_clock.h"
 #include "pw_containers/vector.h"
@@ -57,7 +57,7 @@ using ::pw::async2::BasicDispatcher;
 using ::pw::async2::Context;
 using ::pw::async2::Coro;
 using ::pw::async2::CoroContext;
-using ::pw::async2::CoroOrElseTask;
+using ::pw::async2::CoroTask;
 using ::pw::async2::FuncTask;
 using ::pw::async2::GetSystemTimeProvider;
 using ::pw::async2::Poll;
@@ -86,7 +86,7 @@ Result<T> RunFutureToCompletionWithTimeout(
 
   BasicDispatcher dispatcher;
   auto task = FuncTask([&](Context cx) -> Poll<> {
-    PW_TRY_READY_ASSIGN(select_result, select.Pend(cx));
+    PW_AWAIT(select_result, select, cx);
     return Ready();
   });
   dispatcher.Post(task);
@@ -171,8 +171,7 @@ Result<Vector<float, 10>> SampleVoltageBlocking() {
   return voltages;
 }
 
-Coro<Status> SampleVoltageCoro(CoroContext& cx,
-                               Result<Vector<float, 10>>& output) {
+Coro<Status> SampleVoltageCoro(CoroContext, Result<Vector<float, 10>>& output) {
   Vector<float, 10> voltages;
   FakeVoltageSensor sensor;
 
@@ -206,7 +205,7 @@ class SampleVoltageTask final : public Task {
         current_future_ = Timeout(sensor_.ReadFuture(), kSensorReadTimeout);
       }
 
-      PW_TRY_READY_ASSIGN(const Result<float> result, current_future_.Pend(cx));
+      PW_AWAIT(const Result<float> result, current_future_, cx);
 
       if (!result.ok()) {
         status_ = result.status();
@@ -233,7 +232,6 @@ int main() {
   // Creating a CoroContext is required before using coroutines. It makes
   // the memory allocations needed for each coroutine at runtime when each is
   // started.
-  CoroContext coro_cx(alloc);
 
   FakeVoltageSensor::force_timeout = true;
 
@@ -254,10 +252,10 @@ int main() {
 
   {
     Result<Vector<float, 10>> result;
-    auto task = CoroOrElseTask(SampleVoltageCoro(coro_cx, result),
-                               [&](Status status) { result = status; });
+    auto task = CoroTask(SampleVoltageCoro(alloc, result));
     dispatcher.Post(task);
     dispatcher.RunToCompletion();
+    PW_CHECK(task.Wait().IsDeadlineExceeded());
     PW_CHECK(result.status().IsDeadlineExceeded());
     LogSampledVoltages("SampleVoltageCoro", result);
   }
@@ -281,10 +279,10 @@ int main() {
 
   {
     Result<Vector<float, 10>> result;
-    auto task = CoroOrElseTask(SampleVoltageCoro(coro_cx, result),
-                               [&](Status status) { result = status; });
+    auto task = CoroTask(SampleVoltageCoro(alloc, result));
     dispatcher.Post(task);
     dispatcher.RunToCompletion();
+    PW_CHECK_OK(task.Wait());
     PW_CHECK(result.ok());
     LogSampledVoltages("SampleVoltageCoro", result);
   }
@@ -301,7 +299,6 @@ TEST(ExampleTests, Timeout) {
 
   BasicDispatcher dispatcher;
   LibCAllocator alloc;
-  CoroContext coro_cx(alloc);
 
   FakeVoltageSensor::force_timeout = true;
 
@@ -322,10 +319,10 @@ TEST(ExampleTests, Timeout) {
 
   {
     Result<Vector<float, 10>> result;
-    auto task = CoroOrElseTask(SampleVoltageCoro(coro_cx, result),
-                               [&](Status status) { result = status; });
+    auto task = CoroTask(SampleVoltageCoro(alloc, result));
     dispatcher.Post(task);
     dispatcher.RunToCompletion();
+    ASSERT_TRUE(task.Wait().IsDeadlineExceeded());
     ASSERT_TRUE(result.status().IsDeadlineExceeded());
   }
 
@@ -348,10 +345,10 @@ TEST(ExampleTests, Timeout) {
 
   {
     Result<Vector<float, 10>> result;
-    auto task = CoroOrElseTask(SampleVoltageCoro(coro_cx, result),
-                               [&](Status status) { result = status; });
+    auto task = CoroTask(SampleVoltageCoro(alloc, result));
     dispatcher.Post(task);
     dispatcher.RunToCompletion();
+    ASSERT_TRUE(task.Wait().ok());
     ASSERT_TRUE(result.status().ok());
     ASSERT_TRUE(result->size() == 10);
   }

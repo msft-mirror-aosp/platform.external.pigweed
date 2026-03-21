@@ -265,6 +265,8 @@ ProfileServer::~ProfileServer() {
 void ProfileServer::L2capParametersExt::RequestParameters(
     fuchsia::bluetooth::ChannelParameters requested,
     RequestParametersCallback callback) {
+  PW_CHECK(channel_.is_alive());
+
   if (requested.has_flush_timeout()) {
     channel_->SetBrEdrAutomaticFlushTimeout(
         std::chrono::nanoseconds(requested.flush_timeout()),
@@ -283,10 +285,12 @@ void ProfileServer::L2capParametersExt::RequestParameters(
           // Return the current parameters even if the request failed.
           // TODO(fxbug.dev/42152567): set current security requirements in
           // returned channel parameters
-          cb(fidlbredr::L2capParametersExt_RequestParameters_Result::
-                 WithResponse(
-                     fidlbredr::L2capParametersExt_RequestParameters_Response(
-                         ChannelInfoToFidlChannelParameters(chan->info()))));
+          if (chan.is_alive()) {
+            cb(fidlbredr::L2capParametersExt_RequestParameters_Result::
+                   WithResponse(
+                       fidlbredr::L2capParametersExt_RequestParameters_Response(
+                           ChannelInfoToFidlChannelParameters(chan->info()))));
+          }
         });
     return;
   }
@@ -1145,10 +1149,11 @@ void ProfileServer::OnServiceFound(
   if (search_it->second.unacknowledged_search_results_count >=
           kMaxUnackedSearchResults ||
       !search_it->second.pending_search_results.empty()) {
-    bt_log(ERROR,
-           "fidl",
-           "Unacknowledged search results limit exceeded for peer %s.",
-           bt_str(peer_id));
+    bt_log(
+        TRACE,
+        "fidl",
+        "Queueing search result due to unacked previous results for peer %s.",
+        bt_str(peer_id));
     search_it->second.pending_search_results.push_back(PendingSearchResult(
         {peer_id.value()}, std::move(descriptor_list), std::move(fidl_attrs)));
     return;
